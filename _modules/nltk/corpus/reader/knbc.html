@@ -1,0 +1,260 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.reader.knbc &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="nltk.corpus.reader" href="../reader.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" accesskey="U">nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.reader.knbc</h1><div class="highlight"><pre>
+<span class="c">#! /usr/bin/env python</span>
+<span class="c"># KNB Corpus reader</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Masato Hagiwara &lt;hagisan@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="c"># For more information, see http://lilyx.net/pages/nltkjapanesecorpus.html</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">bracket_parse</span><span class="p">,</span> <span class="n">Tree</span>
+
+<span class="kn">from</span> <span class="nn">nltk.parse</span> <span class="kn">import</span> <span class="n">DependencyGraph</span>
+
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.util</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c"># default function to convert morphlist to str for tree representation</span>
+<span class="n">_morphs2str_default</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">morphs</span><span class="p">:</span> <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">morphs</span> <span class="k">if</span> <span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;EOS&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="KNBCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.knbc.KNBCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">KNBCorpusReader</span><span class="p">(</span><span class="n">SyntaxCorpusReader</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This class implements:</span>
+<span class="sd">      - L{__init__}, which specifies the location of the corpus</span>
+<span class="sd">        and a method for detecting the sentence blocks in corpus files.</span>
+<span class="sd">      - L{_read_block}, which reads a block from the input stream.</span>
+<span class="sd">      - L{_word}, which takes a block and returns a list of list of words.</span>
+<span class="sd">      - L{_tag}, which takes a block and returns a list of list of tagged</span>
+<span class="sd">        words.</span>
+<span class="sd">      - L{_parse}, which takes a block and returns a list of parsed</span>
+<span class="sd">        sentences.</span>
+
+<span class="sd">    The structure of tagged words:</span>
+<span class="sd">      tagged_word = (word(str), tags(tuple))</span>
+<span class="sd">      tags = (surface, reading, lemma, pos1, posid1, pos2, posid2, pos3, posid3, others ...)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">morphs2str</span><span class="o">=</span><span class="n">_morphs2str_default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize KNBCorpusReader</span>
+<span class="sd">        morphs2str is a function to convert morphlist to str for tree representation</span>
+<span class="sd">        for _parse()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">CorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">encoding</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">morphs2str</span> <span class="o">=</span> <span class="n">morphs2str</span>
+
+    <span class="k">def</span> <span class="nf">_read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">):</span>
+        <span class="c"># blocks are split by blankline (or EOF) - default</span>
+        <span class="k">return</span> <span class="n">read_blankline_block</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_word</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+            <span class="c"># ignore the Bunsets headers</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&quot;EOS|\*|\#|\+&quot;</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+                <span class="n">cells</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot; &quot;</span><span class="p">)</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span> <span class="nf">_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">simplify_tags</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+            <span class="c"># ignore the Bunsets headers</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&quot;EOS|\*|\#|\+&quot;</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+                <span class="n">cells</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot; &quot;</span><span class="p">)</span>
+                <span class="c"># convert cells to morph tuples</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span> <span class="p">)</span>
+        
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span> <span class="nf">_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="n">dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;*&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;+&quot;</span><span class="p">):</span>
+                <span class="c"># start of bunsetsu or tag</span>
+                
+                <span class="n">cells</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot; &quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&quot;([\-0-9]*)([ADIP])&quot;</span><span class="p">,</span> <span class="n">cells</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+                <span class="k">assert</span> <span class="n">m</span> <span class="o">!=</span> <span class="bp">None</span>
+
+                <span class="n">node</span> <span class="o">=</span> <span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+                <span class="n">node</span><span class="p">[</span><span class="s">&#39;rel&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c"># dep_type</span>
+
+                <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+                <span class="n">dep_parent</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+
+                <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">dep_parent</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s">&#39;word&#39;</span><span class="p">:[],</span> <span class="s">&#39;deps&#39;</span><span class="p">:[]})</span>
+
+                <span class="k">if</span> <span class="n">dep_parent</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">dg</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">node</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">dep_parent</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                    
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;#&quot;</span><span class="p">):</span>
+                <span class="c"># normal morph</span>
+                <span class="n">cells</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot; &quot;</span><span class="p">)</span>
+                <span class="c"># convert cells to morph tuples</span>
+                <span class="n">morph</span> <span class="o">=</span> <span class="p">(</span> <span class="n">cells</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="p">)</span>
+                <span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="s">&#39;word&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">morph</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">morphs2str</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">dg</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+                <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">morphs2str</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">])</span>
+            
+        <span class="k">return</span> <span class="n">dg</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># Demo</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.knbc.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+
+    <span class="kn">import</span> <span class="nn">nltk</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus.util</span> <span class="kn">import</span> <span class="n">LazyCorpusLoader</span>
+
+    <span class="n">root</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/knbc/corpus1&#39;</span><span class="p">)</span>
+    <span class="n">fileids</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">find_corpus_fileids</span><span class="p">(</span><span class="n">FileSystemPathPointer</span><span class="p">(</span><span class="n">root</span><span class="p">),</span> <span class="s">&quot;.*&quot;</span><span class="p">)</span>
+               <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&quot;\d\-\d\-[\d]+\-[\d]+&quot;</span><span class="p">,</span> <span class="n">f</span><span class="p">)]</span>
+
+    <span class="k">def</span> <span class="nf">_knbc_fileids_sort</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="n">cells</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">int</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">cells</span><span class="p">[</span><span class="mi">3</span><span class="p">]))</span>
+
+    <span class="n">knbc</span> <span class="o">=</span> <span class="n">LazyCorpusLoader</span><span class="p">(</span><span class="s">&#39;knbc/corpus1&#39;</span><span class="p">,</span> <span class="n">KNBCorpusReader</span><span class="p">,</span>
+                            <span class="nb">sorted</span><span class="p">(</span><span class="n">fileids</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_knbc_fileids_sort</span><span class="p">),</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;euc-jp&#39;</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="n">knbc</span><span class="o">.</span><span class="n">fileids</span><span class="p">()[:</span><span class="mi">10</span><span class="p">]</span>
+    <span class="k">print</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span> <span class="n">knbc</span><span class="o">.</span><span class="n">words</span><span class="p">()[:</span><span class="mi">100</span><span class="p">]</span> <span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">tree</span> <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">knbc</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">()[:</span><span class="mi">2</span><span class="p">]</span> <span class="p">)</span>
+
+    <span class="n">knbc</span><span class="o">.</span><span class="n">morphs2str</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">morphs</span><span class="p">:</span> <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="s">&quot;</span><span class="si">%s</span><span class="s">(</span><span class="si">%s</span><span class="s">)&quot;</span><span class="o">%</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">)[</span><span class="mi">2</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">morphs</span> <span class="k">if</span> <span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;EOS&#39;</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">tree</span> <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">knbc</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">()[:</span><span class="mi">2</span><span class="p">]</span> <span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%s</span><span class="s">/</span><span class="si">%s</span><span class="s">&quot;</span><span class="o">%</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">)[</span><span class="mi">2</span><span class="p">])</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">sent</span><span class="p">)</span>
+                     <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">knbc</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">()[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span> <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="test"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.knbc.test">[docs]</a><span class="k">def</span> <span class="nf">test</span><span class="p">():</span>
+    
+    <span class="kn">from</span> <span class="nn">nltk.corpus.util</span> <span class="kn">import</span> <span class="n">LazyCorpusLoader</span>
+
+    <span class="n">knbc</span> <span class="o">=</span> <span class="n">LazyCorpusLoader</span><span class="p">(</span>
+        <span class="s">&#39;knbc/corpus1&#39;</span><span class="p">,</span> <span class="n">KNBCorpusReader</span><span class="p">,</span> <span class="s">r&#39;.*/KN.*&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;euc-jp&#39;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">knbc</span><span class="o">.</span><span class="n">words</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">basestring</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">knbc</span><span class="o">.</span><span class="n">sents</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="nb">basestring</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">knbc</span><span class="o">.</span><span class="n">tagged_words</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">tuple</span>
+    <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">knbc</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">tuple</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+    <span class="c"># test()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" >nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

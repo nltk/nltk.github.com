@@ -1,0 +1,324 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.metrics.scores &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.metrics" href="../metrics.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" accesskey="U">nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.metrics.scores</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Evaluation</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">random</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">scipy.stats.stats</span> <span class="kn">import</span> <span class="n">betai</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">betai</span> <span class="o">=</span> <span class="bp">None</span>
+
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">LazyConcatenation</span><span class="p">,</span> <span class="n">LazyMap</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">izip</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">FreqDist</span>
+
+<div class="viewcode-block" id="accuracy"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.accuracy">[docs]</a><span class="k">def</span> <span class="nf">accuracy</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a list of reference values and a corresponding list of test</span>
+<span class="sd">    values, return the fraction of corresponding values that are</span>
+<span class="sd">    equal.  In particular, return the fraction of indices</span>
+<span class="sd">    C{0&lt;i&lt;=len(test)} such that C{test[i] == reference[i]}.</span>
+
+<span class="sd">    @type reference: C{list}</span>
+<span class="sd">    @param reference: An ordered list of reference values.</span>
+<span class="sd">    @type test: C{list}</span>
+<span class="sd">    @param test: A list of values to compare against the corresponding</span>
+<span class="sd">        reference values.</span>
+<span class="sd">    @raise ValueError: If C{reference} and C{length} do not have the</span>
+<span class="sd">        same length.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Lists must have the same length.&quot;</span><span class="p">)</span>
+    <span class="n">num_correct</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">izip</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="n">y</span><span class="p">:</span>
+            <span class="n">num_correct</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">num_correct</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="precision"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.precision">[docs]</a><span class="k">def</span> <span class="nf">precision</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a set of reference values and a set of test values, return</span>
+<span class="sd">    the fraction of test values that appear in the reference set.</span>
+<span class="sd">    In particular, return |C{reference}S{cap}C{test}|/|C{test}|.</span>
+<span class="sd">    If C{test} is empty, then return C{None}.</span>
+<span class="sd">    </span>
+<span class="sd">    @type reference: C{Set}</span>
+<span class="sd">    @param reference: A set of reference values.</span>
+<span class="sd">    @type test: C{Set}</span>
+<span class="sd">    @param test: A set of values to compare against the reference set.</span>
+<span class="sd">    @rtype: C{float} or C{None}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="s">&#39;intersection&#39;</span><span class="p">)</span> <span class="ow">or</span>
+        <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="s">&#39;intersection&#39;</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;reference and test should be sets&#39;</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">test</span><span class="p">)))</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="recall"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.recall">[docs]</a><span class="k">def</span> <span class="nf">recall</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a set of reference values and a set of test values, return</span>
+<span class="sd">    the fraction of reference values that appear in the test set.</span>
+<span class="sd">    In particular, return |C{reference}S{cap}C{test}|/|C{reference}|.</span>
+<span class="sd">    If C{reference} is empty, then return C{None}.</span>
+<span class="sd">    </span>
+<span class="sd">    @type reference: C{Set}</span>
+<span class="sd">    @param reference: A set of reference values.</span>
+<span class="sd">    @type test: C{Set}</span>
+<span class="sd">    @param test: A set of values to compare against the reference set.</span>
+<span class="sd">    @rtype: C{float} or C{None}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="s">&#39;intersection&#39;</span><span class="p">)</span> <span class="ow">or</span>
+        <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="s">&#39;intersection&#39;</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;reference and test should be sets&#39;</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">test</span><span class="p">)))</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="f_measure"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.f_measure">[docs]</a><span class="k">def</span> <span class="nf">f_measure</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a set of reference values and a set of test values, return</span>
+<span class="sd">    the f-measure of the test values, when compared against the</span>
+<span class="sd">    reference values.  The f-measure is the harmonic mean of the</span>
+<span class="sd">    L{precision} and L{recall}, weighted by C{alpha}.  In particular,</span>
+<span class="sd">    given the precision M{p} and recall M{r} defined by:</span>
+<span class="sd">        - M{p} = |C{reference}S{cap}C{test}|/|C{test}|</span>
+<span class="sd">        - M{r} = |C{reference}S{cap}C{test}|/|C{reference}|</span>
+<span class="sd">    The f-measure is:</span>
+<span class="sd">        - 1/(C{alpha}/M{p} + (1-C{alpha})/M{r})</span>
+<span class="sd">        </span>
+<span class="sd">    If either C{reference} or C{test} is empty, then C{f_measure}</span>
+<span class="sd">    returns C{None}.</span>
+<span class="sd">    </span>
+<span class="sd">    @type reference: C{Set}</span>
+<span class="sd">    @param reference: A set of reference values.</span>
+<span class="sd">    @type test: C{Set}</span>
+<span class="sd">    @param test: A set of values to compare against the reference set.</span>
+<span class="sd">    @rtype: C{float} or C{None}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">precision</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">)</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">recall</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">p</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">r</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+    <span class="k">if</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">r</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="mf">1.0</span><span class="o">/</span><span class="p">(</span><span class="n">alpha</span><span class="o">/</span><span class="n">p</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">alpha</span><span class="p">)</span><span class="o">/</span><span class="n">r</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="log_likelihood"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.log_likelihood">[docs]</a><span class="k">def</span> <span class="nf">log_likelihood</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a list of reference values and a corresponding list of test</span>
+<span class="sd">    probability distributions, return the average log likelihood of</span>
+<span class="sd">    the reference values, given the probability distributions.</span>
+
+<span class="sd">    @param reference: A list of reference values</span>
+<span class="sd">    @type reference: C{list}</span>
+<span class="sd">    @param test: A list of probability distributions over values to</span>
+<span class="sd">        compare against the corresponding reference values.</span>
+<span class="sd">    @type test: C{list} of L{ProbDistI}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Lists must have the same length.&quot;</span><span class="p">)</span>
+
+    <span class="c"># Return the average value of dist.logprob(val).</span>
+    <span class="n">total_likelihood</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">dist</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+                            <span class="k">for</span> <span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dist</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">total_likelihood</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="approxrand"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.approxrand">[docs]</a><span class="k">def</span> <span class="nf">approxrand</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns an approximate significance level between two lists of</span>
+<span class="sd">    independently generated test values.</span>
+<span class="sd">    </span>
+<span class="sd">    Approximate randomization calculates significance by randomly drawing</span>
+<span class="sd">    from a sample of the possible permutations. At the limit of the number</span>
+<span class="sd">    of possible permutations, the significance level is exact. The</span>
+<span class="sd">    approximate significance level is the sample mean number of times the</span>
+<span class="sd">    statistic of the permutated lists varies from the actual statistic of</span>
+<span class="sd">    the unpermuted argument lists.</span>
+<span class="sd">    </span>
+<span class="sd">    @return: a tuple containing an approximate significance level, the count</span>
+<span class="sd">             of the number of times the pseudo-statistic varied from the</span>
+<span class="sd">             actual statistic, and the number of shuffles</span>
+<span class="sd">    @rtype: C{tuple}</span>
+<span class="sd">    @param a: a list of test values</span>
+<span class="sd">    @type a: C{list}</span>
+<span class="sd">    @param b: another list of independently generated test values</span>
+<span class="sd">    @type b: C{list}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">shuffles</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;shuffles&#39;</span><span class="p">,</span> <span class="mi">999</span><span class="p">)</span>
+    <span class="c"># there&#39;s no point in trying to shuffle beyond all possible permutations</span>
+    <span class="n">shuffles</span> <span class="o">=</span> \
+        <span class="nb">min</span><span class="p">(</span><span class="n">shuffles</span><span class="p">,</span> <span class="nb">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">x</span> <span class="o">*</span> <span class="n">y</span><span class="p">,</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
+    <span class="n">stat</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;statistic&#39;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">lst</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">lst</span><span class="p">))</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">))</span>
+    <span class="n">verbose</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;verbose&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&#39;shuffles: </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">shuffles</span>
+    
+    <span class="n">actual_stat</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">fabs</span><span class="p">(</span><span class="n">stat</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">-</span> <span class="n">stat</span><span class="p">(</span><span class="n">b</span><span class="p">))</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&#39;actual statistic: </span><span class="si">%f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">actual_stat</span>
+        <span class="k">print</span> <span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">60</span>
+    
+    <span class="n">c</span> <span class="o">=</span> <span class="mf">1e-100</span>
+    <span class="n">lst</span> <span class="o">=</span> <span class="n">LazyConcatenation</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">])</span>
+    <span class="n">indices</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">shuffles</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">%</span> <span class="mi">10</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;shuffle: </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">i</span>
+
+        <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+        
+        <span class="n">pseudo_stat_a</span> <span class="o">=</span> <span class="n">stat</span><span class="p">(</span><span class="n">LazyMap</span><span class="p">(</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">lst</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">indices</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)]))</span>
+        <span class="n">pseudo_stat_b</span> <span class="o">=</span> <span class="n">stat</span><span class="p">(</span><span class="n">LazyMap</span><span class="p">(</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">lst</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">):]))</span>
+        <span class="n">pseudo_stat</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">fabs</span><span class="p">(</span><span class="n">pseudo_stat_a</span> <span class="o">-</span> <span class="n">pseudo_stat_b</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">pseudo_stat</span> <span class="o">&gt;=</span> <span class="n">actual_stat</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
+            
+        <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">%</span> <span class="mi">10</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;pseudo-statistic: </span><span class="si">%f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">pseudo_stat</span>
+            <span class="k">print</span> <span class="s">&#39;significance: </span><span class="si">%f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="k">print</span> <span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">60</span>
+        
+    <span class="n">significance</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">shuffles</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&#39;significance: </span><span class="si">%f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">significance</span>        
+        <span class="k">if</span> <span class="n">betai</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">phi</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">]:</span>
+                <span class="k">print</span> <span class="s">&quot;prob(phi&lt;=</span><span class="si">%f</span><span class="s">): </span><span class="si">%f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">phi</span><span class="p">,</span> <span class="n">betai</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">shuffles</span><span class="p">,</span> <span class="n">phi</span><span class="p">))</span>
+    
+    <span class="k">return</span> <span class="p">(</span><span class="n">significance</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">shuffles</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.scores.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="k">print</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">75</span>
+    <span class="n">reference</span> <span class="o">=</span> <span class="s">&#39;DET NN VB DET JJ NN NN IN DET NN&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">test</span>    <span class="o">=</span> <span class="s">&#39;DET VB VB DET NN NN NN IN DET NN&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">print</span> <span class="s">&#39;Reference =&#39;</span><span class="p">,</span> <span class="n">reference</span>
+    <span class="k">print</span> <span class="s">&#39;Test    =&#39;</span><span class="p">,</span> <span class="n">test</span>
+    <span class="k">print</span> <span class="s">&#39;Accuracy:&#39;</span><span class="p">,</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">test</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">75</span>
+    <span class="n">reference_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+    <span class="n">test_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">test</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;Reference =&#39;</span><span class="p">,</span> <span class="n">reference_set</span>
+    <span class="k">print</span> <span class="s">&#39;Test =   &#39;</span><span class="p">,</span> <span class="n">test_set</span>
+    <span class="k">print</span> <span class="s">&#39;Precision:&#39;</span><span class="p">,</span> <span class="n">precision</span><span class="p">(</span><span class="n">reference_set</span><span class="p">,</span> <span class="n">test_set</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;   Recall:&#39;</span><span class="p">,</span> <span class="n">recall</span><span class="p">(</span><span class="n">reference_set</span><span class="p">,</span> <span class="n">test_set</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;F-Measure:&#39;</span><span class="p">,</span> <span class="n">f_measure</span><span class="p">(</span><span class="n">reference_set</span><span class="p">,</span> <span class="n">test_set</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">75</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" >nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

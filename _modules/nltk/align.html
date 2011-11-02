@@ -1,0 +1,480 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.align &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.align</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Aligned Sentences</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">nltk.metrics</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<div class="viewcode-block" id="AlignedSent"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent">[docs]</a><span class="k">class</span> <span class="nc">AlignedSent</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Aligned sentence object.  Encapsulates two sentences along with</span>
+<span class="sd">    an C{Alignment} between them.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">words</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">mots</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">alignment</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="p">,</span> \
+                 <span class="n">encoding</span> <span class="o">=</span> <span class="s">&#39;latin-1&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize a new C{AlignedSent}.</span>
+<span class="sd">        </span>
+<span class="sd">        @param words: source language words</span>
+<span class="sd">        @type words: C{list} of C{str}</span>
+<span class="sd">        @param mots: target language words</span>
+<span class="sd">        @type mots: C{list} of C{str}</span>
+<span class="sd">        @param alignment: the word-level alignments between the source</span>
+<span class="sd">            and target language</span>
+<span class="sd">        @type alignment: C{Alignment}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alignment</span><span class="p">,</span> <span class="n">Alignment</span><span class="p">):</span>
+            <span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">alignment</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_words</span> <span class="o">=</span> <span class="n">words</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mots</span> <span class="o">=</span> <span class="n">mots</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_align</span><span class="p">(</span><span class="n">alignment</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_alignment</span> <span class="o">=</span> <span class="n">alignment</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="AlignedSent.words"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.words">[docs]</a>    <span class="k">def</span> <span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words</span>
+</div>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="AlignedSent.mots"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.mots">[docs]</a>    <span class="k">def</span> <span class="nf">mots</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mots</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">alignment</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_alignment</span>
+
+<span class="c">#    @alignment.setter Requires Python 2.6?</span>
+<div class="viewcode-block" id="AlignedSent.alignment"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.alignment">[docs]</a>    <span class="k">def</span> <span class="nf">alignment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alignment</span><span class="p">,</span> <span class="n">Alignment</span><span class="p">):</span>
+            <span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">alignment</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_align</span><span class="p">(</span><span class="n">alignment</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_alignment</span> <span class="o">=</span> <span class="n">alignment</span>
+</div>
+    <span class="k">def</span> <span class="nf">_check_align</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param a: alignment to be checked</span>
+<span class="sd">        @raise IndexError: if alignment is out of sentence boundary</span>
+<span class="sd">        @return: True if passed alignment check</span>
+<span class="sd">        @rtype: boolean</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_words</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">a</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&quot;Alignment is outside boundary of words&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mots</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">a</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&quot;Alignment is outside boundary of mots&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A string representation for this C{AlignedSent}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;AlignedSent(</span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_words</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mots</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_alignment</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A string representation for this C{AlignedSent}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="s">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_words</span><span class="p">)[:</span><span class="mi">20</span><span class="p">]</span> <span class="o">+</span> <span class="s">&quot;...&quot;</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="s">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mots</span><span class="p">)[:</span><span class="mi">20</span><span class="p">]</span> <span class="o">+</span> <span class="s">&quot;...&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;AlignedSent: &#39;</span><span class="si">%s</span><span class="s">&#39; -&gt; &#39;</span><span class="si">%s</span><span class="s">&#39;&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+
+<div class="viewcode-block" id="AlignedSent.invert"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.invert">[docs]</a>    <span class="k">def</span> <span class="nf">invert</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; </span>
+<span class="sd">        @return: the invert object</span>
+<span class="sd">        @rtype: AlignedSent</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">AlignedSent</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mots</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words</span><span class="p">,</span>
+                               <span class="bp">self</span><span class="o">.</span><span class="n">_alignment</span><span class="o">.</span><span class="n">invert</span><span class="p">())</span>
+</div>
+<div class="viewcode-block" id="AlignedSent.precision"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.precision">[docs]</a>    <span class="k">def</span> <span class="nf">precision</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the precision of an aligned sentence with respect to a </span>
+<span class="sd">        &quot;gold standard&quot; reference C{AlignedSent}.</span>
+
+<span class="sd">        The &quot;possible&quot; precision is used since it doesn&#39;t penalise for finding</span>
+<span class="sd">        an alignment that was marked as &quot;possible&quot;.</span>
+
+<span class="sd">        @type reference: C{AlignedSent} or C{Alignment}</span>
+<span class="sd">        @param reference: A &quot;gold standard&quot; reference aligned sentence.</span>
+<span class="sd">        @rtype: C{float} or C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Get alignments in set of 2-tuples form</span>
+        <span class="n">align</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">AlignedSent</span><span class="p">):</span>
+            <span class="n">possible</span> <span class="o">=</span> <span class="n">reference</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">possible</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+
+        <span class="c"># Call NLTKs existing functions for precision</span>
+        <span class="k">return</span> <span class="n">nltk</span><span class="o">.</span><span class="n">metrics</span><span class="o">.</span><span class="n">scores</span><span class="o">.</span><span class="n">precision</span><span class="p">(</span><span class="n">possible</span><span class="p">,</span> <span class="n">align</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="AlignedSent.recall"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.recall">[docs]</a>    <span class="k">def</span> <span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the recall of an aligned sentence with respect to a </span>
+<span class="sd">        &quot;gold standard&quot; reference C{AlignedSent}.</span>
+
+<span class="sd">        The &quot;sure&quot; recall is used so we don&#39;t penalise for missing an </span>
+<span class="sd">        alignment that was only marked as &quot;possible&quot;.</span>
+
+<span class="sd">        @type reference: C{AlignedSent} or C{Alignment}</span>
+<span class="sd">        @param reference: A &quot;gold standard&quot; reference aligned sentence.</span>
+<span class="sd">        @rtype: C{float} or C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Get alignments in set of 2-tuples form</span>
+        <span class="n">align</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">AlignedSent</span><span class="p">):</span>
+            <span class="n">sure</span> <span class="o">=</span> <span class="n">reference</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sure</span>  <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+
+        <span class="c"># Call NLTKs existing functions for recall</span>
+        <span class="k">return</span> <span class="n">nltk</span><span class="o">.</span><span class="n">metrics</span><span class="o">.</span><span class="n">scores</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span><span class="n">sure</span><span class="p">,</span> <span class="n">align</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="AlignedSent.alignment_error_rate"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.AlignedSent.alignment_error_rate">[docs]</a>    <span class="k">def</span> <span class="nf">alignment_error_rate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">possible</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the Alignment Error Rate (AER) of an aligned sentence </span>
+<span class="sd">        with respect to a &quot;gold standard&quot; reference C{AlignedSent}.</span>
+
+<span class="sd">        Return an error rate between 0.0 (perfect alignment) and 1.0 (no </span>
+<span class="sd">        alignment).</span>
+
+<span class="sd">        @type reference: C{AlignedSent} or C{Alignment}</span>
+<span class="sd">        @param reference: A &quot;gold standard&quot; reference aligned sentence.</span>
+<span class="sd">        @type possible: C{AlignedSent} or C{Alignment} or C{None}</span>
+<span class="sd">        @param possible: A &quot;gold standard&quot; reference of possible alignments</span>
+<span class="sd">            (defaults to I{reference} if C{None})</span>
+<span class="sd">        @rtype: C{float} or C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Get alignments in set of 2-tuples form</span>
+        <span class="n">align</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">AlignedSent</span><span class="p">):</span>
+            <span class="n">sure</span> <span class="o">=</span> <span class="n">reference</span><span class="o">.</span><span class="n">alignment</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sure</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">possible</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># Set possible alignment</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">possible</span><span class="p">,</span> <span class="n">AlignedSent</span><span class="p">):</span>
+                <span class="n">possible</span> <span class="o">=</span> <span class="n">possible</span><span class="o">.</span><span class="n">alignment</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">possible</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">possible</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Possible alignment is just sure alignment</span>
+            <span class="n">possible</span> <span class="o">=</span> <span class="n">sure</span>
+
+        <span class="c"># Sanity check</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sure</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">possible</span><span class="p">))</span>
+
+        <span class="c"># Return the Alignment Error Rate</span>
+        <span class="k">return</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">align</span> <span class="o">&amp;</span> <span class="n">sure</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">align</span> <span class="o">&amp;</span> <span class="n">possible</span><span class="p">))</span> <span class="o">/</span>
+                <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">align</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">sure</span><span class="p">)))</span>
+
+</div></div>
+<div class="viewcode-block" id="Alignment"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.Alignment">[docs]</a><span class="k">class</span> <span class="nc">Alignment</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A storage class for representing alignment between two sequences, s1, s2.</span>
+<span class="sd">    In general, an alignment is a set of tuples of the form (i, j, ...)</span>
+<span class="sd">    representing an alignment between the i-th element of s1 and the</span>
+<span class="sd">    j-th element of s2.  Tuples are extensible (they might contain</span>
+<span class="sd">    additional data, such as a boolean to indicate sure vs possible alignments).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">string_or_pairs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">string_or_pairs</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="n">string_or_pairs</span> <span class="o">=</span> <span class="p">[</span><span class="n">_giza2pair</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">string_or_pairs</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="bp">self</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="o">.</span><span class="n">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">string_or_pairs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span> <span class="o">==</span> <span class="nb">frozenset</span><span class="p">([]):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Look up the alignments that map from a given index or slice.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_build_index</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="o">.</span><span class="n">__getitem__</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Alignment.invert"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.Alignment.invert">[docs]</a>    <span class="k">def</span> <span class="nf">invert</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an Alignment object, being the inverted mapping.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Alignment</span><span class="p">(((</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="n">p</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Alignment.range"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.Alignment.range">[docs]</a>    <span class="k">def</span> <span class="nf">range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Work out the range of the mapping from the given positions.</span>
+<span class="sd">        If no positions are specified, compute the range of the entire mapping.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">image</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_build_index</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">positions</span><span class="p">:</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">positions</span><span class="p">:</span>
+            <span class="n">image</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">f</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span><span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">p</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Produce a Giza-formatted string representing the alignment.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;Alignment(</span><span class="si">%r</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> 
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Produce a Giza-formatted string representing the alignment.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s">-</span><span class="si">%d</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">p</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_build_index</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Build a list self._index such that self._index[i] is a list</span>
+<span class="sd">        of the alignments originating from word i.</span>
+<span class="sd">        &quot;&quot;&quot;</span>    
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="EMIBMModel1"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.EMIBMModel1">[docs]</a><span class="k">class</span> <span class="nc">EMIBMModel1</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    This class contains implementations of the Expectation Maximization</span>
+<span class="sd">    algorithm for IBM Model 1. The algorithm runs upon a sentence-aligned </span>
+<span class="sd">    parallel corpus and generates word alignments in aligned sentence pairs.</span>
+
+<span class="sd">    The process is divided into 2 main stages.</span>
+<span class="sd">    Stage 1: Studies word-to-word translation probabilities by collecting</span>
+<span class="sd">    evidence of a English word been the translation of a foreign word from</span>
+<span class="sd">    the parallel corpus.</span>
+
+<span class="sd">    Stage 2: Based on the translation probabilities from Stage 1, generates </span>
+<span class="sd">    word alignments for aligned sentence pairs.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aligned_sents</span><span class="p">,</span> <span class="n">convergent_threshold</span><span class="o">=</span><span class="mf">1e-2</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Initialize a new C{EMIBMModel1}.</span>
+
+<span class="sd">        @param aligned_sents: The parallel text corpus.Iteratable containing </span>
+<span class="sd">            AlignedSent instances of aligned sentence pairs from the corpus.</span>
+<span class="sd">        @type aligned_sents: C{list} of L{AlignedSent} objects</span>
+<span class="sd">        @param convergent_threshold: The threshold value of convergence. An </span>
+<span class="sd">            entry is considered converged if the delta from old_t to new_t</span>
+<span class="sd">            is less than this value. The algorithm terminates when all entries</span>
+<span class="sd">            are converged. This parameter is optional, default is 0.01</span>
+<span class="sd">        @type convergent_threshold: C{float}</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">aligned_sents</span> <span class="o">=</span> <span class="n">aligned_sents</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">convergent_threshold</span> <span class="o">=</span> <span class="n">convergent_threshold</span>
+        <span class="c"># Dictionary of translation probabilities t(e,f).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="o">=</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="EMIBMModel1.train"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.EMIBMModel1.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The train() function implements Expectation Maximization training</span>
+<span class="sd">        stage that learns word-to-word translation probabilities.</span>
+
+<span class="sd">        @return: Number of iterations taken to converge</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c"># Collect up sets of all English and foreign words</span>
+        <span class="n">english_words</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">foreign_words</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">aligned_sent</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">aligned_sents</span><span class="p">:</span>
+            <span class="n">english_words</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">aligned_sent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+            <span class="n">foreign_words</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">aligned_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+        <span class="c"># add the NULL token to the foreign word set.</span>
+        <span class="n">foreign_words</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="n">num_probs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">english_words</span><span class="p">)</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">foreign_words</span><span class="p">)</span>
+
+        <span class="c"># Initialise t(e|f) uniformly</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">english_words</span><span class="p">))</span>
+        <span class="n">s_total</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">english_words</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">foreign_words</span><span class="p">:</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="n">e</span><span class="p">,</span><span class="n">f</span><span class="p">]</span>
+
+        <span class="n">globally_converged</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="n">iteration_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">globally_converged</span><span class="p">:</span>
+            <span class="c"># count(e|f)</span>
+            <span class="n">count</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+            <span class="c"># total(f)</span>
+            <span class="n">total</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">aligned_sent</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">aligned_sents</span><span class="p">:</span>
+                <span class="c"># Compute normalization</span>
+                <span class="k">for</span> <span class="n">e_w</span> <span class="ow">in</span> <span class="n">aligned_sent</span><span class="o">.</span><span class="n">words</span><span class="p">:</span>
+                    <span class="n">s_total</span><span class="p">[</span><span class="n">e_w</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+                    <span class="k">for</span> <span class="n">f_w</span> <span class="ow">in</span> <span class="n">aligned_sent</span><span class="o">.</span><span class="n">mots</span><span class="o">+</span><span class="p">[</span><span class="bp">None</span><span class="p">]:</span>
+                        <span class="n">s_total</span><span class="p">[</span><span class="n">e_w</span><span class="p">]</span> <span class="o">+=</span> <span class="n">t</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span>
+
+                <span class="c"># Collect counts</span>
+                <span class="k">for</span> <span class="n">e_w</span> <span class="ow">in</span> <span class="n">aligned_sent</span><span class="o">.</span><span class="n">words</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">f_w</span> <span class="ow">in</span> <span class="n">aligned_sent</span><span class="o">.</span><span class="n">mots</span><span class="o">+</span><span class="p">[</span><span class="bp">None</span><span class="p">]:</span>
+                        <span class="n">cnt</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span> <span class="o">/</span> <span class="n">s_total</span><span class="p">[</span><span class="n">e_w</span><span class="p">]</span>
+                        <span class="n">count</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span> <span class="o">+=</span> <span class="n">cnt</span>
+                        <span class="n">total</span><span class="p">[</span><span class="n">f_w</span><span class="p">]</span> <span class="o">+=</span> <span class="n">cnt</span>
+
+            <span class="c"># Estimate probabilities</span>
+            <span class="n">num_converged</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">f_w</span> <span class="ow">in</span> <span class="n">foreign_words</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">e_w</span> <span class="ow">in</span> <span class="n">english_words</span><span class="p">:</span>
+                    <span class="n">new_prob</span> <span class="o">=</span> <span class="n">count</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span> <span class="o">/</span> <span class="n">total</span><span class="p">[</span><span class="n">f_w</span><span class="p">]</span>
+                    <span class="n">delta</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">t</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span> <span class="o">-</span> <span class="n">new_prob</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">delta</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">convergent_threshold</span><span class="p">:</span>
+                        <span class="n">num_converged</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">t</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_prob</span>
+
+            <span class="c"># Have we converged</span>
+            <span class="n">iteration_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">num_converged</span> <span class="o">==</span> <span class="n">num_probs</span><span class="p">:</span>
+                <span class="n">globally_converged</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s">/</span><span class="si">%d</span><span class="s"> (</span><span class="si">%.2f%%</span><span class="s">) converged&quot;</span><span class="o">%</span><span class="p">(</span>
+                    <span class="n">num_converged</span><span class="p">,</span> <span class="n">num_probs</span><span class="p">,</span> <span class="mf">100.0</span><span class="o">*</span><span class="n">num_converged</span><span class="o">/</span><span class="n">num_probs</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">iteration_count</span>
+</div>
+<div class="viewcode-block" id="EMIBMModel1.aligned"><a class="viewcode-back" href="../../api/nltk.html#nltk.align.EMIBMModel1.aligned">[docs]</a>    <span class="k">def</span> <span class="nf">aligned</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a list of AlignedSents with Alignments calculated using </span>
+<span class="sd">        IBM-Model 1.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">probablities</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;No probabilities calculated&quot;</span><span class="p">)</span>
+
+        <span class="n">aligned</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c"># Alignment Learning from t(e|f)</span>
+        <span class="k">for</span> <span class="n">aligned_sent</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">aligned_sents</span><span class="p">:</span>
+            <span class="n">alignment</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="c"># for every English word</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">e_w</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">aligned_sent</span><span class="o">.</span><span class="n">words</span><span class="p">):</span>
+                <span class="c"># find the French word that gives maximized t(e|f)</span>
+                <span class="c"># NULL token is the initial candidate</span>
+                <span class="n">f_max</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="bp">None</span><span class="p">],</span> <span class="bp">None</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">f_w</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">aligned_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">):</span>
+                    <span class="n">f_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">f_max</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">e_w</span><span class="p">,</span> <span class="n">f_w</span><span class="p">],</span> <span class="n">i</span><span class="p">))</span>
+
+                <span class="c"># only output alignment with non-NULL mapping</span>
+                <span class="k">if</span> <span class="n">f_max</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">alignment</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">j</span><span class="p">,</span> <span class="n">f_max</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+
+            <span class="c"># substitute the alignment of AlignedSent with the yielded one</span>
+            <span class="n">aligned</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">AlignedSent</span><span class="p">(</span><span class="n">aligned_sent</span><span class="o">.</span><span class="n">words</span><span class="p">,</span>
+                    <span class="n">aligned_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">,</span>  <span class="n">alignment</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">aligned</span>
+
+</div></div>
+<span class="k">def</span> <span class="nf">_giza2pair</span><span class="p">(</span><span class="n">pair_string</span><span class="p">):</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">pair_string</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;-&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_naacl2pair</span><span class="p">(</span><span class="n">pair_string</span><span class="p">):</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="n">pair_string</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;-&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

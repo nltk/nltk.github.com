@@ -1,0 +1,213 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.sem.cooper_storage &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.sem" href="../sem.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" accesskey="U">nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.sem.cooper_storage</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Cooper storage for Quantifier Ambiguity</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">from</span> <span class="nn">logic</span> <span class="kn">import</span> <span class="n">LambdaExpression</span><span class="p">,</span> <span class="n">ApplicationExpression</span><span class="p">,</span> <span class="n">Variable</span><span class="p">,</span> <span class="n">LogicParser</span>
+<span class="kn">from</span> <span class="nn">nltk.parse</span> <span class="kn">import</span> <span class="n">load_parser</span>
+<span class="kn">from</span> <span class="nn">nltk.parse.featurechart</span> <span class="kn">import</span> <span class="n">InstantiateVarsChart</span>
+
+<div class="viewcode-block" id="CooperStore"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.cooper_storage.CooperStore">[docs]</a><span class="k">class</span> <span class="nc">CooperStore</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A container for handling quantifier ambiguity via Cooper storage.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featstruct</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param featstruct: The value of the C{sem} node in a tree from</span>
+<span class="sd">        L{parse_with_bindops()}</span>
+<span class="sd">        @type featstruct: A L{FeatStruct} with features C{core} and C{store}</span>
+
+<span class="sd">        &quot;&quot;&quot;</span> 
+        <span class="bp">self</span><span class="o">.</span><span class="n">featstruct</span> <span class="o">=</span> <span class="n">featstruct</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">readings</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">core</span> <span class="o">=</span> <span class="n">featstruct</span><span class="p">[</span><span class="s">&#39;CORE&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span> <span class="o">=</span> <span class="n">featstruct</span><span class="p">[</span><span class="s">&#39;STORE&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s"> is not a Cooper storage structure&quot;</span> <span class="o">%</span> <span class="n">featstruct</span>
+        
+    <span class="k">def</span> <span class="nf">_permute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lst</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: An iterator over the permutations of the input list</span>
+<span class="sd">        @type lst: C{list}</span>
+<span class="sd">        @rtype: C{iterator}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">remove</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">lst0</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="n">lst0</span><span class="p">[:</span><span class="n">index</span><span class="p">]</span> <span class="o">+</span> <span class="n">lst0</span><span class="p">[</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">if</span> <span class="n">lst</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lst</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_permute</span><span class="p">(</span><span class="n">remove</span><span class="p">(</span><span class="n">lst</span><span class="p">,</span> <span class="n">index</span><span class="p">)):</span>
+                    <span class="k">yield</span> <span class="p">(</span><span class="n">x</span><span class="p">,)</span><span class="o">+</span><span class="n">y</span>
+        <span class="k">else</span><span class="p">:</span> <span class="k">yield</span> <span class="p">()</span>   
+
+<div class="viewcode-block" id="CooperStore.s_retrieve"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.cooper_storage.CooperStore.s_retrieve">[docs]</a>    <span class="k">def</span> <span class="nf">s_retrieve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Carry out S-Retrieval of binding operators in store. If hack=True,</span>
+<span class="sd">        serialize the bindop and core as strings and reparse. Ugh.</span>
+
+<span class="sd">        Each permutation of the store (i.e. list of binding operators) is</span>
+<span class="sd">        taken to be a possible scoping of quantifiers. We iterate through the</span>
+<span class="sd">        binding operators in each permutation, and successively apply them to</span>
+<span class="sd">        the current term, starting with the core semantic representation,</span>
+<span class="sd">        working from the inside out.</span>
+<span class="sd">    </span>
+<span class="sd">        Binding operators are of the form::</span>
+<span class="sd">    </span>
+<span class="sd">             bo(\P.all x.(man(x) -&gt; P(x)),z1)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">perm</span><span class="p">,</span> <span class="n">store_perm</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_permute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&quot;Permutation </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">perm</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">term</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">core</span>
+            <span class="k">for</span> <span class="n">bindop</span> <span class="ow">in</span> <span class="n">store_perm</span><span class="p">:</span>
+                <span class="c"># we just want the arguments that are wrapped by the &#39;bo&#39; predicate</span>
+                <span class="n">quant</span><span class="p">,</span> <span class="n">varex</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bindop</span><span class="o">.</span><span class="n">args</span><span class="p">)</span>
+                <span class="c"># use var to make an abstraction over the current term and then</span>
+                <span class="c"># apply the quantifier to it</span>
+                <span class="n">term</span> <span class="o">=</span> <span class="n">ApplicationExpression</span><span class="p">(</span><span class="n">quant</span><span class="p">,</span> <span class="n">LambdaExpression</span><span class="p">(</span><span class="n">varex</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
+                    <span class="k">print</span> <span class="s">&quot;  &quot;</span><span class="p">,</span> <span class="n">term</span>
+                <span class="n">term</span> <span class="o">=</span> <span class="n">term</span><span class="o">.</span><span class="n">simplify</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">readings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">term</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="parse_with_bindops"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.cooper_storage.parse_with_bindops">[docs]</a><span class="k">def</span> <span class="nf">parse_with_bindops</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">grammar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use a grammar with Binding Operators to parse a sentence.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">grammar</span><span class="p">:</span>
+        <span class="n">grammar</span> <span class="o">=</span> <span class="s">&#39;grammars/book_grammars/storage.fcfg&#39;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">load_parser</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">,</span> <span class="n">chart_class</span><span class="o">=</span><span class="n">InstantiateVarsChart</span><span class="p">)</span>
+    <span class="c"># Parse the sentence.</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">sentence</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">nbest_parse</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.cooper_storage.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">cooper_storage</span> <span class="k">as</span> <span class="n">cs</span>
+    <span class="n">sentence</span> <span class="o">=</span> <span class="s">&quot;every girl chases a dog&quot;</span>
+    <span class="c">#sentence = &quot;a man gives a bone to every dog&quot;</span>
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Analyis of sentence &#39;</span><span class="si">%s</span><span class="s">&#39;&quot;</span> <span class="o">%</span> <span class="n">sentence</span>
+    <span class="k">print</span> <span class="s">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">50</span>    
+    <span class="n">trees</span> <span class="o">=</span> <span class="n">cs</span><span class="o">.</span><span class="n">parse_with_bindops</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">trees</span><span class="p">:</span>
+        <span class="n">semrep</span> <span class="o">=</span> <span class="n">cs</span><span class="o">.</span><span class="n">CooperStore</span><span class="p">(</span><span class="n">tree</span><span class="o">.</span><span class="n">node</span><span class="p">[</span><span class="s">&#39;SEM&#39;</span><span class="p">])</span>
+        <span class="k">print</span>
+        <span class="k">print</span> <span class="s">&quot;Binding operators:&quot;</span>
+        <span class="k">print</span> <span class="s">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">15</span>  
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">semrep</span><span class="o">.</span><span class="n">store</span><span class="p">:</span> 
+            <span class="k">print</span> <span class="n">s</span>
+        <span class="k">print</span> 
+        <span class="k">print</span> <span class="s">&quot;Core:&quot;</span>
+        <span class="k">print</span> <span class="s">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">15</span>
+        <span class="k">print</span> <span class="n">semrep</span><span class="o">.</span><span class="n">core</span>
+        <span class="k">print</span> 
+        <span class="k">print</span> <span class="s">&quot;S-Retrieval:&quot;</span>
+        <span class="k">print</span> <span class="s">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">15</span>       
+        <span class="n">semrep</span><span class="o">.</span><span class="n">s_retrieve</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="k">print</span> <span class="s">&quot;Readings:&quot;</span>
+        <span class="k">print</span> <span class="s">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">15</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">reading</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">semrep</span><span class="o">.</span><span class="n">readings</span><span class="p">):</span>
+            <span class="k">print</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">reading</span><span class="p">)</span>
+            </div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" >nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,373 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.collocations &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.collocations</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Collocations and Association Measures </span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Joel Nothman &lt;jnothman@student.usyd.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Tools to identify X{collocation}s --- words that often appear consecutively</span>
+<span class="sd">--- within corpora. They may also be used to find other X{association}s between</span>
+<span class="sd">word occurrences.</span>
+<span class="sd">See Manning and Schutze ch. 5 at http://nlp.stanford.edu/fsnlp/promo/colloc.pdf</span>
+<span class="sd">and the Text::NSP Perl package at http://ngram.sourceforge.net</span>
+
+<span class="sd">Finding collocations requires first calculating the frequencies of words and</span>
+<span class="sd">their appearance in the context of other words. Often the collection of words</span>
+<span class="sd">will then requiring filtering to only retain useful content terms. Each ngram</span>
+<span class="sd">of words may then be scored according to some X{association measure}, in order</span>
+<span class="sd">to determine the relative likelihood of each ngram being a collocation.</span>
+
+<span class="sd">The L{BigramCollocationFinder} and L{TrigramCollocationFinder} classes provide</span>
+<span class="sd">these functionalities, dependent on being provided a function which scores a</span>
+<span class="sd">ngram given appropriate frequency counts. A number of standard association</span>
+<span class="sd">measures are provided in L{bigram_measures} and L{trigram_measures}.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c"># Possible TODOs:</span>
+<span class="c"># - consider the distinction between f(x,_) and f(x) and whether our</span>
+<span class="c">#   approximation is good enough for fragmented data, and mention it</span>
+<span class="c"># - add a n-gram collocation finder with measures which only utilise n-gram</span>
+<span class="c">#   and unigram counts (raw_freq, pmi, student_t)</span>
+
+<span class="kn">import</span> <span class="nn">itertools</span> <span class="kn">as</span> <span class="nn">_itertools</span>
+<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">itemgetter</span> <span class="k">as</span> <span class="n">_itemgetter</span>
+
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="nb">any</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">FreqDist</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ingrams</span>
+<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">ContingencyMeasures</span><span class="p">,</span> <span class="n">BigramAssocMeasures</span><span class="p">,</span> <span class="n">TrigramAssocMeasures</span>
+<span class="kn">from</span> <span class="nn">nltk.metrics.spearman</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="k">class</span> <span class="nc">AbstractCollocationFinder</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An abstract base class for X{collocation finder}s whose purpose is to</span>
+<span class="sd">    collect collocation candidate frequencies, filter and rank them.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word_fd</span><span class="p">,</span> <span class="n">ngram_fd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;As a minimum, collocation finders require the frequencies of each</span>
+<span class="sd">        word in a corpus, and the joint frequency of word tuples. This data</span>
+<span class="sd">        should be provided through L{nltk.probability.FreqDist} objects or an</span>
+<span class="sd">        identical interface.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span> <span class="o">=</span> <span class="n">word_fd</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span> <span class="o">=</span> <span class="n">ngram_fd</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_documents</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">documents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Constructs a collocation finder given a collection of documents,</span>
+<span class="sd">        each of which is a list (or iterable) of tokens.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">from_words</span><span class="p">(</span><span class="n">_itertools</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="n">documents</span><span class="p">))</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_ngram_freqdist</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">FreqDist</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">words</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">n</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">words</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_apply_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Generic filter removes ngrams from the frequency distribution</span>
+<span class="sd">        if the function returns True when passed an ngram tuple.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">freq</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">fn</span><span class="p">(</span><span class="n">ngram</span><span class="p">,</span> <span class="n">freq</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span><span class="p">[</span><span class="n">ngram</span><span class="p">]</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">apply_freq_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">min_freq</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Removes candidate ngrams which have frequency less than min_freq.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ng</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="n">freq</span> <span class="o">&lt;</span> <span class="n">min_freq</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">apply_ngram_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Removes candidate ngrams (w1, w2, ...) where fn(w1, w2, ...)</span>
+<span class="sd">        evaluates to True.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ng</span><span class="p">,</span> <span class="n">f</span><span class="p">:</span> <span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="n">ng</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">apply_word_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Removes candidate ngrams (w1, w2, ...) where any of (fn(w1), fn(w2),</span>
+<span class="sd">        ...) evaluates to True.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ng</span><span class="p">,</span> <span class="n">f</span><span class="p">:</span> <span class="nb">any</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">ng</span><span class="p">))</span>
+ 
+    <span class="k">def</span> <span class="nf">_score_ngrams</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Generates of (ngram, score) pairs as determined by the scoring</span>
+<span class="sd">        function provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">tup</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span><span class="p">:</span>
+            <span class="n">score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_ngram</span><span class="p">(</span><span class="n">score_fn</span><span class="p">,</span> <span class="o">*</span><span class="n">tup</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">score</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">tup</span><span class="p">,</span> <span class="n">score</span>
+
+    <span class="k">def</span> <span class="nf">score_ngrams</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns a sequence of (ngram, score) pairs ordered from highest to</span>
+<span class="sd">        lowest score, as determined by the scoring function provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_score_ngrams</span><span class="p">(</span><span class="n">score_fn</span><span class="p">),</span>
+                      <span class="n">key</span><span class="o">=</span><span class="n">_itemgetter</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">reverse</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">nbest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the top n ngrams when scored by the given function.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span><span class="p">,</span><span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_ngrams</span><span class="p">(</span><span class="n">score_fn</span><span class="p">)[:</span><span class="n">n</span><span class="p">]]</span>
+
+    <span class="k">def</span> <span class="nf">above_score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">,</span> <span class="n">min_score</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns a sequence of ngrams, ordered by decreasing score, whose</span>
+<span class="sd">        scores each exceed the given minimum score.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_ngrams</span><span class="p">(</span><span class="n">score_fn</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="n">min_score</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">ngram</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">break</span>
+
+
+<div class="viewcode-block" id="BigramCollocationFinder"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.BigramCollocationFinder">[docs]</a><span class="k">class</span> <span class="nc">BigramCollocationFinder</span><span class="p">(</span><span class="n">AbstractCollocationFinder</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A tool for the finding and ranking of bigram collocations or other</span>
+<span class="sd">    association measures. It is often useful to use from_words() rather than</span>
+<span class="sd">    constructing an instance directly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BigramCollocationFinder.from_words"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.BigramCollocationFinder.from_words">[docs]</a>    <span class="k">def</span> <span class="nf">from_words</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">words</span><span class="p">,</span> <span class="n">window_size</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Construct a BigramCollocationFinder for all bigrams in the given</span>
+<span class="sd">        sequence.  By default, bigrams must be contiguous.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">wfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+        <span class="n">bfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">window_size</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&quot;Specify window_size at least 2&quot;</span>
+
+        <span class="k">for</span> <span class="n">window</span> <span class="ow">in</span> <span class="n">ingrams</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">window_size</span><span class="p">,</span> <span class="n">pad_right</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+            <span class="n">w1</span> <span class="o">=</span> <span class="n">window</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">window</span> <span class="o">=</span> <span class="n">window</span><span class="p">[:</span><span class="nb">list</span><span class="p">(</span><span class="n">window</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">w1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="n">wfd</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="n">w1</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">w2</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">window</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+                <span class="k">if</span> <span class="n">w2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">bfd</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">wfd</span><span class="p">,</span> <span class="n">bfd</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BigramCollocationFinder.score_ngram"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.BigramCollocationFinder.score_ngram">[docs]</a>    <span class="k">def</span> <span class="nf">score_ngram</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">,</span> <span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the score for a given bigram using the given scoring</span>
+<span class="sd">        function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="o">.</span><span class="n">N</span><span class="p">()</span>
+        <span class="n">n_ii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span><span class="p">[(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">n_ii</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">n_ix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">[</span><span class="n">w1</span><span class="p">]</span>
+        <span class="n">n_xi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">[</span><span class="n">w2</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">score_fn</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_all</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="TrigramCollocationFinder"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.TrigramCollocationFinder">[docs]</a><span class="k">class</span> <span class="nc">TrigramCollocationFinder</span><span class="p">(</span><span class="n">AbstractCollocationFinder</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A tool for the finding and ranking of bigram collocations or other</span>
+<span class="sd">    association measures. It is often useful to use from_words() rather than</span>
+<span class="sd">    constructing an instance directly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word_fd</span><span class="p">,</span> <span class="n">bigram_fd</span><span class="p">,</span> <span class="n">wildcard_fd</span><span class="p">,</span> <span class="n">trigram_fd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Construct a TrigramCollocationFinder, given FreqDists for</span>
+<span class="sd">        appearances of words, bigrams, two words with any word between them,</span>
+<span class="sd">        and trigrams.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">AbstractCollocationFinder</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word_fd</span><span class="p">,</span> <span class="n">trigram_fd</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wildcard_fd</span> <span class="o">=</span> <span class="n">wildcard_fd</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bigram_fd</span> <span class="o">=</span> <span class="n">bigram_fd</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="TrigramCollocationFinder.from_words"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.TrigramCollocationFinder.from_words">[docs]</a>    <span class="k">def</span> <span class="nf">from_words</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">words</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Construct a TrigramCollocationFinder for all trigrams in the given</span>
+<span class="sd">        sequence.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">wfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+        <span class="n">wildfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+        <span class="n">bfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+        <span class="n">tfd</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">,</span> <span class="n">w3</span> <span class="ow">in</span> <span class="n">ingrams</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">pad_right</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+            <span class="n">wfd</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="n">w1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">w2</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">bfd</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">w3</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">wildfd</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">w1</span><span class="p">,</span> <span class="n">w3</span><span class="p">))</span>
+            <span class="n">tfd</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">,</span> <span class="n">w3</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">wfd</span><span class="p">,</span> <span class="n">bfd</span><span class="p">,</span> <span class="n">wildfd</span><span class="p">,</span> <span class="n">tfd</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="TrigramCollocationFinder.bigram_finder"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.TrigramCollocationFinder.bigram_finder">[docs]</a>    <span class="k">def</span> <span class="nf">bigram_finder</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Constructs a bigram collocation finder with the bigram and unigram</span>
+<span class="sd">        data from this finder. Note that this does not include any filtering</span>
+<span class="sd">        applied to this finder.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">BigramCollocationFinder</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bigram_fd</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="TrigramCollocationFinder.score_ngram"><a class="viewcode-back" href="../../api/nltk.html#nltk.collocations.TrigramCollocationFinder.score_ngram">[docs]</a>    <span class="k">def</span> <span class="nf">score_ngram</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">score_fn</span><span class="p">,</span> <span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">,</span> <span class="n">w3</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the score for a given trigram using the given scoring</span>
+<span class="sd">        function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="o">.</span><span class="n">N</span><span class="p">()</span>
+        <span class="n">n_iii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span><span class="p">[(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">,</span> <span class="n">w3</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">n_iii</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">n_iix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bigram_fd</span><span class="p">[(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">)]</span>
+        <span class="n">n_ixi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wildcard_fd</span><span class="p">[(</span><span class="n">w1</span><span class="p">,</span> <span class="n">w3</span><span class="p">)]</span>
+        <span class="n">n_xii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bigram_fd</span><span class="p">[(</span><span class="n">w2</span><span class="p">,</span> <span class="n">w3</span><span class="p">)]</span>
+        <span class="n">n_ixx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">[</span><span class="n">w1</span><span class="p">]</span>
+        <span class="n">n_xix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">[</span><span class="n">w2</span><span class="p">]</span>
+        <span class="n">n_xxi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span><span class="p">[</span><span class="n">w3</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">score_fn</span><span class="p">(</span><span class="n">n_iii</span><span class="p">,</span>
+                        <span class="p">(</span><span class="n">n_iix</span><span class="p">,</span> <span class="n">n_ixi</span><span class="p">,</span> <span class="n">n_xii</span><span class="p">),</span>
+                        <span class="p">(</span><span class="n">n_ixx</span><span class="p">,</span> <span class="n">n_xix</span><span class="p">,</span> <span class="n">n_xxi</span><span class="p">),</span>
+                        <span class="n">n_all</span><span class="p">)</span>
+
+</div></div>
+<span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">scorer</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">compare_scorer</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Finds trigram collocations in the files of the WebText corpus.&quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">BigramAssocMeasures</span><span class="p">,</span> <span class="n">spearman_correlation</span><span class="p">,</span> <span class="n">ranks_from_scores</span>
+
+    <span class="k">if</span> <span class="n">scorer</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">scorer</span> <span class="o">=</span> <span class="n">BigramAssocMeasures</span><span class="o">.</span><span class="n">likelihood_ratio</span>
+    <span class="k">if</span> <span class="n">compare_scorer</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">compare_scorer</span> <span class="o">=</span> <span class="n">BigramAssocMeasures</span><span class="o">.</span><span class="n">raw_freq</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">corpus</span>
+        
+    <span class="n">ignored_words</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">stopwords</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;english&#39;</span><span class="p">)</span>
+    <span class="n">word_filter</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">w</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="ow">or</span> <span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">ignored_words</span>
+
+    <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span> <span class="n">corpus</span><span class="o">.</span><span class="n">webtext</span><span class="o">.</span><span class="n">files</span><span class="p">():</span>
+        <span class="n">words</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                 <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">corpus</span><span class="o">.</span><span class="n">webtext</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="nb">file</span><span class="p">)]</span>
+
+        <span class="n">cf</span> <span class="o">=</span> <span class="n">BigramCollocationFinder</span><span class="o">.</span><span class="n">from_words</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
+        <span class="n">cf</span><span class="o">.</span><span class="n">apply_freq_filter</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">cf</span><span class="o">.</span><span class="n">apply_word_filter</span><span class="p">(</span><span class="n">word_filter</span><span class="p">)</span>
+
+        <span class="k">print</span> <span class="nb">file</span>
+        <span class="k">print</span> <span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tup</span><span class="p">)</span> <span class="k">for</span> <span class="n">tup</span> <span class="ow">in</span> <span class="n">cf</span><span class="o">.</span><span class="n">nbest</span><span class="p">(</span><span class="n">scorer</span><span class="p">,</span> <span class="mi">15</span><span class="p">)]</span>
+        <span class="k">print</span> <span class="s">&#39;</span><span class="se">\t</span><span class="s"> Correlation to </span><span class="si">%s</span><span class="s">: </span><span class="si">%0.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">compare_scorer</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                <span class="n">spearman_correlation</span><span class="p">(</span>
+                    <span class="n">ranks_from_scores</span><span class="p">(</span><span class="n">cf</span><span class="o">.</span><span class="n">score_ngrams</span><span class="p">(</span><span class="n">scorer</span><span class="p">)),</span>
+                    <span class="n">ranks_from_scores</span><span class="p">(</span><span class="n">cf</span><span class="o">.</span><span class="n">score_ngrams</span><span class="p">(</span><span class="n">compare_scorer</span><span class="p">))))</span>
+
+<span class="c"># Slows down loading too much</span>
+<span class="c"># bigram_measures = BigramAssocMeasures()</span>
+<span class="c"># trigram_measures = TrigramAssocMeasures()</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">sys</span>
+    <span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">BigramAssocMeasures</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">scorer</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="s">&#39;BigramAssocMeasures.&#39;</span> <span class="o">+</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+        <span class="n">scorer</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">compare_scorer</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="s">&#39;BigramAssocMeasures.&#39;</span> <span class="o">+</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+    <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+        <span class="n">compare_scorer</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="n">demo</span><span class="p">(</span><span class="n">scorer</span><span class="p">,</span> <span class="n">compare_scorer</span><span class="p">)</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;BigramCollocationFinder&#39;</span><span class="p">,</span> <span class="s">&#39;TrigramCollocationFinder&#39;</span><span class="p">]</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

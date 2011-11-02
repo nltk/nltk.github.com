@@ -1,0 +1,339 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.cluster.em &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.cluster" href="../cluster.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" accesskey="U">nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.cluster.em</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Expectation Maximization Clusterer</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Trevor Cohn &lt;tacohn@cs.mu.oz.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="EMClusterer"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.EMClusterer">[docs]</a><span class="k">class</span> <span class="nc">EMClusterer</span><span class="p">(</span><span class="n">VectorSpaceClusterer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Gaussian EM clusterer models the vectors as being produced by</span>
+<span class="sd">    a mixture of k Gaussian sources. The parameters of these sources</span>
+<span class="sd">    (prior probability, mean and covariance matrix) are then found to</span>
+<span class="sd">    maximise the likelihood of the given data. This is done with the</span>
+<span class="sd">    expectation maximisation algorithm. It starts with k arbitrarily</span>
+<span class="sd">    chosen means, priors and covariance matrices. It then calculates</span>
+<span class="sd">    the membership probabilities for each vector in each of the</span>
+<span class="sd">    clusters; this is the &#39;E&#39; step. The cluster parameters are then</span>
+<span class="sd">    updated in the &#39;M&#39; step using the maximum likelihood estimate from</span>
+<span class="sd">    the cluster membership probabilities. This process continues until</span>
+<span class="sd">    the likelihood of the data does not significantly increase.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_means</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">covariance_matrices</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                       <span class="n">conv_threshold</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">normalise</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                       <span class="n">svd_dimensions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates an EM clusterer with the given starting parameters,</span>
+<span class="sd">        convergence threshold and vector mangling parameters.</span>
+
+<span class="sd">        @param  initial_means: the means of the gaussian cluster centers</span>
+<span class="sd">        @type   initial_means: [seq of] numpy array or seq of SparseArray</span>
+<span class="sd">        @param  priors: the prior probability for each cluster</span>
+<span class="sd">        @type   priors: numpy array or seq of float</span>
+<span class="sd">        @param  covariance_matrices: the covariance matrix for each cluster</span>
+<span class="sd">        @type   covariance_matrices: [seq of] numpy array </span>
+<span class="sd">        @param  conv_threshold: maximum change in likelihood before deemed</span>
+<span class="sd">                    convergent</span>
+<span class="sd">        @type   conv_threshold: int or float</span>
+<span class="sd">        @param  bias: variance bias used to ensure non-singular covariance</span>
+<span class="sd">                      matrices</span>
+<span class="sd">        @type   bias: float</span>
+<span class="sd">        @param  normalise:  should vectors be normalised to length 1</span>
+<span class="sd">        @type   normalise:  boolean</span>
+<span class="sd">        @param  svd_dimensions: number of dimensions to use in reducing vector</span>
+<span class="sd">                               dimensionsionality with SVD</span>
+<span class="sd">        @type   svd_dimensions: int </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">VectorSpaceClusterer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalise</span><span class="p">,</span> <span class="n">svd_dimensions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">initial_means</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">initial_means</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_conv_threshold</span> <span class="o">=</span> <span class="n">conv_threshold</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_covariance_matrices</span> <span class="o">=</span> <span class="n">covariance_matrices</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_priors</span> <span class="o">=</span> <span class="n">priors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_bias</span> <span class="o">=</span> <span class="n">bias</span>
+
+<div class="viewcode-block" id="EMClusterer.num_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.EMClusterer.num_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">num_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
+        </div>
+<div class="viewcode-block" id="EMClusterer.cluster_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.EMClusterer.cluster_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">cluster_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c"># set the parameters to initial values</span>
+        <span class="n">dimensions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span>
+        <span class="n">priors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_priors</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">priors</span><span class="p">:</span>
+            <span class="n">priors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_priors</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">,</span>
+                                        <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
+        <span class="n">covariances</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_covariance_matrices</span> 
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">covariances</span><span class="p">:</span>
+            <span class="n">covariances</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_covariance_matrices</span> <span class="o">=</span> \
+                <span class="p">[</span> <span class="n">numpy</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> 
+                  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">)</span> <span class="p">]</span>
+            
+        <span class="c"># do the E and M steps until the likelihood plateaus</span>
+        <span class="n">lastl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loglikelihood</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="n">priors</span><span class="p">,</span> <span class="n">means</span><span class="p">,</span> <span class="n">covariances</span><span class="p">)</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">converged</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;iteration; loglikelihood&#39;</span><span class="p">,</span> <span class="n">lastl</span>
+            <span class="c"># E-step, calculate hidden variables, h[i,j]</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">),</span>
+                <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">)):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">):</span>
+                    <span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">priors</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gaussian</span><span class="p">(</span><span class="n">means</span><span class="p">[</span><span class="n">j</span><span class="p">],</span>
+                                               <span class="n">covariances</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">vectors</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,:]</span> <span class="o">/=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,:])</span>
+
+            <span class="c"># M-step, update parameters - cvm, p, mean</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">):</span>
+                <span class="n">covariance_before</span> <span class="o">=</span> <span class="n">covariances</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                <span class="n">new_covariance</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">),</span>
+                            <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+                <span class="n">new_mean</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+                <span class="n">sum_hj</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">)):</span>
+                    <span class="n">delta</span> <span class="o">=</span> <span class="n">vectors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">means</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                    <span class="n">new_covariance</span> <span class="o">+=</span> <span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> \
+                        <span class="n">numpy</span><span class="o">.</span><span class="n">multiply</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">delta</span><span class="p">,</span> <span class="n">delta</span><span class="p">)</span>
+                    <span class="n">sum_hj</span> <span class="o">+=</span> <span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span>
+                    <span class="n">new_mean</span> <span class="o">+=</span> <span class="n">h</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> <span class="n">vectors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">covariances</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_covariance</span> <span class="o">/</span> <span class="n">sum_hj</span>
+                <span class="n">means</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_mean</span> <span class="o">/</span> <span class="n">sum_hj</span>
+                <span class="n">priors</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">sum_hj</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">)</span>
+
+                <span class="c"># bias term to stop covariance matrix being singular</span>
+                <span class="n">covariances</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bias</span> <span class="o">*</span> \
+                    <span class="n">numpy</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+            <span class="c"># calculate likelihood - FIXME: may be broken</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loglikelihood</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="n">priors</span><span class="p">,</span> <span class="n">means</span><span class="p">,</span> <span class="n">covariances</span><span class="p">)</span>
+
+            <span class="c"># check for convergence</span>
+            <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">lastl</span> <span class="o">-</span> <span class="n">l</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conv_threshold</span><span class="p">:</span>
+                <span class="n">converged</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="n">lastl</span> <span class="o">=</span> <span class="n">l</span>
+</div>
+<div class="viewcode-block" id="EMClusterer.classify_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.EMClusterer.classify_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">classify_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
+        <span class="n">best</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">):</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_priors</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gaussian</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">[</span><span class="n">j</span><span class="p">],</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">_covariance_matrices</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">vector</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">p</span> <span class="o">&gt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">best</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="EMClusterer.likelihood_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.EMClusterer.likelihood_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">likelihood_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vector</span><span class="p">,</span> <span class="n">cluster</span><span class="p">):</span>
+        <span class="n">cid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cluster_names</span><span class="p">()</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">cluster</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_priors</span><span class="p">[</span><span class="n">cluster</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gaussian</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">[</span><span class="n">cluster</span><span class="p">],</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">_covariance_matrices</span><span class="p">[</span><span class="n">cluster</span><span class="p">],</span> <span class="n">vector</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_gaussian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">cvm</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">cvm</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">m</span><span class="p">),</span> \
+            <span class="s">&#39;bad sized covariance matrix, </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">cvm</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">det</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">cvm</span><span class="p">)</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cvm</span><span class="p">)</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">det</span> <span class="o">**</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">numpy</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="n">m</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span> 
+            <span class="n">dx</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">mean</span>
+            <span class="k">print</span> <span class="n">dx</span><span class="p">,</span> <span class="n">inv</span>
+            <span class="n">b</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">numpy</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span> <span class="n">numpy</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">inv</span><span class="p">),</span> <span class="n">dx</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">a</span> <span class="o">*</span> <span class="n">numpy</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> 
+        <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
+            <span class="c"># happens when the exponent is negative infinity - i.e. b = 0</span>
+            <span class="c"># i.e. the inverse of cvm is huge (cvm is almost zero)</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="nf">_loglikelihood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">priors</span><span class="p">,</span> <span class="n">means</span><span class="p">,</span> <span class="n">covariances</span><span class="p">):</span>
+        <span class="n">llh</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">:</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">priors</span><span class="p">)):</span>
+                <span class="n">p</span> <span class="o">+=</span> <span class="n">priors</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> \
+                         <span class="bp">self</span><span class="o">.</span><span class="n">_gaussian</span><span class="p">(</span><span class="n">means</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">covariances</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">vector</span><span class="p">)</span>
+            <span class="n">llh</span> <span class="o">+=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llh</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;EMClusterer means=</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.em.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Non-interactive demonstration of the clusterers with simple 2-D data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">cluster</span>
+
+    <span class="c"># example from figure 14.10, page 519, Manning and Schutze</span>
+
+    <span class="n">vectors</span> <span class="o">=</span> <span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">]]]</span>
+    <span class="n">means</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mf">2.01</span><span class="p">]]</span>
+
+    <span class="n">clusterer</span> <span class="o">=</span> <span class="n">cluster</span><span class="o">.</span><span class="n">EMClusterer</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="bp">True</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;Clustered:&#39;</span><span class="p">,</span> <span class="n">vectors</span>
+    <span class="k">print</span> <span class="s">&#39;As:       &#39;</span><span class="p">,</span> <span class="n">clusters</span>
+    <span class="k">print</span>
+    
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
+        <span class="k">print</span> <span class="s">&#39;Cluster:&#39;</span><span class="p">,</span> <span class="n">c</span>
+        <span class="k">print</span> <span class="s">&#39;Prior:  &#39;</span><span class="p">,</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">_priors</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>
+        <span class="k">print</span> <span class="s">&#39;Mean:   &#39;</span><span class="p">,</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">_means</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>
+        <span class="k">print</span> <span class="s">&#39;Covar:  &#39;</span><span class="p">,</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">_covariance_matrices</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>
+        <span class="k">print</span>
+
+    <span class="c"># classify a new vector</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;classify(</span><span class="si">%s</span><span class="s">):&#39;</span> <span class="o">%</span> <span class="n">vector</span><span class="p">,</span>
+    <span class="k">print</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">classify</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+
+    <span class="c"># show the classification probabilities</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;classification_probdist(</span><span class="si">%s</span><span class="s">):&#39;</span> <span class="o">%</span> <span class="n">vector</span>
+    <span class="n">pdist</span> <span class="o">=</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">classification_probdist</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">sample</span> <span class="ow">in</span> <span class="n">pdist</span><span class="o">.</span><span class="n">samples</span><span class="p">():</span>
+        <span class="k">print</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s"> =&gt; </span><span class="si">%.0f%%</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">sample</span><span class="p">,</span>
+                    <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span> <span class="o">*</span><span class="mi">100</span><span class="p">)</span>
+
+<span class="c">#</span>
+<span class="c">#     The following demo code is broken.</span>
+<span class="c">#</span>
+<span class="c">#     # use a set of tokens with 2D indices</span>
+<span class="c">#     vectors = [numpy.array(f) for f in [[3, 3], [1, 2], [4, 2], [4, 0], [2, 3], [3, 1]]]</span>
+    
+<span class="c">#     # test the EM clusterer with means given by k-means (2) and</span>
+<span class="c">#     # dimensionality reduction</span>
+<span class="c">#     clusterer = cluster.KMeans(2, euclidean_distance, svd_dimensions=1)</span>
+<span class="c">#     print &#39;Clusterer:&#39;, clusterer</span>
+<span class="c">#     clusters = clusterer.cluster(vectors)</span>
+<span class="c">#     means = clusterer.means()</span>
+<span class="c">#     print &#39;Means:&#39;, clusterer.means()</span>
+<span class="c">#     print</span>
+
+<span class="c">#     clusterer = cluster.EMClusterer(means, svd_dimensions=1)</span>
+<span class="c">#     clusters = clusterer.cluster(vectors, True)</span>
+<span class="c">#     print &#39;Clusterer:&#39;, clusterer</span>
+<span class="c">#     print &#39;Clustered:&#39;, str(vectors)[:60], &#39;...&#39;</span>
+<span class="c">#     print &#39;As:&#39;, str(clusters)[:60], &#39;...&#39;</span>
+<span class="c">#     print</span>
+
+<span class="c">#     # classify a new vector</span>
+<span class="c">#     vector = numpy.array([3, 3])</span>
+<span class="c">#     print &#39;classify(%s):&#39; % vector,</span>
+<span class="c">#     print clusterer.classify(vector)</span>
+<span class="c">#     print</span>
+
+<span class="c">#     # show the classification probabilities</span>
+<span class="c">#     vector = numpy.array([2.2, 2])</span>
+<span class="c">#     print &#39;classification_probdist(%s)&#39; % vector</span>
+<span class="c">#     pdist = clusterer.classification_probdist(vector)</span>
+<span class="c">#     for sample in pdist:</span>
+<span class="c">#         print &#39;%s =&gt; %.0f%%&#39; % (sample, pdist.prob(sample) *100)</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" >nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

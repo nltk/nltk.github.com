@@ -1,0 +1,477 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.reader.xmldocs &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="nltk.corpus.reader" href="../reader.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" accesskey="U">nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.reader.xmldocs</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: XML Corpus Reader</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Corpus reader for corpora whose documents are xml files.</span>
+
+<span class="sd">(note -- not named &#39;xml&#39; to avoid conflicting w/ standard xml package)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">codecs</span>
+
+<span class="c"># Use the c version of ElementTree, which is faster, if possible:</span>
+<span class="k">try</span><span class="p">:</span> <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">cElementTree</span> <span class="k">as</span> <span class="n">ElementTree</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span> <span class="kn">from</span> <span class="nn">nltk.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span>
+
+<span class="kn">from</span> <span class="nn">nltk.data</span> <span class="kn">import</span> <span class="n">SeekableUnicodeStreamReader</span>
+<span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">WordPunctTokenizer</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">ElementWrapper</span>
+
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.api</span> <span class="kn">import</span> <span class="n">CorpusReader</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.util</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="XMLCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">XMLCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Corpus reader for corpora whose documents are xml files.</span>
+
+<span class="sd">    Note that the C{XMLCorpusReader} constructor does not take an</span>
+<span class="sd">    C{encoding} argument, because the unicode encoding is specified by</span>
+<span class="sd">    the XML files themselves.  See the XML specs for more info.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">wrap_etree</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wrap_etree</span> <span class="o">=</span> <span class="n">wrap_etree</span>
+        <span class="n">CorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">)</span>
+        
+<div class="viewcode-block" id="XMLCorpusReader.xml"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusReader.xml">[docs]</a>    <span class="k">def</span> <span class="nf">xml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c"># Make sure we have exactly one file -- no concatenating XML.</span>
+        <span class="k">if</span> <span class="n">fileid</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">fileid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fileid</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;Expected a single file identifier string&#39;</span><span class="p">)</span>
+        <span class="c"># Read the XML in using ElementTree.</span>
+        <span class="n">elt</span> <span class="o">=</span> <span class="n">ElementTree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">fileid</span><span class="p">)</span><span class="o">.</span><span class="n">open</span><span class="p">())</span><span class="o">.</span><span class="n">getroot</span><span class="p">()</span>
+        <span class="c"># If requested, wrap it.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wrap_etree</span><span class="p">:</span>
+            <span class="n">elt</span> <span class="o">=</span> <span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span>
+        <span class="c"># Return the ElementTree element.</span>
+        <span class="k">return</span> <span class="n">elt</span>
+</div>
+<div class="viewcode-block" id="XMLCorpusReader.words"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusReader.words">[docs]</a>    <span class="k">def</span> <span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns all of the words and punctuation symbols in the specified file</span>
+<span class="sd">        that were in text nodes -- ie, tags are ignored. Like the xml() method,</span>
+<span class="sd">        fileid can only specify one file.</span>
+
+<span class="sd">        @return: the given file&#39;s text nodes as a list of words and punctuation symbols</span>
+<span class="sd">        @rtype: C{list} of C{str}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">elt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xml</span><span class="p">(</span><span class="n">fileid</span><span class="p">)</span>
+        <span class="n">word_tokenizer</span><span class="o">=</span><span class="n">WordPunctTokenizer</span><span class="p">()</span>
+        <span class="n">iterator</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">getiterator</span><span class="p">()</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">iterator</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">text</span>
+            <span class="k">if</span> <span class="n">text</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">toks</span> <span class="o">=</span> <span class="n">word_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                <span class="n">out</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">toks</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+</div>
+<div class="viewcode-block" id="XMLCorpusReader.raw"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusReader.raw">[docs]</a>    <span class="k">def</span> <span class="nf">raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">fileids</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">fileids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fileids</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span> <span class="n">fileids</span> <span class="o">=</span> <span class="p">[</span><span class="n">fileids</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+
+</div></div>
+<div class="viewcode-block" id="XMLCorpusView"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusView">[docs]</a><span class="k">class</span> <span class="nc">XMLCorpusView</span><span class="p">(</span><span class="n">StreamBackedCorpusView</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A corpus view that selects out specified elements from an XML</span>
+<span class="sd">    file, and provides a flat list-like interface for accessing them.</span>
+<span class="sd">    (Note: C{XMLCorpusView} is not used by L{XMLCorpusReader} itself,</span>
+<span class="sd">    but may be used by subclasses of L{XMLCorpusReader}.)</span>
+<span class="sd">    </span>
+<span class="sd">    Every XML corpus view has a X{tag specification}, indicating what</span>
+<span class="sd">    XML elements should be included in the view; and each (non-nested)</span>
+<span class="sd">    element that matches this specification corresponds to one item in</span>
+<span class="sd">    the view.  Tag specifications are regular expressions over tag</span>
+<span class="sd">    paths, where a tag path is a list of element tag names, separated</span>
+<span class="sd">    by &#39;/&#39;, indicating the ancestry of the element.  Some examples:</span>
+
+<span class="sd">      - C{&#39;foo&#39;}: A top-level element whose tag is C{foo}.</span>
+<span class="sd">      - C{&#39;foo/bar&#39;}: An element whose tag is C{bar} and whose parent</span>
+<span class="sd">        is a top-level element whose tag is C{foo}.</span>
+<span class="sd">      - C{&#39;.*/foo&#39;}: An element whose tag is C{foo}, appearing anywhere</span>
+<span class="sd">        in the xml tree.</span>
+<span class="sd">      - C{&#39;.*/(foo|bar)&#39;}: An wlement whose tag is C{foo} or C{bar},</span>
+<span class="sd">        appearing anywhere in the xml tree.</span>
+<span class="sd">    </span>
+<span class="sd">    The view items are generated from the selected XML elements via</span>
+<span class="sd">    the method L{handle_elt()}.  By default, this method returns the</span>
+<span class="sd">    element as-is (i.e., as an ElementTree object); but it can be</span>
+<span class="sd">    overridden, either via subclassing or via the C{elt_handler}</span>
+<span class="sd">    constructor parameter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c">#: If true, then display debugging output to stdout when reading</span>
+    <span class="c">#: blocks.</span>
+    <span class="n">_DEBUG</span> <span class="o">=</span> <span class="bp">False</span>
+    
+    <span class="c">#: The number of characters read at a time by this corpus reader.</span>
+    <span class="n">_BLOCK_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">,</span> <span class="n">tagspec</span><span class="p">,</span> <span class="n">elt_handler</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new corpus view based on a specified XML file.</span>
+
+<span class="sd">        Note that the C{XMLCorpusView} constructor does not take an</span>
+<span class="sd">        C{encoding} argument, because the unicode encoding is</span>
+<span class="sd">        specified by the XML files themselves.</span>
+<span class="sd">    </span>
+<span class="sd">        @type tagspec: C{str}</span>
+<span class="sd">        @param tagspec: A tag specification, indicating what XML</span>
+<span class="sd">            elements should be included in the view.  Each non-nested</span>
+<span class="sd">            element that matches this specification corresponds to one</span>
+<span class="sd">            item in the view.</span>
+
+<span class="sd">        @param elt_handler: A function used to transform each element</span>
+<span class="sd">            to a value for the view.  If no handler is specified, then</span>
+<span class="sd">            L{self.handle_elt()} is called, which returns the element</span>
+<span class="sd">            as an ElementTree object.  The signature of elt_handler is::</span>
+
+<span class="sd">                elt_handler(elt, tagspec) -&gt; value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">elt_handler</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_elt</span> <span class="o">=</span> <span class="n">elt_handler</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tagspec</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tagspec</span><span class="o">+</span><span class="s">r&#39;\Z&#39;</span><span class="p">)</span>
+        <span class="sd">&quot;&quot;&quot;The tag specification for this corpus view.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tag_context</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="p">()}</span>
+        <span class="sd">&quot;&quot;&quot;A dictionary mapping from file positions (as returned by</span>
+<span class="sd">           C{stream.seek()} to XML contexts.  An XML context is a</span>
+<span class="sd">           tuple of XML tag names, indicating which tags have not yet</span>
+<span class="sd">           been closed.&quot;&quot;&quot;</span>
+
+        <span class="n">encoding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_encoding</span><span class="p">(</span><span class="n">fileid</span><span class="p">)</span>
+        <span class="n">StreamBackedCorpusView</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_detect_encoding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fileid</span><span class="p">,</span> <span class="n">PathPointer</span><span class="p">):</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">fileid</span><span class="o">.</span><span class="n">open</span><span class="p">()</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fileid</span><span class="p">,</span> <span class="s">&#39;rb&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF16_BE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;utf-16-be&#39;</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF16_LE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;utf-16-le&#39;</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF32_BE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;utf-32-be&#39;</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF32_LE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;utf-32-le&#39;</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF8</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;utf-8&#39;</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&#39;\s*&lt;?xml\b.*\bencoding=&quot;([^&quot;]+)&quot;&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span> <span class="k">return</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&quot;\s*&lt;?xml\b.*\bencoding=&#39;([^&#39;]+)&#39;&quot;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span> <span class="k">return</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c"># No encoding found -- what should the default be?</span>
+        <span class="k">return</span> <span class="s">&#39;utf-8&#39;</span>
+        
+<div class="viewcode-block" id="XMLCorpusView.handle_elt"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusView.handle_elt">[docs]</a>    <span class="k">def</span> <span class="nf">handle_elt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert an element into an appropriate value for inclusion in</span>
+<span class="sd">        the view.  Unless overridden by a subclass or by the</span>
+<span class="sd">        C{elt_handler} constructor argument, this method simply</span>
+<span class="sd">        returns C{elt}.</span>
+
+<span class="sd">        @return: The view value corresponding to C{elt}.</span>
+
+<span class="sd">        @type elt: C{ElementTree}</span>
+<span class="sd">        @param elt: The element that should be converted.</span>
+
+<span class="sd">        @type context: C{str}</span>
+<span class="sd">        @param context: A string composed of element tags separated by</span>
+<span class="sd">            forward slashes, indicating the XML context of the given</span>
+<span class="sd">            element.  For example, the string C{&#39;foo/bar/baz&#39;}</span>
+<span class="sd">            indicates that the element is a C{baz} element whose</span>
+<span class="sd">            parent is a C{bar} element and whose grandparent is a</span>
+<span class="sd">            top-level C{foo} element.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">elt</span>
+
+    <span class="c">#: A regular expression that matches XML fragments that do not</span>
+    <span class="c">#: contain any un-closed tags.</span></div>
+    <span class="n">_VALID_XML_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;&quot;&quot;</span>
+<span class="s">        [^&lt;]*</span>
+<span class="s">        (</span>
+<span class="s">          ((&lt;!--.*?--&gt;)                         |  # comment</span>
+<span class="s">           (&lt;![CDATA[.*?]])                     |  # raw character data</span>
+<span class="s">           (&lt;!DOCTYPE\s+[^\[]*(\[[^\]]*])?\s*&gt;) |  # doctype decl</span>
+<span class="s">           (&lt;[^&gt;]*&gt;))                              # tag or PI</span>
+<span class="s">          [^&lt;]*)*</span>
+<span class="s">        \Z&quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="o">|</span><span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+    <span class="c">#: A regular expression used to extract the tag name from a start tag,</span>
+    <span class="c">#: end tag, or empty-elt tag string.</span>
+    <span class="n">_XML_TAG_NAME</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;&lt;\s*/?\s*([^\s&gt;]+)&#39;</span><span class="p">)</span>
+
+    <span class="c">#: A regular expression used to find all start-tags, end-tags, and</span>
+    <span class="c">#: emtpy-elt tags in an XML file.  This regexp is more lenient than</span>
+    <span class="c">#: the XML spec -- e.g., it allows spaces in some places where the</span>
+    <span class="c">#: spec does not.</span>
+    <span class="n">_XML_PIECE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;&quot;&quot;</span>
+<span class="s">        # Include these so we can skip them:</span>
+<span class="s">        (?P&lt;COMMENT&gt;        &lt;!--.*?--&gt;                          )|</span>
+<span class="s">        (?P&lt;CDATA&gt;          &lt;![CDATA[.*?]]&gt;                     )|</span>
+<span class="s">        (?P&lt;PI&gt;             &lt;\?.*?\?&gt;                           )|</span>
+<span class="s">        (?P&lt;DOCTYPE&gt;        &lt;!DOCTYPE\s+[^\[]*(\[[^\]]*])?\s*&gt;  )|</span>
+<span class="s">        # These are the ones we actually care about:</span>
+<span class="s">        (?P&lt;EMPTY_ELT_TAG&gt;  &lt;\s*[^&gt;/\?!\s][^&gt;]*/\s*&gt;            )|</span>
+<span class="s">        (?P&lt;START_TAG&gt;      &lt;\s*[^&gt;/\?!\s][^&gt;]*&gt;                )|</span>
+<span class="s">        (?P&lt;END_TAG&gt;        &lt;\s*/[^&gt;/\?!\s][^&gt;]*&gt;               )&quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="o">|</span><span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_read_xml_fragment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Read a string from the given stream that does not contain any</span>
+<span class="sd">        un-closed tags.  In particular, this function first reads a</span>
+<span class="sd">        block from the stream of size L{self._BLOCK_SIZE}.  It then</span>
+<span class="sd">        checks if that block contains an un-closed tag.  If it does,</span>
+<span class="sd">        then this function either backtracks to the last &#39;&lt;&#39;, or reads</span>
+<span class="sd">        another block.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fragment</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">SeekableUnicodeStreamReader</span><span class="p">):</span>
+                <span class="n">startpos</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
+            <span class="c"># Read a block and add it to the fragment.</span>
+            <span class="n">xml_block</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_BLOCK_SIZE</span><span class="p">)</span>
+            <span class="n">fragment</span> <span class="o">+=</span> <span class="n">xml_block</span>
+            
+            <span class="c"># Do we have a well-formed xml fragment?</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_VALID_XML_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">fragment</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">fragment</span>
+
+            <span class="c"># Do we have a fragment that will never be well-formed?</span>
+            <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">&#39;[&lt;&gt;]&#39;</span><span class="p">,</span> <span class="n">fragment</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;&gt;&#39;</span><span class="p">:</span>
+                <span class="n">pos</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span> <span class="o">-</span> <span class="p">(</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="n">fragment</span><span class="p">)</span><span class="o">-</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">&#39;[&lt;&gt;]&#39;</span><span class="p">,</span> <span class="n">fragment</span><span class="p">)</span><span class="o">.</span><span class="n">end</span><span class="p">())</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unexpected &quot;&gt;&quot; near char </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">pos</span><span class="p">)</span>
+
+            <span class="c"># End of file?</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">xml_block</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unexpected end of file: tag not closed&#39;</span><span class="p">)</span>
+
+            <span class="c"># If not, then we must be in the middle of a &lt;..tag..&gt;.</span>
+            <span class="c"># If appropriate, backtrack to the most recent &#39;&lt;&#39;</span>
+            <span class="c"># character.</span>
+            <span class="n">last_open_bracket</span> <span class="o">=</span> <span class="n">fragment</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">last_open_bracket</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_VALID_XML_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">fragment</span><span class="p">[:</span><span class="n">last_open_bracket</span><span class="p">]):</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">SeekableUnicodeStreamReader</span><span class="p">):</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">startpos</span><span class="p">)</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">char_seek_forward</span><span class="p">(</span><span class="n">last_open_bracket</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fragment</span><span class="p">)</span><span class="o">-</span><span class="n">last_open_bracket</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">fragment</span><span class="p">[:</span><span class="n">last_open_bracket</span><span class="p">]</span>
+
+            <span class="c"># Otherwise, read another block. (i.e., return to the</span>
+            <span class="c"># top of the loop.)</span>
+
+<div class="viewcode-block" id="XMLCorpusView.read_block"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.xmldocs.XMLCorpusView.read_block">[docs]</a>    <span class="k">def</span> <span class="nf">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">tagspec</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">elt_handler</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Read from C{stream} until we find at least one element that</span>
+<span class="sd">        matches C{tagspec}, and return the result of applying</span>
+<span class="sd">        C{elt_handler} to each element found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tagspec</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">tagspec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tagspec</span>
+        <span class="k">if</span> <span class="n">elt_handler</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">elt_handler</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_elt</span>
+        
+        <span class="c"># Use a stack of strings to keep track of our context:</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tag_context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()))</span>
+        <span class="k">assert</span> <span class="n">context</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="c"># check this -- could it ever happen?</span>
+
+        <span class="n">elts</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">elt_start</span> <span class="o">=</span> <span class="bp">None</span> <span class="c"># where does the elt start</span>
+        <span class="n">elt_depth</span> <span class="o">=</span> <span class="bp">None</span> <span class="c"># what context depth</span>
+        <span class="n">elt_text</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+        <span class="k">while</span> <span class="n">elts</span><span class="o">==</span><span class="p">[]</span> <span class="ow">or</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">SeekableUnicodeStreamReader</span><span class="p">):</span>
+                <span class="n">startpos</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
+            <span class="n">xml_fragment</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_xml_fragment</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+
+            <span class="c"># End of file.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">xml_fragment</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">break</span>
+                <span class="k">else</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unexpected end of file&#39;</span><span class="p">)</span>
+
+            <span class="c"># Process each &lt;tag&gt; in the xml fragment.</span>
+            <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_XML_PIECE</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">xml_fragment</span><span class="p">):</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_DEBUG</span><span class="p">:</span>
+                    <span class="k">print</span> <span class="s">&#39;</span><span class="si">%25s</span><span class="s"> </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">)[</span><span class="o">-</span><span class="mi">20</span><span class="p">:],</span> <span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">())</span>
+                
+                <span class="k">if</span> <span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;START_TAG&#39;</span><span class="p">):</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_XML_TAG_NAME</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">())</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="c"># Keep context up-to-date.</span>
+                    <span class="n">context</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                    <span class="c"># Is this one of the elts we&#39;re looking for?</span>
+                    <span class="k">if</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">tagspec</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">)):</span>
+                            <span class="n">elt_start</span> <span class="o">=</span> <span class="n">piece</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+                            <span class="n">elt_depth</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+    
+                <span class="k">elif</span> <span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;END_TAG&#39;</span><span class="p">):</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_XML_TAG_NAME</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">())</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="c"># sanity checks:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">context</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unmatched tag &lt;/</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="n">context</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unmatched tag &lt;</span><span class="si">%s</span><span class="s">&gt;...&lt;/</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span>
+                                         <span class="p">(</span><span class="n">context</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">name</span><span class="p">))</span>
+                    <span class="c"># Is this the end of an element?</span>
+                    <span class="k">if</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">elt_depth</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+                        <span class="n">elt_text</span> <span class="o">+=</span> <span class="n">xml_fragment</span><span class="p">[</span><span class="n">elt_start</span><span class="p">:</span><span class="n">piece</span><span class="o">.</span><span class="n">end</span><span class="p">()]</span>
+                        <span class="n">elts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">elt_text</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">))</span> <span class="p">)</span>
+                        <span class="n">elt_start</span> <span class="o">=</span> <span class="n">elt_depth</span> <span class="o">=</span> <span class="bp">None</span>
+                        <span class="n">elt_text</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                    <span class="c"># Keep context up-to-date</span>
+                    <span class="n">context</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+    
+                <span class="k">elif</span> <span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;EMPTY_ELT_TAG&#39;</span><span class="p">):</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_XML_TAG_NAME</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">())</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">tagspec</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">)</span><span class="o">+</span><span class="s">&#39;/&#39;</span><span class="o">+</span><span class="n">name</span><span class="p">):</span>
+                            <span class="n">elts</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">piece</span><span class="o">.</span><span class="n">group</span><span class="p">(),</span>
+                                         <span class="s">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">)</span><span class="o">+</span><span class="s">&#39;/&#39;</span><span class="o">+</span><span class="n">name</span><span class="p">))</span>
+                            
+            <span class="k">if</span> <span class="n">elt_start</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="c"># If we haven&#39;t found any elements yet, then keep</span>
+                <span class="c"># looping until we do.</span>
+                <span class="k">if</span> <span class="n">elts</span> <span class="o">==</span> <span class="p">[]:</span>
+                    <span class="n">elt_text</span> <span class="o">+=</span> <span class="n">xml_fragment</span><span class="p">[</span><span class="n">elt_start</span><span class="p">:]</span>
+                    <span class="n">elt_start</span> <span class="o">=</span> <span class="mi">0</span>
+
+                <span class="c"># If we&#39;ve found at least one element, then try</span>
+                <span class="c"># backtracking to the start of the element that we&#39;re</span>
+                <span class="c"># inside of.</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c"># take back the last start-tag, and return what</span>
+                    <span class="c"># we&#39;ve gotten so far (elts is non-empty).</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_DEBUG</span><span class="p">:</span>
+                        <span class="k">print</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">36</span><span class="o">+</span><span class="s">&#39;(backtrack)&#39;</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">SeekableUnicodeStreamReader</span><span class="p">):</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">startpos</span><span class="p">)</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">char_seek_forward</span><span class="p">(</span><span class="n">elt_start</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xml_fragment</span><span class="p">)</span><span class="o">-</span><span class="n">elt_start</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
+                    <span class="n">context</span> <span class="o">=</span> <span class="n">context</span><span class="p">[:</span><span class="n">elt_depth</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">elt_start</span> <span class="o">=</span> <span class="n">elt_depth</span> <span class="o">=</span> <span class="bp">None</span>
+                    <span class="n">elt_text</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+        <span class="c"># Update the _tag_context dict.</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_context</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_context</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_tag_context</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="n">elt_handler</span><span class="p">(</span><span class="n">ElementTree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span>
+                                  <span class="n">elt</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;ascii&#39;</span><span class="p">,</span> <span class="s">&#39;xmlcharrefreplace&#39;</span><span class="p">)),</span>
+                            <span class="n">context</span><span class="p">)</span>
+                <span class="k">for</span> <span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span> <span class="ow">in</span> <span class="n">elts</span><span class="p">]</span>
+</pre></div></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" >nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,614 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.parse.dependencygraph &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.parse" href="../parse.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" accesskey="U">nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.parse.dependencygraph</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Dependency Grammars</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Jason Narad &lt;jason.narad@gmail.com&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt; (modifications)</span>
+<span class="c">#</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Tools for reading and writing dependency trees.</span>
+<span class="sd">The input is assumed to be in U{Malt-TAB&lt;http://w3.msi.vxu.se/~nivre/research/MaltXML.html&gt;} format.</span>
+
+<span class="sd">Currently only reads the first tree in a file.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pformat</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="c">#################################################################</span>
+<span class="c"># DependencyGraph Class</span>
+<span class="c">#################################################################</span>
+
+<div class="viewcode-block" id="DependencyGraph"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph">[docs]</a><span class="k">class</span> <span class="nc">DependencyGraph</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A container for the nodes and labelled edges of a dependency structure.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree_str</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        We place a dummy &#39;top&#39; node in the first position </span>
+<span class="sd">        in the nodelist, since the root node is often assigned &#39;0&#39;</span>
+<span class="sd">        as its head. This also means that the indexing of the nodelist</span>
+<span class="sd">        corresponds directly to the Malt-TAB format, which starts at 1.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">top</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;TOP&#39;</span><span class="p">,</span> <span class="s">&#39;tag&#39;</span><span class="p">:</span> <span class="s">&#39;TOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span> <span class="o">=</span> <span class="p">[</span><span class="n">top</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stream</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">tree_str</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_parse</span><span class="p">(</span><span class="n">tree_str</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DependencyGraph.remove_by_address"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.remove_by_address">[docs]</a>    <span class="k">def</span> <span class="nf">remove_by_address</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes the node with the given address.  References </span>
+<span class="sd">        to this node in others will still exist.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">node_index</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">while</span><span class="p">(</span><span class="n">node_index</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">node_index</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">address</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">node_index</span><span class="p">)</span>
+            <span class="n">node_index</span> <span class="o">-=</span> <span class="mi">1</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.redirect_arcs"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.redirect_arcs">[docs]</a>    <span class="k">def</span> <span class="nf">redirect_arcs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">originals</span><span class="p">,</span> <span class="n">redirect</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Redirects arcs to any of the nodes in the originals list </span>
+<span class="sd">        to the redirect node address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="n">new_deps</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">dep</span> <span class="ow">in</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">dep</span> <span class="ow">in</span> <span class="n">originals</span><span class="p">:</span>
+                    <span class="n">new_deps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">redirect</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">new_deps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dep</span><span class="p">)</span>
+            <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_deps</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.add_arc"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.add_arc">[docs]</a>    <span class="k">def</span> <span class="nf">add_arc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">head_address</span><span class="p">,</span> <span class="n">mod_address</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Adds an arc from the node specified by head_address to the </span>
+<span class="sd">        node specified by the mod address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">head_address</span> <span class="ow">and</span> <span class="p">(</span><span class="n">mod_address</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]):</span>
+                <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mod_address</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.connect_graph"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.connect_graph">[docs]</a>    <span class="k">def</span> <span class="nf">connect_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fully connects all non-root nodes.  All nodes are set to be dependents</span>
+<span class="sd">        of the root node.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">node1</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">node2</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">node1</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">node2</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">node2</span><span class="p">[</span><span class="s">&#39;rel&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;TOP&#39;</span><span class="p">:</span>
+                    <span class="n">node1</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node2</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">])</span>
+
+    <span class="c"># fix error and return</span></div>
+<div class="viewcode-block" id="DependencyGraph.get_by_address"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.get_by_address">[docs]</a>    <span class="k">def</span> <span class="nf">get_by_address</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_address</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the node with the given address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">node_address</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">node</span>
+        <span class="k">print</span> <span class="s">&#39;THROW ERROR: address not found in -get_by_address-&#39;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.contains_address"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.contains_address">[docs]</a>    <span class="k">def</span> <span class="nf">contains_address</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_address</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns true if the graph contains a node with the given node </span>
+<span class="sd">        address, false otherwise.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">node_address</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+                    </div>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">pformat</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;DependencyGraph with </span><span class="si">%d</span><span class="s"> nodes&gt;&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="DependencyGraph.load"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.load">[docs]</a>    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="nb">file</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param file: a file in Malt-TAB format</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="nb">file</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+</div>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_normalize</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Deal with lines in which spaces are used rather than tabs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">SPC</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39; +&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">SPC</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+<div class="viewcode-block" id="DependencyGraph.left_children"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.left_children">[docs]</a>    <span class="k">def</span> <span class="nf">left_children</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_index</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of left children under the node specified</span>
+<span class="sd">        by the given address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">children</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">node_index</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">node_index</span><span class="p">][</span><span class="s">&#39;address&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">children</span> <span class="k">if</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">index</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.right_children"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.right_children">[docs]</a>    <span class="k">def</span> <span class="nf">right_children</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_index</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of right children under the node specified</span>
+<span class="sd">        by the given address.</span>
+<span class="sd">        &quot;&quot;&quot;</span>        
+        <span class="n">children</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">node_index</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">node_index</span><span class="p">][</span><span class="s">&#39;address&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">children</span> <span class="k">if</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="n">index</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="DependencyGraph.add_node"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.add_node">[docs]</a>    <span class="k">def</span> <span class="nf">add_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">contains_address</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">DependencyGraph</span><span class="o">.</span><span class="n">_normalize</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">input</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+<span class="c">#           print line</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">cells</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">)</span>
+                <span class="n">nrCells</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">cells</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">nrCells</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                    <span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span> <span class="o">=</span> <span class="n">cells</span>
+                    <span class="n">rel</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                <span class="k">elif</span> <span class="n">nrCells</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">rel</span> <span class="o">=</span> <span class="n">cells</span>
+                <span class="k">elif</span> <span class="n">nrCells</span> <span class="o">==</span> <span class="mi">10</span><span class="p">:</span>
+                    <span class="n">_</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">cells</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Number of tab-delimited fields (</span><span class="si">%d</span><span class="s">) not supported by CoNLL(10) or Malt-Tab(4) format&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">nrCells</span><span class="p">))</span>
+
+                <span class="n">head</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">head</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">word</span><span class="p">,</span> <span class="s">&#39;tag&#39;</span><span class="p">:</span> <span class="n">tag</span><span class="p">,</span>
+                                      <span class="s">&#39;head&#39;</span><span class="p">:</span> <span class="n">head</span><span class="p">,</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="n">rel</span><span class="p">,</span>
+                                      <span class="s">&#39;deps&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="p">(</span><span class="n">d</span><span class="p">,</span><span class="n">h</span><span class="p">)</span> <span class="ow">in</span> <span class="n">temp</span> <span class="k">if</span> <span class="n">h</span> <span class="o">==</span> <span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">]})</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">head</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                    <span class="n">temp</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">head</span><span class="p">))</span>
+                        
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="n">root_address</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">root_address</span><span class="p">]</span>
+        
+    <span class="k">def</span> <span class="nf">_word</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">filter</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">w</span> <span class="o">!=</span> <span class="s">&#39;,&#39;</span><span class="p">:</span> <span class="k">return</span> <span class="n">w</span>
+        <span class="k">return</span> <span class="n">w</span>
+
+    <span class="k">def</span> <span class="nf">_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Recursive function for turning dependency graphs into</span>
+<span class="sd">        NLTK trees.</span>
+<span class="sd">        @type i: C{int} </span>
+<span class="sd">        @param i: index of a node in C{nodelist}</span>
+<span class="sd">        @return: either a word (if the indexed node </span>
+<span class="sd">        is a leaf) or a L{Tree}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span>
+        <span class="n">deps</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">deps</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">word</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tree</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">deps</span><span class="p">])</span>
+
+
+<div class="viewcode-block" id="DependencyGraph.tree"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.tree">[docs]</a>    <span class="k">def</span> <span class="nf">tree</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Starting with the C{root} node, build a dependency tree using the NLTK </span>
+<span class="sd">        L{Tree} constructor. Dependency labels are omitted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span>
+        <span class="n">deps</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tree</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">deps</span><span class="p">])</span>
+</div>
+    <span class="k">def</span> <span class="nf">_hd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="s">&#39;head&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_rel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="s">&#39;rel&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>  
+
+    <span class="c"># what&#39;s the return type?  Boolean or list?</span>
+<div class="viewcode-block" id="DependencyGraph.contains_cycle"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.contains_cycle">[docs]</a>    <span class="k">def</span> <span class="nf">contains_cycle</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">distances</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">dep</span> <span class="ow">in</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]:</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">],</span> <span class="n">dep</span><span class="p">])</span> <span class="c">#&#39;%d -&gt; %d&#39; % (node[&#39;address&#39;], dep)</span>
+                <span class="n">distances</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">window</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)):</span>
+            <span class="n">new_entries</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">pair1</span> <span class="ow">in</span> <span class="n">distances</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">pair2</span> <span class="ow">in</span> <span class="n">distances</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">pair1</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">pair2</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                        <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">pair1</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pair2</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+                        <span class="n">new_entries</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">distances</span><span class="p">[</span><span class="n">pair1</span><span class="p">]</span> <span class="o">+</span> <span class="n">distances</span><span class="p">[</span><span class="n">pair2</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">new_entries</span><span class="p">:</span>
+                <span class="n">distances</span><span class="p">[</span><span class="n">pair</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_entries</span><span class="p">[</span><span class="n">pair</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">pair</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="k">print</span> <span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_cycle_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">pair</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="c">#self.nodelist[pair[0]], pair[0])</span>
+                    <span class="k">return</span> <span class="n">path</span>
+        <span class="k">return</span> <span class="bp">False</span>  <span class="c"># return []?</span>
+        
+</div>
+<div class="viewcode-block" id="DependencyGraph.get_cycle_path"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.get_cycle_path">[docs]</a>    <span class="k">def</span> <span class="nf">get_cycle_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">curr_node</span><span class="p">,</span> <span class="n">goal_node_index</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">dep</span> <span class="ow">in</span> <span class="n">curr_node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">dep</span> <span class="o">==</span> <span class="n">goal_node_index</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">curr_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]]</span>
+        <span class="k">for</span> <span class="n">dep</span> <span class="ow">in</span> <span class="n">curr_node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_cycle_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">dep</span><span class="p">),</span> <span class="n">goal_node_index</span><span class="p">)</span><span class="c">#self.nodelist[dep], goal_node_index)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">curr_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">])</span>
+                <span class="k">return</span> <span class="n">path</span>
+        <span class="k">return</span> <span class="p">[]</span> 
+                </div>
+<div class="viewcode-block" id="DependencyGraph.to_conll"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.DependencyGraph.to_conll">[docs]</a>    <span class="k">def</span> <span class="nf">to_conll</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The dependency graph in CoNLL format.</span>
+<span class="sd">        </span>
+<span class="sd">        @param style: the style to use for the format (3, 4, 10 columns)</span>
+<span class="sd">        @type style: C{int}</span>
+<span class="sd">        @rtype: C{str}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">node</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+            <span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">rel</span> <span class="o">=</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;head&#39;</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s">&#39;rel&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">style</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">style</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">rel</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">style</span> <span class="o">==</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="s">_</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="s">_</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="s">_</span><span class="se">\t</span><span class="s">_</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">rel</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Number of tab-delimited fields (</span><span class="si">%d</span><span class="s">) not supported by CoNLL(10) or Malt-Tab(4) format&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">style</span><span class="p">))</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="nx_graph"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.nx_graph">[docs]</a><span class="k">def</span> <span class="nf">nx_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert the data in a C{nodelist} into a networkx </span>
+<span class="sd">    labeled directed graph.</span>
+<span class="sd">    @rtype: C{XDigraph}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">nx_nodelist</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">))</span>
+    <span class="n">nx_edgelist</span> <span class="o">=</span> <span class="p">[(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hd</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rel</span><span class="p">(</span><span class="n">n</span><span class="p">))</span> 
+                        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">nx_nodelist</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hd</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">nx_labels</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">nx_nodelist</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nx_labels</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="s">&#39;word&#39;</span><span class="p">]</span>
+
+    <span class="n">g</span> <span class="o">=</span> <span class="n">NX</span><span class="o">.</span><span class="n">XDiGraph</span><span class="p">()</span>
+    <span class="n">g</span><span class="o">.</span><span class="n">add_nodes_from</span><span class="p">(</span><span class="n">nx_nodelist</span><span class="p">)</span>
+    <span class="n">g</span><span class="o">.</span><span class="n">add_edges_from</span><span class="p">(</span><span class="n">nx_edgelist</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">g</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="n">malt_demo</span><span class="p">()</span>
+    <span class="n">conll_demo</span><span class="p">()</span>
+    <span class="n">conll_file_demo</span><span class="p">()</span>
+    <span class="n">cycle_finding_demo</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="malt_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.malt_demo">[docs]</a><span class="k">def</span> <span class="nf">malt_demo</span><span class="p">(</span><span class="n">nx</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration of the result of reading a dependency</span>
+<span class="sd">    version of the first sentence of the Penn Treebank.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="s">&quot;&quot;&quot;Pierre  NNP     2       NMOD</span>
+<span class="s">Vinken  NNP     8       SUB</span>
+<span class="s">,       ,       2       P</span>
+<span class="s">61      CD      5       NMOD</span>
+<span class="s">years   NNS     6       AMOD</span>
+<span class="s">old     JJ      2       NMOD</span>
+<span class="s">,       ,       2       P</span>
+<span class="s">will    MD      0       ROOT</span>
+<span class="s">join    VB      8       VC</span>
+<span class="s">the     DT      11      NMOD</span>
+<span class="s">board   NN      9       OBJ</span>
+<span class="s">as      IN      9       VMOD</span>
+<span class="s">a       DT      15      NMOD</span>
+<span class="s">nonexecutive    JJ      15      NMOD</span>
+<span class="s">director        NN      12      PMOD</span>
+<span class="s">Nov.    NNP     9       VMOD</span>
+<span class="s">29      CD      16      NMOD</span>
+<span class="s">.       .       9       VMOD</span>
+<span class="s">&quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="n">dg</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">tree</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">nx</span><span class="p">:</span>
+        <span class="c">#currently doesn&#39;t work</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">networkx</span> <span class="kn">as</span> <span class="nn">NX</span>
+            <span class="kn">import</span> <span class="nn">pylab</span> <span class="kn">as</span> <span class="nn">P</span>
+        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+            <span class="k">raise</span>
+            <span class="n">g</span> <span class="o">=</span> <span class="n">dg</span><span class="o">.</span><span class="n">nx_graph</span><span class="p">()</span>
+        <span class="n">g</span><span class="o">.</span><span class="n">info</span><span class="p">()</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">NX</span><span class="o">.</span><span class="n">spring_layout</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">NX</span><span class="o">.</span><span class="n">draw_networkx_nodes</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">node_size</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+        <span class="c">#NX.draw_networkx_edges(g, pos, edge_color=&#39;k&#39;, width=8)</span>
+        <span class="n">NX</span><span class="o">.</span><span class="n">draw_networkx_labels</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">dg</span><span class="o">.</span><span class="n">nx_labels</span><span class="p">)</span>
+        <span class="n">P</span><span class="o">.</span><span class="n">xticks</span><span class="p">([])</span>
+        <span class="n">P</span><span class="o">.</span><span class="n">yticks</span><span class="p">([])</span>
+        <span class="n">P</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s">&#39;tree.png&#39;</span><span class="p">)</span>
+        <span class="n">P</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+</div>
+<div class="viewcode-block" id="conll_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.conll_demo">[docs]</a><span class="k">def</span> <span class="nf">conll_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration of how to read a string representation of </span>
+<span class="sd">    a CoNLL format dependency tree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="n">conll_data1</span><span class="p">)</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="n">dg</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">tree</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">dg</span>
+    <span class="k">print</span> <span class="n">dg</span><span class="o">.</span><span class="n">to_conll</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="conll_file_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.conll_file_demo">[docs]</a><span class="k">def</span> <span class="nf">conll_file_demo</span><span class="p">():</span>
+    <span class="k">print</span> <span class="s">&#39;Mass conll_read demo...&#39;</span>
+    <span class="n">graphs</span> <span class="o">=</span> <span class="p">[</span><span class="n">DependencyGraph</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+              <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conll_data2</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">entry</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">graph</span> <span class="ow">in</span> <span class="n">graphs</span><span class="p">:</span>
+        <span class="n">tree</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span>
+        <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">tree</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="cycle_finding_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.dependencygraph.cycle_finding_demo">[docs]</a><span class="k">def</span> <span class="nf">cycle_finding_demo</span><span class="p">():</span>
+    <span class="n">dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="n">treebank_data</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">dg</span><span class="o">.</span><span class="n">contains_cycle</span><span class="p">()</span>
+    <span class="n">cyclic_dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
+    <span class="n">top</span> <span class="o">=</span>    <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[</span><span class="mi">1</span><span class="p">],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;TOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>   
+    <span class="n">child1</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[</span><span class="mi">2</span><span class="p">],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+    <span class="n">child2</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[</span><span class="mi">4</span><span class="p">],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+    <span class="n">child3</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[</span><span class="mi">1</span><span class="p">],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+    <span class="n">child4</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[</span><span class="mi">3</span><span class="p">],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="mi">4</span><span class="p">}</span>
+    <span class="n">cyclic_dg</span><span class="o">.</span><span class="n">nodelist</span> <span class="o">=</span> <span class="p">[</span><span class="n">top</span><span class="p">,</span> <span class="n">child1</span><span class="p">,</span> <span class="n">child2</span><span class="p">,</span> <span class="n">child3</span><span class="p">,</span> <span class="n">child4</span><span class="p">]</span>
+    <span class="n">cyclic_dg</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">top</span>
+    <span class="k">print</span> <span class="n">cyclic_dg</span><span class="o">.</span><span class="n">contains_cycle</span><span class="p">()</span>
+</div>
+<span class="n">treebank_data</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;Pierre  NNP     2       NMOD</span>
+<span class="s">Vinken  NNP     8       SUB</span>
+<span class="s">,       ,       2       P</span>
+<span class="s">61      CD      5       NMOD</span>
+<span class="s">years   NNS     6       AMOD</span>
+<span class="s">old     JJ      2       NMOD</span>
+<span class="s">,       ,       2       P</span>
+<span class="s">will    MD      0       ROOT</span>
+<span class="s">join    VB      8       VC</span>
+<span class="s">the     DT      11      NMOD</span>
+<span class="s">board   NN      9       OBJ</span>
+<span class="s">as      IN      9       VMOD</span>
+<span class="s">a       DT      15      NMOD</span>
+<span class="s">nonexecutive    JJ      15      NMOD</span>
+<span class="s">director        NN      12      PMOD</span>
+<span class="s">Nov.    NNP     9       VMOD</span>
+<span class="s">29      CD      16      NMOD</span>
+<span class="s">.       .       9       VMOD</span>
+<span class="s">&quot;&quot;&quot;</span>
+
+<span class="n">conll_data1</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;</span>
+<span class="s">1   Ze                ze                Pron  Pron  per|3|evofmv|nom                 2   su      _  _</span>
+<span class="s">2   had               heb               V     V     trans|ovt|1of2of3|ev             0   ROOT    _  _</span>
+<span class="s">3   met               met               Prep  Prep  voor                             8   mod     _  _</span>
+<span class="s">4   haar              haar              Pron  Pron  bez|3|ev|neut|attr               5   det     _  _</span>
+<span class="s">5   moeder            moeder            N     N     soort|ev|neut                    3   obj1    _  _</span>
+<span class="s">6   kunnen            kan               V     V     hulp|ott|1of2of3|mv              2   vc      _  _</span>
+<span class="s">7   gaan              ga                V     V     hulp|inf                         6   vc      _  _</span>
+<span class="s">8   winkelen          winkel            V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">9   ,                 ,                 Punc  Punc  komma                            8   punct   _  _</span>
+<span class="s">10  zwemmen           zwem              V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">11  of                of                Conj  Conj  neven                            7   vc      _  _</span>
+<span class="s">12  terrassen         terras            N     N     soort|mv|neut                    11  cnj     _  _</span>
+<span class="s">13  .                 .                 Punc  Punc  punt                             12  punct   _  _</span>
+<span class="s">&quot;&quot;&quot;</span>
+
+<span class="n">conll_data2</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;1   Cathy             Cathy             N     N     eigen|ev|neut                    2   su      _  _</span>
+<span class="s">2   zag               zie               V     V     trans|ovt|1of2of3|ev             0   ROOT    _  _</span>
+<span class="s">3   hen               hen               Pron  Pron  per|3|mv|datofacc                2   obj1    _  _</span>
+<span class="s">4   wild              wild              Adj   Adj   attr|stell|onverv                5   mod     _  _</span>
+<span class="s">5   zwaaien           zwaai             N     N     soort|mv|neut                    2   vc      _  _</span>
+<span class="s">6   .                 .                 Punc  Punc  punt                             5   punct   _  _</span>
+
+<span class="s">1   Ze                ze                Pron  Pron  per|3|evofmv|nom                 2   su      _  _</span>
+<span class="s">2   had               heb               V     V     trans|ovt|1of2of3|ev             0   ROOT    _  _</span>
+<span class="s">3   met               met               Prep  Prep  voor                             8   mod     _  _</span>
+<span class="s">4   haar              haar              Pron  Pron  bez|3|ev|neut|attr               5   det     _  _</span>
+<span class="s">5   moeder            moeder            N     N     soort|ev|neut                    3   obj1    _  _</span>
+<span class="s">6   kunnen            kan               V     V     hulp|ott|1of2of3|mv              2   vc      _  _</span>
+<span class="s">7   gaan              ga                V     V     hulp|inf                         6   vc      _  _</span>
+<span class="s">8   winkelen          winkel            V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">9   ,                 ,                 Punc  Punc  komma                            8   punct   _  _</span>
+<span class="s">10  zwemmen           zwem              V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">11  of                of                Conj  Conj  neven                            7   vc      _  _</span>
+<span class="s">12  terrassen         terras            N     N     soort|mv|neut                    11  cnj     _  _</span>
+<span class="s">13  .                 .                 Punc  Punc  punt                             12  punct   _  _</span>
+
+<span class="s">1   Dat               dat               Pron  Pron  aanw|neut|attr                   2   det     _  _</span>
+<span class="s">2   werkwoord         werkwoord         N     N     soort|ev|neut                    6   obj1    _  _</span>
+<span class="s">3   had               heb               V     V     hulp|ovt|1of2of3|ev              0   ROOT    _  _</span>
+<span class="s">4   ze                ze                Pron  Pron  per|3|evofmv|nom                 6   su      _  _</span>
+<span class="s">5   zelf              zelf              Pron  Pron  aanw|neut|attr|wzelf             3   predm   _  _</span>
+<span class="s">6   uitgevonden       vind              V     V     trans|verldw|onverv              3   vc      _  _</span>
+<span class="s">7   .                 .                 Punc  Punc  punt                             6   punct   _  _</span>
+
+<span class="s">1   Het               het               Pron  Pron  onbep|neut|zelfst                2   su      _  _</span>
+<span class="s">2   hoorde            hoor              V     V     trans|ovt|1of2of3|ev             0   ROOT    _  _</span>
+<span class="s">3   bij               bij               Prep  Prep  voor                             2   ld      _  _</span>
+<span class="s">4   de                de                Art   Art   bep|zijdofmv|neut                6   det     _  _</span>
+<span class="s">5   warme             warm              Adj   Adj   attr|stell|vervneut              6   mod     _  _</span>
+<span class="s">6   zomerdag          zomerdag          N     N     soort|ev|neut                    3   obj1    _  _</span>
+<span class="s">7   die               die               Pron  Pron  betr|neut|zelfst                 6   mod     _  _</span>
+<span class="s">8   ze                ze                Pron  Pron  per|3|evofmv|nom                 12  su      _  _</span>
+<span class="s">9   ginds             ginds             Adv   Adv   gew|aanw                         12  mod     _  _</span>
+<span class="s">10  achter            achter            Adv   Adv   gew|geenfunc|stell|onverv        12  svp     _  _</span>
+<span class="s">11  had               heb               V     V     hulp|ovt|1of2of3|ev              7   body    _  _</span>
+<span class="s">12  gelaten           laat              V     V     trans|verldw|onverv              11  vc      _  _</span>
+<span class="s">13  .                 .                 Punc  Punc  punt                             12  punct   _  _</span>
+
+<span class="s">1   Ze                ze                Pron  Pron  per|3|evofmv|nom                 2   su      _  _</span>
+<span class="s">2   hadden            heb               V     V     trans|ovt|1of2of3|mv             0   ROOT    _  _</span>
+<span class="s">3   languit           languit           Adv   Adv   gew|geenfunc|stell|onverv        11  mod     _  _</span>
+<span class="s">4   naast             naast             Prep  Prep  voor                             11  mod     _  _</span>
+<span class="s">5   elkaar            elkaar            Pron  Pron  rec|neut                         4   obj1    _  _</span>
+<span class="s">6   op                op                Prep  Prep  voor                             11  ld      _  _</span>
+<span class="s">7   de                de                Art   Art   bep|zijdofmv|neut                8   det     _  _</span>
+<span class="s">8   strandstoelen     strandstoel       N     N     soort|mv|neut                    6   obj1    _  _</span>
+<span class="s">9   kunnen            kan               V     V     hulp|inf                         2   vc      _  _</span>
+<span class="s">10  gaan              ga                V     V     hulp|inf                         9   vc      _  _</span>
+<span class="s">11  liggen            lig               V     V     intrans|inf                      10  vc      _  _</span>
+<span class="s">12  .                 .                 Punc  Punc  punt                             11  punct   _  _</span>
+
+<span class="s">1   Zij               zij               Pron  Pron  per|3|evofmv|nom                 2   su      _  _</span>
+<span class="s">2   zou               zal               V     V     hulp|ovt|1of2of3|ev              7   cnj     _  _</span>
+<span class="s">3   mams              mams              N     N     soort|ev|neut                    4   det     _  _</span>
+<span class="s">4   rug               rug               N     N     soort|ev|neut                    5   obj1    _  _</span>
+<span class="s">5   ingewreven        wrijf             V     V     trans|verldw|onverv              6   vc      _  _</span>
+<span class="s">6   hebben            heb               V     V     hulp|inf                         2   vc      _  _</span>
+<span class="s">7   en                en                Conj  Conj  neven                            0   ROOT    _  _</span>
+<span class="s">8   mam               mam               V     V     trans|ovt|1of2of3|ev             7   cnj     _  _</span>
+<span class="s">9   de                de                Art   Art   bep|zijdofmv|neut                10  det     _  _</span>
+<span class="s">10  hare              hare              Pron  Pron  bez|3|ev|neut|attr               8   obj1    _  _</span>
+<span class="s">11  .                 .                 Punc  Punc  punt                             10  punct   _  _</span>
+
+<span class="s">1   Of                of                Conj  Conj  onder|metfin                     0   ROOT    _  _</span>
+<span class="s">2   ze                ze                Pron  Pron  per|3|evofmv|nom                 3   su      _  _</span>
+<span class="s">3   had               heb               V     V     hulp|ovt|1of2of3|ev              0   ROOT    _  _</span>
+<span class="s">4   gewoon            gewoon            Adj   Adj   adv|stell|onverv                 10  mod     _  _</span>
+<span class="s">5   met               met               Prep  Prep  voor                             10  mod     _  _</span>
+<span class="s">6   haar              haar              Pron  Pron  bez|3|ev|neut|attr               7   det     _  _</span>
+<span class="s">7   vriendinnen       vriendin          N     N     soort|mv|neut                    5   obj1    _  _</span>
+<span class="s">8   rond              rond              Adv   Adv   deelv                            10  svp     _  _</span>
+<span class="s">9   kunnen            kan               V     V     hulp|inf                         3   vc      _  _</span>
+<span class="s">10  slenteren         slenter           V     V     intrans|inf                      9   vc      _  _</span>
+<span class="s">11  in                in                Prep  Prep  voor                             10  mod     _  _</span>
+<span class="s">12  de                de                Art   Art   bep|zijdofmv|neut                13  det     _  _</span>
+<span class="s">13  buurt             buurt             N     N     soort|ev|neut                    11  obj1    _  _</span>
+<span class="s">14  van               van               Prep  Prep  voor                             13  mod     _  _</span>
+<span class="s">15  Trafalgar_Square  Trafalgar_Square  MWU   N_N   eigen|ev|neut_eigen|ev|neut      14  obj1    _  _</span>
+<span class="s">16  .                 .                 Punc  Punc  punt                             15  punct   _  _</span>
+<span class="s">&quot;&quot;&quot;</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" >nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

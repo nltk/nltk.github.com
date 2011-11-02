@@ -1,0 +1,462 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.sem.hole &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.sem" href="../sem.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" accesskey="U">nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.sem.hole</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Logic</span>
+<span class="c">#</span>
+<span class="c"># Author:     Peter Wang</span>
+<span class="c"># Updated by: Dan Garrette &lt;dhgarrette@gmail.com&gt;</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># URL: &lt;http://www.nltk.org&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">from</span> <span class="nn">nltk.parse</span> <span class="kn">import</span> <span class="n">load_parser</span>
+<span class="kn">from</span> <span class="nn">nltk.draw.tree</span> <span class="kn">import</span> <span class="n">draw_trees</span>
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">skolemize</span>
+<span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">logic</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">An implementation of the Hole Semantics model, following Blackburn and Bos,</span>
+<span class="sd">Representation and Inference for Natural Language (CSLI, 2005).</span>
+
+<span class="sd">The semantic representations are built by the grammar hole.fcfg.</span>
+<span class="sd">This module contains driver code to read in sentences and parse them</span>
+<span class="sd">according to a hole semantics grammar.</span>
+
+<span class="sd">After parsing, the semantic representation is in the form of an underspecified</span>
+<span class="sd">representation that is not easy to read.  We use a &quot;plugging&quot; algorithm to</span>
+<span class="sd">convert that representation into first-order logic formulas.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c"># Note that in this code there may be multiple types of trees being referred to:</span>
+<span class="c">#</span>
+<span class="c"># 1. parse trees</span>
+<span class="c"># 2. the underspecified representation</span>
+<span class="c"># 3. first-order logic formula trees</span>
+<span class="c"># 4. the search space when plugging (search tree)</span>
+<span class="c">#</span>
+
+<div class="viewcode-block" id="Constants"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.Constants">[docs]</a><span class="k">class</span> <span class="nc">Constants</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="n">ALL</span> <span class="o">=</span> <span class="s">&#39;ALL&#39;</span>
+    <span class="n">EXISTS</span> <span class="o">=</span> <span class="s">&#39;EXISTS&#39;</span>
+    <span class="n">NOT</span> <span class="o">=</span> <span class="s">&#39;NOT&#39;</span>
+    <span class="n">AND</span> <span class="o">=</span> <span class="s">&#39;AND&#39;</span>
+    <span class="n">OR</span> <span class="o">=</span> <span class="s">&#39;OR&#39;</span>
+    <span class="n">IMP</span> <span class="o">=</span> <span class="s">&#39;IMP&#39;</span>
+    <span class="n">IFF</span> <span class="o">=</span> <span class="s">&#39;IFF&#39;</span>
+    <span class="n">PRED</span> <span class="o">=</span> <span class="s">&#39;PRED&#39;</span>
+    <span class="n">LEQ</span> <span class="o">=</span> <span class="s">&#39;LEQ&#39;</span>
+    <span class="n">HOLE</span> <span class="o">=</span> <span class="s">&#39;HOLE&#39;</span>
+    <span class="n">LABEL</span> <span class="o">=</span> <span class="s">&#39;LABEL&#39;</span>
+
+    <span class="n">MAP</span> <span class="o">=</span> <span class="p">{</span><span class="n">ALL</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span><span class="n">e</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">AllExpression</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">e</span><span class="p">),</span>
+           <span class="n">EXISTS</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span><span class="n">e</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">ExistsExpression</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">e</span><span class="p">),</span>
+           <span class="n">NOT</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">NegatedExpression</span><span class="p">,</span>
+           <span class="n">AND</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">AndExpression</span><span class="p">,</span>
+           <span class="n">OR</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">OrExpression</span><span class="p">,</span>
+           <span class="n">IMP</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">ImpExpression</span><span class="p">,</span>
+           <span class="n">IFF</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">IffExpression</span><span class="p">,</span>
+           <span class="n">PRED</span><span class="p">:</span> <span class="n">logic</span><span class="o">.</span><span class="n">ApplicationExpression</span><span class="p">}</span>
+</div>
+<div class="viewcode-block" id="HoleSemantics"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.HoleSemantics">[docs]</a><span class="k">class</span> <span class="nc">HoleSemantics</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This class holds the broken-down components of a hole semantics, i.e. it</span>
+<span class="sd">    extracts the holes, labels, logic formula fragments and constraints out of</span>
+<span class="sd">    a big conjunction of such as produced by the hole semantics grammar.  It</span>
+<span class="sd">    then provides some operations on the semantics dealing with holes, labels</span>
+<span class="sd">    and finding legal ways to plug holes with labels.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">usr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Constructor.  `usr&#39; is a C{logic.sem.Expression} representing an </span>
+<span class="sd">        Underspecified Representation Structure (USR).  A USR has the following</span>
+<span class="sd">        special predicates:</span>
+<span class="sd">        ALL(l,v,n),</span>
+<span class="sd">        EXISTS(l,v,n),</span>
+<span class="sd">        AND(l,n,n),</span>
+<span class="sd">        OR(l,n,n),</span>
+<span class="sd">        IMP(l,n,n),</span>
+<span class="sd">        IFF(l,n,n),</span>
+<span class="sd">        PRED(l,v,n,v[,v]*) where the brackets and star indicate zero or more repetitions,</span>
+<span class="sd">        LEQ(n,n),</span>
+<span class="sd">        HOLE(n),</span>
+<span class="sd">        LABEL(n)</span>
+<span class="sd">        where l is the label of the node described by the predicate, n is either</span>
+<span class="sd">        a label or a hole, and v is a variable.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">holes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span> <span class="o">=</span> <span class="p">{}</span>     <span class="c"># mapping of label -&gt; formula fragment</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span> <span class="c"># set of Constraints</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_break_down</span><span class="p">(</span><span class="n">usr</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">top_most_labels</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_top_most_labels</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">top_hole</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_top_hole</span><span class="p">()</span>
+
+<div class="viewcode-block" id="HoleSemantics.is_node"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.HoleSemantics.is_node">[docs]</a>    <span class="k">def</span> <span class="nf">is_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return true if x is a node (label or hole) in this semantic</span>
+<span class="sd">        representation.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">labels</span> <span class="o">|</span> <span class="bp">self</span><span class="o">.</span><span class="n">holes</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_break_down</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">usr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Extract holes, labels, formula fragments and constraints from the hole</span>
+<span class="sd">        semantics underspecified representation (USR).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">usr</span><span class="p">,</span> <span class="n">logic</span><span class="o">.</span><span class="n">AndExpression</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_break_down</span><span class="p">(</span><span class="n">usr</span><span class="o">.</span><span class="n">first</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_break_down</span><span class="p">(</span><span class="n">usr</span><span class="o">.</span><span class="n">second</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">usr</span><span class="p">,</span> <span class="n">logic</span><span class="o">.</span><span class="n">ApplicationExpression</span><span class="p">):</span>
+            <span class="n">func</span><span class="p">,</span> <span class="n">args</span> <span class="o">=</span> <span class="n">usr</span><span class="o">.</span><span class="n">uncurry</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">func</span><span class="o">.</span><span class="n">variable</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">Constants</span><span class="o">.</span><span class="n">LEQ</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Constraint</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="k">elif</span> <span class="n">func</span><span class="o">.</span><span class="n">variable</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">Constants</span><span class="o">.</span><span class="n">HOLE</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">holes</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="n">func</span><span class="o">.</span><span class="n">variable</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">Constants</span><span class="o">.</span><span class="n">LABEL</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">labels</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">label</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">usr</span><span class="o">.</span><span class="n">node</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_find_top_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_list</span><span class="p">):</span>
+        <span class="n">top_nodes</span> <span class="o">=</span> <span class="n">node_list</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="o">.</span><span class="n">itervalues</span><span class="p">():</span>
+            <span class="c">#the label is the first argument of the predicate</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="n">f</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">node_list</span><span class="p">:</span>
+                    <span class="n">top_nodes</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">top_nodes</span>
+
+    <span class="k">def</span> <span class="nf">_find_top_most_labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the set of labels which are not referenced directly as part of</span>
+<span class="sd">        another formula fragment.  These will be the top-most labels for the</span>
+<span class="sd">        subtree that they are part of.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_top_nodes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">labels</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_find_top_hole</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the hole that will be the top of the formula tree.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">top_holes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_top_nodes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">holes</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">top_holes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>   <span class="c"># it must be unique</span>
+        <span class="k">return</span> <span class="n">top_holes</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+<div class="viewcode-block" id="HoleSemantics.pluggings"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.HoleSemantics.pluggings">[docs]</a>    <span class="k">def</span> <span class="nf">pluggings</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate and return all the legal pluggings (mappings of labels to</span>
+<span class="sd">        holes) of this semantics given the constraints.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_plug_nodes</span><span class="p">([(</span><span class="bp">self</span><span class="o">.</span><span class="n">top_hole</span><span class="p">,</span> <span class="p">[])],</span> <span class="bp">self</span><span class="o">.</span><span class="n">top_most_labels</span><span class="p">,</span> <span class="p">{},</span> <span class="n">record</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">record</span>
+</div>
+    <span class="k">def</span> <span class="nf">_plug_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">queue</span><span class="p">,</span> <span class="n">potential_labels</span><span class="p">,</span> <span class="n">plug_acc</span><span class="p">,</span> <span class="n">record</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plug the nodes in `queue&#39; with the labels in `potential_labels&#39;.</span>
+
+<span class="sd">        Each element of `queue&#39; is a tuple of the node to plug and the list of</span>
+<span class="sd">        ancestor holes from the root of the graph to that node.</span>
+
+<span class="sd">        `potential_labels&#39; is a set of the labels which are still available for</span>
+<span class="sd">        plugging.</span>
+
+<span class="sd">        `plug_acc&#39; is the incomplete mapping of holes to labels made on the</span>
+<span class="sd">        current branch of the search tree so far.</span>
+
+<span class="sd">        `record&#39; is a list of all the complete pluggings that we have found in</span>
+<span class="sd">        total so far.  It is the only parameter that is destructively updated.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">queue</span> <span class="o">!=</span> <span class="p">[]:</span>
+            <span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">)</span> <span class="o">=</span> <span class="n">queue</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">holes</span><span class="p">:</span>
+                <span class="c"># The node is a hole, try to plug it.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_plug_hole</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">,</span> <span class="n">queue</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">potential_labels</span><span class="p">,</span> <span class="n">plug_acc</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">labels</span>
+                <span class="c"># The node is a label.  Replace it in the queue by the holes and</span>
+                <span class="c"># labels in the formula fragment named by that label.</span>
+                <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="p">[</span><span class="n">node</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">head</span> <span class="o">=</span> <span class="p">[(</span><span class="n">a</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">args</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_node</span><span class="p">(</span><span class="n">a</span><span class="p">)]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_plug_nodes</span><span class="p">(</span><span class="n">head</span> <span class="o">+</span> <span class="n">queue</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">potential_labels</span><span class="p">,</span> <span class="n">plug_acc</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;queue empty&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_plug_hole</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hole</span><span class="p">,</span> <span class="n">ancestors0</span><span class="p">,</span> <span class="n">queue</span><span class="p">,</span> <span class="n">potential_labels0</span><span class="p">,</span>
+                   <span class="n">plug_acc0</span><span class="p">,</span> <span class="n">record</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Try all possible ways of plugging a single hole.</span>
+<span class="sd">        See _plug_nodes for the meanings of the parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Add the current hole we&#39;re trying to plug into the list of ancestors.</span>
+        <span class="k">assert</span> <span class="n">hole</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ancestors0</span>
+        <span class="n">ancestors</span> <span class="o">=</span> <span class="p">[</span><span class="n">hole</span><span class="p">]</span> <span class="o">+</span> <span class="n">ancestors0</span>
+
+        <span class="c"># Try each potential label in this hole in turn.</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">potential_labels0</span><span class="p">:</span>
+            <span class="c"># Is the label valid in this hole?</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_violates_constraints</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">):</span>
+                <span class="k">continue</span>
+
+            <span class="n">plug_acc</span> <span class="o">=</span> <span class="n">plug_acc0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">plug_acc</span><span class="p">[</span><span class="n">hole</span><span class="p">]</span> <span class="o">=</span> <span class="n">l</span>
+            <span class="n">potential_labels</span> <span class="o">=</span> <span class="n">potential_labels0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">potential_labels</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">potential_labels</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c"># No more potential labels.  That must mean all the holes have</span>
+                <span class="c"># been filled so we have found a legal plugging so remember it.</span>
+                <span class="c">#</span>
+                <span class="c"># Note that the queue might not be empty because there might</span>
+                <span class="c"># be labels on there that point to formula fragments with</span>
+                <span class="c"># no holes in them.  _sanity_check_plugging will make sure</span>
+                <span class="c"># all holes are filled.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sanity_check_plugging</span><span class="p">(</span><span class="n">plug_acc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">top_hole</span><span class="p">,</span> <span class="p">[])</span>
+                <span class="n">record</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">plug_acc</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># Recursively try to fill in the rest of the holes in the</span>
+                <span class="c"># queue.  The label we just plugged into the hole could have</span>
+                <span class="c"># holes of its own so at the end of the queue.  Putting it on</span>
+                <span class="c"># the end of the queue gives us a breadth-first search, so that</span>
+                <span class="c"># all the holes at level i of the formula tree are filled</span>
+                <span class="c"># before filling level i+1.</span>
+                <span class="c"># A depth-first search would work as well since the trees must</span>
+                <span class="c"># be finite but the bookkeeping would be harder.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_plug_nodes</span><span class="p">(</span><span class="n">queue</span> <span class="o">+</span> <span class="p">[(</span><span class="n">l</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">)],</span> <span class="n">potential_labels</span><span class="p">,</span> <span class="n">plug_acc</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_violates_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the `label&#39; cannot be placed underneath the holes given</span>
+<span class="sd">        by the set `ancestors&#39; because it would violate the constraints imposed</span>
+<span class="sd">        on it.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">lhs</span> <span class="o">==</span> <span class="n">label</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">rhs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ancestors</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">_sanity_check_plugging</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugging</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">ancestors</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Make sure that a given plugging is legal.  We recursively go through</span>
+<span class="sd">        each node and make sure that no constraints are violated.</span>
+<span class="sd">        We also check that all holes have been filled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">holes</span><span class="p">:</span>
+            <span class="n">ancestors</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="p">]</span> <span class="o">+</span> <span class="n">ancestors</span>
+            <span class="n">label</span> <span class="o">=</span> <span class="n">plugging</span><span class="p">[</span><span class="n">node</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">label</span> <span class="o">=</span> <span class="n">node</span>
+        <span class="k">assert</span> <span class="n">label</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">labels</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">constraints</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">lhs</span> <span class="o">==</span> <span class="n">label</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">c</span><span class="o">.</span><span class="n">rhs</span> <span class="ow">in</span> <span class="n">ancestors</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_node</span><span class="p">(</span><span class="n">arg</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sanity_check_plugging</span><span class="p">(</span><span class="n">plugging</span><span class="p">,</span> <span class="n">arg</span><span class="p">,</span> <span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">+</span> <span class="n">ancestors</span><span class="p">)</span>
+
+<div class="viewcode-block" id="HoleSemantics.formula_tree"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.HoleSemantics.formula_tree">[docs]</a>    <span class="k">def</span> <span class="nf">formula_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugging</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the first-order logic formula tree for this underspecified</span>
+<span class="sd">        representation using the plugging given.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_formula_tree</span><span class="p">(</span><span class="n">plugging</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">top_hole</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_formula_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugging</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">plugging</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_formula_tree</span><span class="p">(</span><span class="n">plugging</span><span class="p">,</span> <span class="n">plugging</span><span class="p">[</span><span class="n">node</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">node</span><span class="p">):</span>
+            <span class="n">pred</span><span class="p">,</span><span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span><span class="p">[</span><span class="n">node</span><span class="p">]</span>
+            <span class="n">children</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_formula_tree</span><span class="p">(</span><span class="n">plugging</span><span class="p">,</span> <span class="n">arg</span><span class="p">)</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">]</span>
+            <span class="k">return</span> <span class="nb">reduce</span><span class="p">(</span><span class="n">Constants</span><span class="o">.</span><span class="n">MAP</span><span class="p">[</span><span class="n">pred</span><span class="o">.</span><span class="n">variable</span><span class="o">.</span><span class="n">name</span><span class="p">],</span> <span class="n">children</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">node</span>
+
+</div>
+<div class="viewcode-block" id="Constraint"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.Constraint">[docs]</a><span class="k">class</span> <span class="nc">Constraint</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This class represents a constraint of the form (L =&lt; N),</span>
+<span class="sd">    where L is a label and N is a node (a label or a hole).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lhs</span> <span class="o">=</span> <span class="n">lhs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rhs</span> <span class="o">=</span> <span class="n">rhs</span>
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">__class__</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">lhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">lhs</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">rhs</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span> <span class="o">==</span> <span class="n">other</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(</span><span class="si">%s</span><span class="s"> &lt; </span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="hole_readings"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.hole.hole_readings">[docs]</a><span class="k">def</span> <span class="nf">hole_readings</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">grammar_filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">grammar_filename</span><span class="p">:</span>
+        <span class="n">grammar_filename</span> <span class="o">=</span> <span class="s">&#39;grammars/sample_grammars/hole.fcfg&#39;</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;Reading grammar file&#39;</span><span class="p">,</span> <span class="n">grammar_filename</span>
+    
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">load_parser</span><span class="p">(</span><span class="n">grammar_filename</span><span class="p">)</span>
+
+    <span class="c"># Parse the sentence.</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">sentence</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">trees</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">nbest_parse</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;Got </span><span class="si">%d</span><span class="s"> different parses&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">trees</span><span class="p">)</span>
+
+    <span class="n">all_readings</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">trees</span><span class="p">:</span>
+        <span class="c"># Get the semantic feature from the top of the parse tree.</span>
+        <span class="n">sem</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">node</span><span class="p">[</span><span class="s">&#39;SEM&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">simplify</span><span class="p">()</span>
+
+        <span class="c"># Print the raw semantic representation.</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;Raw:       &#39;</span><span class="p">,</span> <span class="n">sem</span>
+
+        <span class="c"># Skolemize away all quantifiers.  All variables become unique.</span>
+        <span class="k">while</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sem</span><span class="p">,</span> <span class="n">logic</span><span class="o">.</span><span class="n">LambdaExpression</span><span class="p">):</span>
+            <span class="n">sem</span> <span class="o">=</span> <span class="n">sem</span><span class="o">.</span><span class="n">term</span>
+        <span class="n">skolemized</span> <span class="o">=</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">sem</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;Skolemized:&#39;</span><span class="p">,</span> <span class="n">skolemized</span>
+
+        <span class="c"># Break the hole semantics representation down into its components</span>
+        <span class="c"># i.e. holes, labels, formula fragments and constraints.</span>
+        <span class="n">hole_sem</span> <span class="o">=</span> <span class="n">HoleSemantics</span><span class="p">(</span><span class="n">skolemized</span><span class="p">)</span>
+
+        <span class="c"># Maybe show the details of the semantic representation.</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Holes:       &#39;</span><span class="p">,</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">holes</span>
+            <span class="k">print</span> <span class="s">&#39;Labels:      &#39;</span><span class="p">,</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">labels</span>
+            <span class="k">print</span> <span class="s">&#39;Constraints: &#39;</span><span class="p">,</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">constraints</span>
+            <span class="k">print</span> <span class="s">&#39;Top hole:    &#39;</span><span class="p">,</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">top_hole</span>
+            <span class="k">print</span> <span class="s">&#39;Top labels:  &#39;</span><span class="p">,</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">top_most_labels</span>
+            <span class="k">print</span> <span class="s">&#39;Fragments:&#39;</span>
+            <span class="k">for</span> <span class="p">(</span><span class="n">l</span><span class="p">,</span><span class="n">f</span><span class="p">)</span> <span class="ow">in</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">fragments</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">print</span> <span class="s">&#39;</span><span class="se">\t</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+
+        <span class="c"># Find all the possible ways to plug the formulas together.</span>
+        <span class="n">pluggings</span> <span class="o">=</span> <span class="n">hole_sem</span><span class="o">.</span><span class="n">pluggings</span><span class="p">()</span>
+
+        <span class="c"># Build FOL formula trees using the pluggings.</span>
+        <span class="n">readings</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">hole_sem</span><span class="o">.</span><span class="n">formula_tree</span><span class="p">,</span> <span class="n">pluggings</span><span class="p">)</span>
+
+        <span class="c"># Print out the formulas in a textual format.</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span> 
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">r</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">readings</span><span class="p">):</span>
+                <span class="k">print</span>
+                <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s">. </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+            <span class="k">print</span>
+        
+        <span class="n">all_readings</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">readings</span><span class="p">)</span>
+        
+    <span class="k">return</span> <span class="n">all_readings</span>
+
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">hole_readings</span><span class="p">(</span><span class="s">&#39;a dog barks&#39;</span><span class="p">):</span> <span class="k">print</span> <span class="n">r</span>
+    <span class="k">print</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">hole_readings</span><span class="p">(</span><span class="s">&#39;every girl chases a dog&#39;</span><span class="p">):</span> <span class="k">print</span> <span class="n">r</span>
+    
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" >nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

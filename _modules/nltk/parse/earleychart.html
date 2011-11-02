@@ -1,0 +1,543 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.parse.earleychart &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.parse" href="../parse.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" accesskey="U">nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.parse.earleychart</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: An Incremental Earley Chart Parser</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Peter Ljunglöf &lt;peter.ljunglof@heatherleaf.se&gt;</span>
+<span class="c">#         Rob Speer &lt;rspeer@mit.edu&gt;</span>
+<span class="c">#         Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c">#         Jean Mark Gawron &lt;gawron@mail.sdsu.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+<span class="c"># $Id: chart.py 8144 2009-06-01 22:27:39Z edloper $</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Data classes and parser implementations for I{incremental} chart </span>
+<span class="sd">parsers, which use dynamic programming to efficiently parse a text.  </span>
+<span class="sd">A X{chart parser} derives parse trees for a text by iteratively adding </span>
+<span class="sd">\&quot;edges\&quot; to a \&quot;chart\&quot;.  Each X{edge} represents a hypothesis about the tree</span>
+<span class="sd">structure for a subsequence of the text.  The X{chart} is a</span>
+<span class="sd">\&quot;blackboard\&quot; for composing and combining these hypotheses.</span>
+
+<span class="sd">A parser is X{incremental}, if it guarantees that for all i, j where i &lt; j,</span>
+<span class="sd">all edges ending at i are built before any edges ending at j.    </span>
+<span class="sd">This is appealing for, say, speech recognizer hypothesis filtering.</span>
+
+<span class="sd">The main parser class is L{EarleyChartParser}, which is a top-down</span>
+<span class="sd">algorithm, originally formulated by Jay Earley (1970).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">chart</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">featurechart</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Incremental Chart</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+
+<div class="viewcode-block" id="IncrementalChart"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChart">[docs]</a><span class="k">class</span> <span class="nc">IncrementalChart</span><span class="p">(</span><span class="n">Chart</span><span class="p">):</span>
+<div class="viewcode-block" id="IncrementalChart.initialize"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChart.initialize">[docs]</a>    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># A sequence of edge lists contained in this chart.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions</span><span class="p">())</span>
+        
+        <span class="c"># The set of child pointer lists associated with each edge.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_edge_to_cpls</span> <span class="o">=</span> <span class="p">{}</span>
+        
+        <span class="c"># Indexes mapping attribute values to lists of edges </span>
+        <span class="c"># (used by select()).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span> <span class="o">=</span> <span class="p">{}</span>
+    </div>
+<div class="viewcode-block" id="IncrementalChart.edges"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChart.edges">[docs]</a>    <span class="k">def</span> <span class="nf">edges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iteredges</span><span class="p">())</span>
+    </div>
+<div class="viewcode-block" id="IncrementalChart.iteredges"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChart.iteredges">[docs]</a>    <span class="k">def</span> <span class="nf">iteredges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">edge</span> <span class="k">for</span> <span class="n">edgelist</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span> <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="n">edgelist</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="IncrementalChart.select"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChart.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="o">**</span><span class="n">restrictions</span><span class="p">):</span>
+        <span class="n">edgelist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span><span class="p">[</span><span class="n">end</span><span class="p">]</span>
+        
+        <span class="c"># If there are no restrictions, then return all edges.</span>
+        <span class="k">if</span> <span class="n">restrictions</span><span class="o">==</span><span class="p">{}:</span> <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="n">edgelist</span><span class="p">)</span>
+            
+        <span class="c"># Find the index corresponding to the given restrictions.</span>
+        <span class="n">restr_keys</span> <span class="o">=</span> <span class="n">restrictions</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="n">restr_keys</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+        <span class="n">restr_keys</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">restr_keys</span><span class="p">)</span>
+        
+        <span class="c"># If it doesn&#39;t exist, then create it.</span>
+        <span class="k">if</span> <span class="n">restr_keys</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_add_index</span><span class="p">(</span><span class="n">restr_keys</span><span class="p">)</span>
+                
+        <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">restrictions</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">[</span><span class="n">restr_keys</span><span class="p">][</span><span class="n">end</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[]))</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_add_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">restr_keys</span><span class="p">):</span>
+        <span class="c"># Make sure it&#39;s a valid index.</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">EdgeI</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Bad restriction: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">key</span>
+        
+        <span class="c"># Create the index.</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">[</span><span class="n">restr_keys</span><span class="p">]</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">({}</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions</span><span class="p">())</span>
+        
+        <span class="c"># Add all existing edges to the index.</span>
+        <span class="k">for</span> <span class="n">end</span><span class="p">,</span> <span class="n">edgelist</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span><span class="p">):</span>
+            <span class="n">this_index</span> <span class="o">=</span> <span class="n">index</span><span class="p">[</span><span class="n">end</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="n">edgelist</span><span class="p">:</span>
+                <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">key</span><span class="p">)()</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+                <span class="n">this_index</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_register_with_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">edge</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">restr_keys</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">key</span><span class="p">)()</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+            <span class="n">index</span><span class="p">[</span><span class="n">end</span><span class="p">]</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_append_edge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span><span class="p">[</span><span class="n">edge</span><span class="o">.</span><span class="n">end</span><span class="p">()]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">xrange</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>    
+
+</div>
+<div class="viewcode-block" id="FeatureIncrementalChart"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalChart">[docs]</a><span class="k">class</span> <span class="nc">FeatureIncrementalChart</span><span class="p">(</span><span class="n">IncrementalChart</span><span class="p">,</span> <span class="n">FeatureChart</span><span class="p">):</span>
+<div class="viewcode-block" id="FeatureIncrementalChart.select"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalChart.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="o">**</span><span class="n">restrictions</span><span class="p">):</span>
+        <span class="n">edgelist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span><span class="p">[</span><span class="n">end</span><span class="p">]</span>
+        
+        <span class="c"># If there are no restrictions, then return all edges.</span>
+        <span class="k">if</span> <span class="n">restrictions</span><span class="o">==</span><span class="p">{}:</span> <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="n">edgelist</span><span class="p">)</span>
+            
+        <span class="c"># Find the index corresponding to the given restrictions.</span>
+        <span class="n">restr_keys</span> <span class="o">=</span> <span class="n">restrictions</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="n">restr_keys</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+        <span class="n">restr_keys</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">restr_keys</span><span class="p">)</span>
+
+        <span class="c"># If it doesn&#39;t exist, then create it.</span>
+        <span class="k">if</span> <span class="n">restr_keys</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_add_index</span><span class="p">(</span><span class="n">restr_keys</span><span class="p">)</span>
+                
+        <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">restrictions</span><span class="p">[</span><span class="n">key</span><span class="p">])</span> 
+                     <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">[</span><span class="n">restr_keys</span><span class="p">][</span><span class="n">end</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[]))</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_add_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">restr_keys</span><span class="p">):</span>
+        <span class="c"># Make sure it&#39;s a valid index.</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">EdgeI</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Bad restriction: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">key</span>
+
+        <span class="c"># Create the index.</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="p">[</span><span class="n">restr_keys</span><span class="p">]</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">({}</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions</span><span class="p">())</span>
+
+        <span class="c"># Add all existing edges to the index.</span>
+        <span class="k">for</span> <span class="n">end</span><span class="p">,</span> <span class="n">edgelist</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_edgelists</span><span class="p">):</span>
+            <span class="n">this_index</span> <span class="o">=</span> <span class="n">index</span><span class="p">[</span><span class="n">end</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="n">edgelist</span><span class="p">:</span>
+                <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">key</span><span class="p">)())</span> 
+                             <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+                <span class="n">this_index</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_register_with_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">edge</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">restr_keys</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">vals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">key</span><span class="p">)())</span>
+                         <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">restr_keys</span><span class="p">)</span>
+            <span class="n">index</span><span class="p">[</span><span class="n">end</span><span class="p">]</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">vals</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Incremental CFG Rules</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="CompleteFundamentalRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.CompleteFundamentalRule">[docs]</a><span class="k">class</span> <span class="nc">CompleteFundamentalRule</span><span class="p">(</span><span class="n">SingleEdgeFundamentalRule</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_apply_incomplete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">left_edge</span><span class="p">):</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">left_edge</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+        <span class="c"># When the chart is incremental, we only have to look for </span>
+        <span class="c"># empty complete edges here.</span>
+        <span class="k">for</span> <span class="n">right_edge</span> <span class="ow">in</span> <span class="n">chart</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">,</span>
+                                       <span class="n">is_complete</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                                       <span class="n">lhs</span><span class="o">=</span><span class="n">left_edge</span><span class="o">.</span><span class="n">next</span><span class="p">()):</span>
+            <span class="n">new_edge</span> <span class="o">=</span> <span class="n">left_edge</span><span class="o">.</span><span class="n">move_dot_forward</span><span class="p">(</span><span class="n">right_edge</span><span class="o">.</span><span class="n">end</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">chart</span><span class="o">.</span><span class="n">insert_with_backpointer</span><span class="p">(</span><span class="n">new_edge</span><span class="p">,</span> <span class="n">left_edge</span><span class="p">,</span> <span class="n">right_edge</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">new_edge</span>
+</div>
+<div class="viewcode-block" id="CompleterRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.CompleterRule">[docs]</a><span class="k">class</span> <span class="nc">CompleterRule</span><span class="p">(</span><span class="n">CompleteFundamentalRule</span><span class="p">):</span>
+    <span class="n">_fundamental_rule</span> <span class="o">=</span> <span class="n">CompleteFundamentalRule</span><span class="p">()</span>
+<div class="viewcode-block" id="CompleterRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.CompleterRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">LeafEdge</span><span class="p">):</span> 
+            <span class="k">for</span> <span class="n">new_edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fundamental_rule</span><span class="o">.</span><span class="n">apply_iter</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">new_edge</span>
+</div></div>
+<div class="viewcode-block" id="ScannerRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.ScannerRule">[docs]</a><span class="k">class</span> <span class="nc">ScannerRule</span><span class="p">(</span><span class="n">CompleteFundamentalRule</span><span class="p">):</span>
+    <span class="n">_fundamental_rule</span> <span class="o">=</span> <span class="n">CompleteFundamentalRule</span><span class="p">()</span>
+<div class="viewcode-block" id="ScannerRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.ScannerRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">LeafEdge</span><span class="p">):</span> 
+            <span class="k">for</span> <span class="n">new_edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fundamental_rule</span><span class="o">.</span><span class="n">apply_iter</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">new_edge</span>
+</div></div>
+<div class="viewcode-block" id="PredictorRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.PredictorRule">[docs]</a><span class="k">class</span> <span class="nc">PredictorRule</span><span class="p">(</span><span class="n">CachedTopDownPredictRule</span><span class="p">):</span>
+    <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="FilteredCompleteFundamentalRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FilteredCompleteFundamentalRule">[docs]</a><span class="k">class</span> <span class="nc">FilteredCompleteFundamentalRule</span><span class="p">(</span><span class="n">FilteredSingleEdgeFundamentalRule</span><span class="p">):</span>
+<div class="viewcode-block" id="FilteredCompleteFundamentalRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FilteredCompleteFundamentalRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+        <span class="c"># Since the Filtered rule only works for grammars without empty productions,</span>
+        <span class="c"># we only have to bother with complete edges here.</span>
+        <span class="k">if</span> <span class="n">edge</span><span class="o">.</span><span class="n">is_complete</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">new_edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apply_complete</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">new_edge</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Incremental FCFG Rules</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div></div>
+<div class="viewcode-block" id="FeatureCompleteFundamentalRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureCompleteFundamentalRule">[docs]</a><span class="k">class</span> <span class="nc">FeatureCompleteFundamentalRule</span><span class="p">(</span><span class="n">FeatureSingleEdgeFundamentalRule</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_apply_incomplete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">left_edge</span><span class="p">):</span>
+        <span class="n">fr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fundamental_rule</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">left_edge</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+        <span class="c"># When the chart is incremental, we only have to look for </span>
+        <span class="c"># empty complete edges here.</span>
+        <span class="k">for</span> <span class="n">right_edge</span> <span class="ow">in</span> <span class="n">chart</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> 
+                                       <span class="n">is_complete</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                                       <span class="n">lhs</span><span class="o">=</span><span class="n">left_edge</span><span class="o">.</span><span class="n">next</span><span class="p">()):</span>
+            <span class="k">for</span> <span class="n">new_edge</span> <span class="ow">in</span> <span class="n">fr</span><span class="o">.</span><span class="n">apply_iter</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">left_edge</span><span class="p">,</span> <span class="n">right_edge</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">new_edge</span>
+</div>
+<div class="viewcode-block" id="FeatureCompleterRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureCompleterRule">[docs]</a><span class="k">class</span> <span class="nc">FeatureCompleterRule</span><span class="p">(</span><span class="n">CompleterRule</span><span class="p">):</span>
+    <span class="n">_fundamental_rule</span> <span class="o">=</span> <span class="n">FeatureCompleteFundamentalRule</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="FeatureScannerRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureScannerRule">[docs]</a><span class="k">class</span> <span class="nc">FeatureScannerRule</span><span class="p">(</span><span class="n">ScannerRule</span><span class="p">):</span>
+    <span class="n">_fundamental_rule</span> <span class="o">=</span> <span class="n">FeatureCompleteFundamentalRule</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="FeaturePredictorRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeaturePredictorRule">[docs]</a><span class="k">class</span> <span class="nc">FeaturePredictorRule</span><span class="p">(</span><span class="n">FeatureTopDownPredictRule</span><span class="p">):</span> 
+    <span class="k">pass</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Incremental CFG Chart Parsers</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<span class="n">EARLEY_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                   <span class="n">TopDownInitRule</span><span class="p">(),</span> 
+                   <span class="n">CompleterRule</span><span class="p">(),</span> 
+                   <span class="n">ScannerRule</span><span class="p">(),</span>
+                   <span class="n">PredictorRule</span><span class="p">()]</span> 
+<span class="n">TD_INCREMENTAL_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                           <span class="n">TopDownInitRule</span><span class="p">(),</span> 
+                           <span class="n">CachedTopDownPredictRule</span><span class="p">(),</span>
+                           <span class="n">CompleteFundamentalRule</span><span class="p">()]</span>
+<span class="n">BU_INCREMENTAL_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                           <span class="n">EmptyPredictRule</span><span class="p">(),</span>
+                           <span class="n">BottomUpPredictRule</span><span class="p">(),</span>
+                           <span class="n">CompleteFundamentalRule</span><span class="p">()]</span>
+<span class="n">BU_LC_INCREMENTAL_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                              <span class="n">EmptyPredictRule</span><span class="p">(),</span>
+                              <span class="n">BottomUpPredictCombineRule</span><span class="p">(),</span>
+                              <span class="n">CompleteFundamentalRule</span><span class="p">()]</span>
+
+<span class="n">LC_INCREMENTAL_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                           <span class="n">FilteredBottomUpPredictCombineRule</span><span class="p">(),</span>
+                           <span class="n">FilteredCompleteFundamentalRule</span><span class="p">()]</span>
+
+<div class="viewcode-block" id="IncrementalChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChartParser">[docs]</a><span class="k">class</span> <span class="nc">IncrementalChartParser</span><span class="p">(</span><span class="n">ChartParser</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An I{incremental} chart parser implementing Jay Earley&#39;s </span>
+<span class="sd">    parsing algorithm:</span>
+
+<span class="sd">        - For each index I{end} in [0, 1, ..., N]:</span>
+<span class="sd">          - For each I{edge} s.t. I{edge}.end = I{end}:</span>
+<span class="sd">            - If I{edge} is incomplete, and I{edge}.next is not a part</span>
+<span class="sd">              of speech:</span>
+<span class="sd">                - Apply PredictorRule to I{edge}</span>
+<span class="sd">            - If I{edge} is incomplete, and I{edge}.next is a part of</span>
+<span class="sd">              speech:</span>
+<span class="sd">                - Apply ScannerRule to I{edge}</span>
+<span class="sd">            - If I{edge} is complete:</span>
+<span class="sd">                - Apply CompleterRule to I{edge}</span>
+<span class="sd">        - Return any complete parses in the chart</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">strategy</span><span class="o">=</span><span class="n">BU_LC_INCREMENTAL_STRATEGY</span><span class="p">,</span>
+                 <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">trace_chart_width</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> 
+                 <span class="n">chart_class</span><span class="o">=</span><span class="n">IncrementalChart</span><span class="p">):</span> 
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new Earley chart parser, that uses C{grammar} to</span>
+<span class="sd">        parse texts.</span>
+<span class="sd">        </span>
+<span class="sd">        @type grammar: C{ContextFreeGrammar}</span>
+<span class="sd">        @param grammar: The grammar used to parse texts.</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            and higher numbers will produce more verbose tracing</span>
+<span class="sd">            output.</span>
+<span class="sd">        @type trace_chart_width: C{int}</span>
+<span class="sd">        @param trace_chart_width: The default total width reserved for </span>
+<span class="sd">            the chart in trace output.  The remainder of each line will </span>
+<span class="sd">            be used to display edges. </span>
+<span class="sd">        @param chart_class: The class that should be used to create</span>
+<span class="sd">            the charts used by this parser.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace_chart_width</span> <span class="o">=</span> <span class="n">trace_chart_width</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_chart_class</span> <span class="o">=</span> <span class="n">chart_class</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_axioms</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_inference_rules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">strategy</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rule</span><span class="o">.</span><span class="n">NUM_EDGES</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_axioms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">rule</span><span class="o">.</span><span class="n">NUM_EDGES</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_inference_rules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Incremental inference rules must have &quot;</span>
+                                 <span class="s">&quot;NUM_EDGES == 0 or 1&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="IncrementalChartParser.chart_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalChartParser.chart_parse">[docs]</a>    <span class="k">def</span> <span class="nf">chart_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">trace</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">trace</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span>
+        <span class="n">trace_new_edges</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_new_edges</span>
+
+        <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">check_coverage</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="n">chart</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart_class</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="n">grammar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span>
+
+        <span class="c"># Width, for printing trace edges.</span>
+        <span class="n">trace_edge_width</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_chart_width</span> <span class="o">/</span> <span class="p">(</span><span class="n">chart</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span> <span class="n">chart</span><span class="o">.</span><span class="n">pp_leaves</span><span class="p">(</span><span class="n">trace_edge_width</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">axiom</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_axioms</span><span class="p">:</span>
+            <span class="n">new_edges</span> <span class="o">=</span> <span class="n">axiom</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">)</span>
+            <span class="n">trace_new_edges</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">axiom</span><span class="p">,</span> <span class="n">new_edges</span><span class="p">,</span> <span class="n">trace</span><span class="p">,</span> <span class="n">trace_edge_width</span><span class="p">)</span>
+
+        <span class="n">inference_rules</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inference_rules</span>
+        <span class="k">for</span> <span class="n">end</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">chart</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span> <span class="k">print</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">* Processing queue:&quot;</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
+            <span class="n">agenda</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">chart</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">))</span>
+            <span class="k">while</span> <span class="n">agenda</span><span class="p">:</span>
+                <span class="n">edge</span> <span class="o">=</span> <span class="n">agenda</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">inference_rules</span><span class="p">:</span>
+                    <span class="n">new_edges</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">apply_iter</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
+                        <span class="n">new_edges</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">new_edges</span><span class="p">)</span>
+                        <span class="n">trace_new_edges</span><span class="p">(</span><span class="n">chart</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">new_edges</span><span class="p">,</span> <span class="n">trace</span><span class="p">,</span> <span class="n">trace_edge_width</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">new_edge</span> <span class="ow">in</span> <span class="n">new_edges</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">new_edge</span><span class="o">.</span><span class="n">end</span><span class="p">()</span><span class="o">==</span><span class="n">end</span><span class="p">:</span>
+                            <span class="n">agenda</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_edge</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">chart</span>
+</div></div>
+<div class="viewcode-block" id="EarleyChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.EarleyChartParser">[docs]</a><span class="k">class</span> <span class="nc">EarleyChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">EARLEY_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+    <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="IncrementalTopDownChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalTopDownChartParser">[docs]</a><span class="k">class</span> <span class="nc">IncrementalTopDownChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">TD_INCREMENTAL_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IncrementalBottomUpChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalBottomUpChartParser">[docs]</a><span class="k">class</span> <span class="nc">IncrementalBottomUpChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">BU_INCREMENTAL_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IncrementalBottomUpLeftCornerChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalBottomUpLeftCornerChartParser">[docs]</a><span class="k">class</span> <span class="nc">IncrementalBottomUpLeftCornerChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">BU_LC_INCREMENTAL_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IncrementalLeftCornerChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.IncrementalLeftCornerChartParser">[docs]</a><span class="k">class</span> <span class="nc">IncrementalLeftCornerChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">grammar</span><span class="o">.</span><span class="n">is_nonempty</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;IncrementalLeftCornerParser only works for grammars &quot;</span>
+                             <span class="s">&quot;without empty productions.&quot;</span><span class="p">)</span>
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">LC_INCREMENTAL_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Incremental FCFG Chart Parsers</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<span class="n">EARLEY_FEATURE_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                           <span class="n">FeatureTopDownInitRule</span><span class="p">(),</span> 
+                           <span class="n">FeatureCompleterRule</span><span class="p">(),</span> 
+                           <span class="n">FeatureScannerRule</span><span class="p">(),</span>
+                           <span class="n">FeaturePredictorRule</span><span class="p">()]</span> 
+<span class="n">TD_INCREMENTAL_FEATURE_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                                   <span class="n">FeatureTopDownInitRule</span><span class="p">(),</span> 
+                                   <span class="n">FeatureTopDownPredictRule</span><span class="p">(),</span>
+                                   <span class="n">FeatureCompleteFundamentalRule</span><span class="p">()]</span>
+<span class="n">BU_INCREMENTAL_FEATURE_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                                   <span class="n">FeatureEmptyPredictRule</span><span class="p">(),</span>
+                                   <span class="n">FeatureBottomUpPredictRule</span><span class="p">(),</span>
+                                   <span class="n">FeatureCompleteFundamentalRule</span><span class="p">()]</span>
+<span class="n">BU_LC_INCREMENTAL_FEATURE_STRATEGY</span> <span class="o">=</span> <span class="p">[</span><span class="n">LeafInitRule</span><span class="p">(),</span>
+                                      <span class="n">FeatureEmptyPredictRule</span><span class="p">(),</span>
+                                      <span class="n">FeatureBottomUpPredictCombineRule</span><span class="p">(),</span>
+                                      <span class="n">FeatureCompleteFundamentalRule</span><span class="p">()]</span>
+
+<div class="viewcode-block" id="FeatureIncrementalChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalChartParser">[docs]</a><span class="k">class</span> <span class="nc">FeatureIncrementalChartParser</span><span class="p">(</span><span class="n">IncrementalChartParser</span><span class="p">,</span> <span class="n">FeatureChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> 
+                 <span class="n">strategy</span><span class="o">=</span><span class="n">BU_LC_INCREMENTAL_FEATURE_STRATEGY</span><span class="p">,</span>
+                 <span class="n">trace_chart_width</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> 
+                 <span class="n">chart_class</span><span class="o">=</span><span class="n">FeatureIncrementalChart</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span> 
+        <span class="n">IncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> 
+                                        <span class="n">strategy</span><span class="o">=</span><span class="n">strategy</span><span class="p">,</span>
+                                        <span class="n">trace_chart_width</span><span class="o">=</span><span class="n">trace_chart_width</span><span class="p">,</span>
+                                        <span class="n">chart_class</span><span class="o">=</span><span class="n">chart_class</span><span class="p">,</span>
+                                        <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FeatureEarleyChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureEarleyChartParser">[docs]</a><span class="k">class</span> <span class="nc">FeatureEarleyChartParser</span><span class="p">(</span><span class="n">FeatureIncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">FeatureIncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">EARLEY_FEATURE_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FeatureIncrementalTopDownChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalTopDownChartParser">[docs]</a><span class="k">class</span> <span class="nc">FeatureIncrementalTopDownChartParser</span><span class="p">(</span><span class="n">FeatureIncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">FeatureIncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">TD_INCREMENTAL_FEATURE_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FeatureIncrementalBottomUpChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalBottomUpChartParser">[docs]</a><span class="k">class</span> <span class="nc">FeatureIncrementalBottomUpChartParser</span><span class="p">(</span><span class="n">FeatureIncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">FeatureIncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">BU_INCREMENTAL_FEATURE_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FeatureIncrementalBottomUpLeftCornerChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.FeatureIncrementalBottomUpLeftCornerChartParser">[docs]</a><span class="k">class</span> <span class="nc">FeatureIncrementalBottomUpLeftCornerChartParser</span><span class="p">(</span><span class="n">FeatureIncrementalChartParser</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span>
+        <span class="n">FeatureIncrementalChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">BU_LC_INCREMENTAL_FEATURE_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
+
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c"># Demonstration</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.earleychart.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">should_print_times</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">should_print_grammar</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+         <span class="n">should_print_trees</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+         <span class="n">sent</span><span class="o">=</span><span class="s">&#39;I saw John with a dog with my cookie&#39;</span><span class="p">,</span> <span class="n">numparses</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration of the Earley parsers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">time</span>
+
+    <span class="c"># The grammar for ChartParser and SteppingChartParser:</span>
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">parse</span><span class="o">.</span><span class="n">chart</span><span class="o">.</span><span class="n">demo_grammar</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">should_print_grammar</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;* Grammar&quot;</span>
+        <span class="k">print</span> <span class="n">grammar</span>
+
+    <span class="c"># Tokenize the sample sentence.</span>
+    <span class="k">print</span> <span class="s">&quot;* Sentence:&quot;</span> 
+    <span class="k">print</span> <span class="n">sent</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">sent</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">tokens</span>
+    <span class="k">print</span>
+
+    <span class="c"># Do the parsing.</span>
+    <span class="n">earley</span> <span class="o">=</span> <span class="n">EarleyChartParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">clock</span><span class="p">()</span>
+    <span class="n">chart</span> <span class="o">=</span> <span class="n">earley</span><span class="o">.</span><span class="n">chart_parse</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+    <span class="n">parses</span> <span class="o">=</span> <span class="n">chart</span><span class="o">.</span><span class="n">parses</span><span class="p">(</span><span class="n">grammar</span><span class="o">.</span><span class="n">start</span><span class="p">())</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">clock</span><span class="p">()</span><span class="o">-</span><span class="n">t</span>
+    
+    <span class="c"># Print results.</span>
+    <span class="k">if</span> <span class="n">numparses</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">parses</span><span class="p">)</span><span class="o">==</span><span class="n">numparses</span><span class="p">,</span> <span class="s">&#39;Not all parses found&#39;</span>
+    <span class="k">if</span> <span class="n">should_print_trees</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">parses</span><span class="p">:</span> <span class="k">print</span> <span class="n">tree</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;Nr trees:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">parses</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">should_print_times</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;Time:&quot;</span><span class="p">,</span> <span class="n">t</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span> <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" >nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

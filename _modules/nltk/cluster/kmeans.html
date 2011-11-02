@@ -1,0 +1,298 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.cluster.kmeans &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.cluster" href="../cluster.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" accesskey="U">nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.cluster.kmeans</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: K-Means Clusterer</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Trevor Cohn &lt;tacohn@cs.mu.oz.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">import</span> <span class="nn">random</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="KMeansClusterer"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.KMeansClusterer">[docs]</a><span class="k">class</span> <span class="nc">KMeansClusterer</span><span class="p">(</span><span class="n">VectorSpaceClusterer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The K-means clusterer starts with k arbitrary chosen means then allocates</span>
+<span class="sd">    each vector to the cluster with the closest mean. It then recalculates the</span>
+<span class="sd">    means of each cluster as the centroid of the vectors in the cluster. This</span>
+<span class="sd">    process repeats until the cluster memberships stabilise. This is a</span>
+<span class="sd">    hill-climbing algorithm which may converge to a local maximum. Hence the</span>
+<span class="sd">    clustering is often repeated with random initial means and the most</span>
+<span class="sd">    commonly occuring output means are chosen.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_means</span><span class="p">,</span> <span class="n">distance</span><span class="p">,</span> <span class="n">repeats</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                       <span class="n">conv_test</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">initial_means</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                       <span class="n">normalise</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">svd_dimensions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                       <span class="n">rng</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param  num_means:  the number of means to use (may use fewer)</span>
+<span class="sd">        @type   num_means:  int</span>
+<span class="sd">        @param  distance:   measure of distance between two vectors</span>
+<span class="sd">        @type   distance:   function taking two vectors and returing a float</span>
+<span class="sd">        @param  repeats:    number of randomised clustering trials to use</span>
+<span class="sd">        @type   repeats:    int</span>
+<span class="sd">        @param  conv_test:  maximum variation in mean differences before</span>
+<span class="sd">                            deemed convergent</span>
+<span class="sd">        @type   conv_test:  number</span>
+<span class="sd">        @param  initial_means: set of k initial means</span>
+<span class="sd">        @type   initial_means: sequence of vectors</span>
+<span class="sd">        @param  normalise:  should vectors be normalised to length 1</span>
+<span class="sd">        @type   normalise:  boolean</span>
+<span class="sd">        @param svd_dimensions: number of dimensions to use in reducing vector</span>
+<span class="sd">                               dimensionsionality with SVD</span>
+<span class="sd">        @type svd_dimensions: int </span>
+<span class="sd">        @param  rng:        random number generator (or None)</span>
+<span class="sd">        @type   rng:        Random</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">VectorSpaceClusterer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalise</span><span class="p">,</span> <span class="n">svd_dimensions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_means</span> <span class="o">=</span> <span class="n">num_means</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_distance</span> <span class="o">=</span> <span class="n">distance</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_difference</span> <span class="o">=</span> <span class="n">conv_test</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">initial_means</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">initial_means</span><span class="p">)</span> <span class="o">==</span> <span class="n">num_means</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="o">=</span> <span class="n">initial_means</span>
+        <span class="k">assert</span> <span class="n">repeats</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="p">(</span><span class="n">initial_means</span> <span class="ow">and</span> <span class="n">repeats</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_repeats</span> <span class="o">=</span> <span class="n">repeats</span>
+        <span class="k">if</span> <span class="n">rng</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span> <span class="o">=</span> <span class="n">rng</span>
+        <span class="k">else</span><span class="p">:</span>   <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">()</span>
+
+<div class="viewcode-block" id="KMeansClusterer.cluster_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.KMeansClusterer.cluster_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">cluster_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repeats</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Warning: means will be discarded for subsequent trials&#39;</span>
+
+        <span class="n">meanss</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_repeats</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;k-means trial&#39;</span><span class="p">,</span> <span class="n">trial</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="ow">or</span> <span class="n">trial</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rng</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_means</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cluster_vectorspace</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+            <span class="n">meanss</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">meanss</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c"># sort the means first (so that different cluster numbering won&#39;t</span>
+            <span class="c"># effect the distance comparison)</span>
+            <span class="k">for</span> <span class="n">means</span> <span class="ow">in</span> <span class="n">meanss</span><span class="p">:</span>
+                <span class="n">means</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="nb">cmp</span> <span class="o">=</span> <span class="n">_vector_compare</span><span class="p">)</span>
+
+            <span class="c"># find the set of means that&#39;s minimally different from the others</span>
+            <span class="n">min_difference</span> <span class="o">=</span> <span class="n">min_means</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">meanss</span><span class="p">)):</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">meanss</span><span class="p">)):</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="n">j</span><span class="p">:</span>
+                        <span class="n">d</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sum_distances</span><span class="p">(</span><span class="n">meanss</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">meanss</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">min_difference</span> <span class="o">==</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">d</span> <span class="o">&lt;</span> <span class="n">min_difference</span><span class="p">:</span>
+                    <span class="n">min_difference</span><span class="p">,</span> <span class="n">min_means</span> <span class="o">=</span> <span class="n">d</span><span class="p">,</span> <span class="n">meanss</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="c"># use the best means</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="o">=</span> <span class="n">min_means</span>
+</div>
+    <span class="k">def</span> <span class="nf">_cluster_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_means</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">):</span>
+            <span class="c"># perform k-means clustering</span>
+            <span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">converged</span><span class="p">:</span>
+                <span class="c"># assign the tokens to clusters based on minimum distance to</span>
+                <span class="c"># the cluster means</span>
+                <span class="n">clusters</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_means</span><span class="p">)]</span>
+                <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">:</span>
+                    <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classify_vectorspace</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+                    <span class="n">clusters</span><span class="p">[</span><span class="n">index</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;iteration&#39;</span>
+                <span class="c">#for i in range(self._num_means):</span>
+                    <span class="c">#print &#39;  mean&#39;, i, &#39;allocated&#39;, len(clusters[i]), &#39;vectors&#39;</span>
+
+                <span class="c"># recalculate cluster means by computing the centroid of each cluster</span>
+                <span class="n">new_means</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_centroid</span><span class="p">,</span> <span class="n">clusters</span><span class="p">)</span>
+
+                <span class="c"># measure the degree of change from the previous step for convergence</span>
+                <span class="n">difference</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sum_distances</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">,</span> <span class="n">new_means</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">difference</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_difference</span><span class="p">:</span>
+                    <span class="n">converged</span> <span class="o">=</span> <span class="bp">True</span>
+
+                <span class="c"># remember the new means</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_means</span> <span class="o">=</span> <span class="n">new_means</span>
+
+<div class="viewcode-block" id="KMeansClusterer.classify_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.KMeansClusterer.classify_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">classify_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
+        <span class="c"># finds the closest cluster centroid</span>
+        <span class="c"># returns that cluster&#39;s index</span>
+        <span class="n">best_distance</span> <span class="o">=</span> <span class="n">best_index</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">)):</span>
+            <span class="n">mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+            <span class="n">dist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_distance</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">mean</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">best_distance</span> <span class="o">==</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">dist</span> <span class="o">&lt;</span> <span class="n">best_distance</span><span class="p">:</span>
+                <span class="n">best_index</span><span class="p">,</span> <span class="n">best_distance</span> <span class="o">=</span> <span class="n">index</span><span class="p">,</span> <span class="n">dist</span>
+        <span class="k">return</span> <span class="n">best_index</span>
+</div>
+<div class="viewcode-block" id="KMeansClusterer.num_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.KMeansClusterer.num_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">num_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_means</span>
+</div>
+<div class="viewcode-block" id="KMeansClusterer.means"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.KMeansClusterer.means">[docs]</a>    <span class="k">def</span> <span class="nf">means</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The means used for clustering.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_means</span>
+</div>
+    <span class="k">def</span> <span class="nf">_sum_distances</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors1</span><span class="p">,</span> <span class="n">vectors2</span><span class="p">):</span>
+        <span class="n">difference</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">vectors1</span><span class="p">,</span> <span class="n">vectors2</span><span class="p">):</span>
+            <span class="n">difference</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_distance</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> 
+        <span class="k">return</span> <span class="n">difference</span>
+
+    <span class="k">def</span> <span class="nf">_centroid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cluster</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">cluster</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">centroid</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">cluster</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">cluster</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="n">centroid</span> <span class="o">+=</span> <span class="n">vector</span>
+        <span class="k">return</span> <span class="n">centroid</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cluster</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;KMeansClusterer means=</span><span class="si">%s</span><span class="s"> repeats=</span><span class="si">%d</span><span class="s">&gt;&#39;</span> <span class="o">%</span> \
+                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_means</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repeats</span><span class="p">)</span>
+</div>
+<span class="k">def</span> <span class="nf">_vector_compare</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="n">xs</span><span class="p">,</span> <span class="n">ys</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="nb">sum</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">xs</span> <span class="o">&lt;</span> <span class="n">ys</span><span class="p">:</span>     <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="k">elif</span> <span class="n">xs</span> <span class="o">&gt;</span> <span class="n">ys</span><span class="p">:</span>   <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>           <span class="k">return</span> <span class="mi">0</span>
+
+<span class="c">#################################################################################</span>
+
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.kmeans.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="c"># example from figure 14.9, page 517, Manning and Schutze</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">cluster</span>
+
+    <span class="n">vectors</span> <span class="o">=</span> <span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">7</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">]]]</span>
+    <span class="n">means</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]</span>
+
+    <span class="n">clusterer</span> <span class="o">=</span> <span class="n">cluster</span><span class="o">.</span><span class="n">KMeansClusterer</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">euclidean_distance</span><span class="p">,</span> <span class="n">initial_means</span><span class="o">=</span><span class="n">means</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="bp">True</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;Clustered:&#39;</span><span class="p">,</span> <span class="n">vectors</span>
+    <span class="k">print</span> <span class="s">&#39;As:&#39;</span><span class="p">,</span> <span class="n">clusters</span>
+    <span class="k">print</span> <span class="s">&#39;Means:&#39;</span><span class="p">,</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">means</span><span class="p">()</span>
+    <span class="k">print</span>
+
+    <span class="n">vectors</span> <span class="o">=</span> <span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">]]]</span>
+    
+    <span class="c"># test k-means using the euclidean distance metric, 2 means and repeat</span>
+    <span class="c"># clustering 10 times with random seeds</span>
+
+    <span class="n">clusterer</span> <span class="o">=</span> <span class="n">cluster</span><span class="o">.</span><span class="n">KMeansClusterer</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">euclidean_distance</span><span class="p">,</span> <span class="n">repeats</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;Clustered:&#39;</span><span class="p">,</span> <span class="n">vectors</span>
+    <span class="k">print</span> <span class="s">&#39;As:&#39;</span><span class="p">,</span> <span class="n">clusters</span>
+    <span class="k">print</span> <span class="s">&#39;Means:&#39;</span><span class="p">,</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">means</span><span class="p">()</span>
+    <span class="k">print</span>
+
+    <span class="c"># classify a new vector</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;classify(</span><span class="si">%s</span><span class="s">):&#39;</span> <span class="o">%</span> <span class="n">vector</span><span class="p">,</span>
+    <span class="k">print</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">classify</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+    <span class="k">print</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" >nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

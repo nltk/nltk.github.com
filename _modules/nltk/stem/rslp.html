@@ -1,0 +1,248 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.stem.rslp &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.stem" href="../stem.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../stem.html" accesskey="U">nltk.stem</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.stem.rslp</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+
+<span class="c"># Natural Language Toolkit: RSLP Stemmer</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Tiago Tresoldi &lt;tresoldi@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="c"># This code is based on the algorithm presented in the paper &quot;A Stemming</span>
+<span class="c"># Algorithm for the Portuguese Language&quot; by Viviane Moreira Orengo and</span>
+<span class="c"># Christian Huyck, which unfortunately I had no access to. The code is a</span>
+<span class="c"># Python version, with some minor modifications of mine, to the description</span>
+<span class="c"># presented at http://www.webcitation.org/5NnvdIzOb and to the C source code</span>
+<span class="c"># available at http://www.inf.ufrgs.br/~arcoelho/rslp/integrando_rslp.html.</span>
+<span class="c"># Please note that this stemmer is intended for demostration and educational</span>
+<span class="c"># purposes only. Feel free to write me for any comments, including the</span>
+<span class="c"># development of a different and/or better stemmer for Portuguese. I also</span>
+<span class="c"># suggest using NLTK&#39;s mailing list for Portuguese for any discussion.</span>
+
+<span class="c"># Este código é baseado no algoritmo apresentado no artigo &quot;A Stemming</span>
+<span class="c"># Algorithm for the Portuguese Language&quot; de Viviane Moreira Orengo e</span>
+<span class="c"># Christian Huyck, o qual infelizmente não tive a oportunidade de ler. O</span>
+<span class="c"># código é uma conversão para Python, com algumas pequenas modificações</span>
+<span class="c"># minhas, daquele apresentado em http://www.webcitation.org/5NnvdIzOb e do</span>
+<span class="c"># código para linguagem C disponível em</span>
+<span class="c"># http://www.inf.ufrgs.br/~arcoelho/rslp/integrando_rslp.html. Por favor,</span>
+<span class="c"># lembre-se de que este stemmer foi desenvolvido com finalidades unicamente</span>
+<span class="c"># de demonstração e didáticas. Sinta-se livre para me escrever para qualquer</span>
+<span class="c"># comentário, inclusive sobre o desenvolvimento de um stemmer diferente</span>
+<span class="c"># e/ou melhor para o português. Também sugiro utilizar-se a lista de discussão</span>
+<span class="c"># do NLTK para o português para qualquer debate.</span>
+
+<span class="kn">import</span> <span class="nn">nltk.data</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="RSLPStemmer"><a class="viewcode-back" href="../../../api/nltk.stem.html#nltk.stem.rslp.RSLPStemmer">[docs]</a><span class="k">class</span> <span class="nc">RSLPStemmer</span><span class="p">(</span><span class="n">StemmerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A stemmer for Portuguese.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span> <span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="p">[]</span>
+    
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step0.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step1.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step2.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step3.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step4.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step5.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_rule</span><span class="p">(</span><span class="s">&quot;step6.pt&quot;</span><span class="p">)</span> <span class="p">)</span>
+
+<div class="viewcode-block" id="RSLPStemmer.read_rule"><a class="viewcode-back" href="../../../api/nltk.stem.html#nltk.stem.rslp.RSLPStemmer.read_rule">[docs]</a>    <span class="k">def</span> <span class="nf">read_rule</span> <span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s">&#39;nltk:stemmers/rslp/&#39;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="s">&#39;raw&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&quot;utf8&quot;</span><span class="p">)</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="n">rules</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+  
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span> <span class="k">if</span> <span class="n">line</span> <span class="o">!=</span> <span class="s">u&quot;&quot;</span><span class="p">]</span>     <span class="c"># remove blank lines</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span> <span class="k">if</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&quot;#&quot;</span><span class="p">]</span>  <span class="c"># remove comments</span>
+  
+        <span class="c"># NOTE: a simple but ugly hack to make this parser happy with double &#39;\t&#39;s</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\t\t</span><span class="s">&quot;</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">]</span>
+
+        <span class="c"># parse rules</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">rule</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="p">)</span>
+    
+            <span class="c"># text to be searched for at the end of the string</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="p">)</span> <span class="c"># remove quotes</span>
+    
+            <span class="c"># minimum stem size to perform the replacement</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="nb">int</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="p">)</span>
+    
+            <span class="c"># text to be replaced into</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="p">)</span> <span class="c"># remove quotes</span>
+    
+            <span class="c"># exceptions to this rule</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">[</span><span class="n">token</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;,&quot;</span><span class="p">)]</span> <span class="p">)</span>
+    
+            <span class="c"># append to the results</span>
+            <span class="n">rules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+    
+        <span class="k">return</span> <span class="n">rules</span>
+</div>
+<div class="viewcode-block" id="RSLPStemmer.stem"><a class="viewcode-back" href="../../../api/nltk.stem.html#nltk.stem.rslp.RSLPStemmer.stem">[docs]</a>    <span class="k">def</span> <span class="nf">stem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    
+        <span class="c"># the word ends in &#39;s&#39;? apply rule for plural reduction</span>
+        <span class="k">if</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;s&quot;</span><span class="p">:</span>
+            <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+      
+        <span class="c"># the word ends in &#39;a&#39;? apply rule for feminine reduction</span>
+        <span class="k">if</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;a&quot;</span><span class="p">:</span>
+            <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+      
+        <span class="c"># augmentative reduction</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+    
+        <span class="c"># adverb reduction</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    
+        <span class="c"># noun reduction</span>
+        <span class="n">prev_word</span> <span class="o">=</span> <span class="n">word</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="o">==</span> <span class="n">prev_word</span><span class="p">:</span>
+            <span class="c"># verb reduction</span>
+            <span class="n">prev_word</span> <span class="o">=</span> <span class="n">word</span>
+            <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">word</span> <span class="o">==</span> <span class="n">prev_word</span><span class="p">:</span>
+                <span class="c"># vowel removal</span>
+                <span class="n">word</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_rule</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+    
+        <span class="k">return</span> <span class="n">word</span>
+    </div>
+<div class="viewcode-block" id="RSLPStemmer.apply_rule"><a class="viewcode-back" href="../../../api/nltk.stem.html#nltk.stem.rslp.RSLPStemmer.apply_rule">[docs]</a>    <span class="k">def</span> <span class="nf">apply_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">rule_index</span><span class="p">):</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">[</span><span class="n">rule_index</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">rules</span><span class="p">:</span>
+            <span class="n">suffix_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="n">suffix_length</span><span class="p">:]</span> <span class="o">==</span> <span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>       <span class="c"># if suffix matches</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">suffix_length</span> <span class="o">+</span> <span class="n">rule</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span> <span class="c"># if we have minimum size</span>
+                    <span class="k">if</span> <span class="n">word</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rule</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>                <span class="c"># if not an exception</span>
+                        <span class="n">word</span> <span class="o">=</span> <span class="n">word</span><span class="p">[:</span><span class="o">-</span><span class="n">suffix_length</span><span class="p">]</span> <span class="o">+</span> <span class="n">rule</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+                        <span class="k">break</span>
+      
+        <span class="k">return</span> <span class="n">word</span>
+</div></div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.stem.html#nltk.stem.rslp.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">stem</span>
+    <span class="n">stemmer</span> <span class="o">=</span> <span class="n">stem</span><span class="o">.</span><span class="n">RSLPStemmer</span><span class="p">()</span> 
+
+    <span class="c"># white-space tokenizer friendly text; text taken from the first paragraph</span>
+    <span class="c"># of Erico Verissimo&#39;s &quot;Música ao Longe&quot;</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="s">u&quot;&quot;&quot;</span>
+<span class="s">Clarissa risca com giz no quadro-negro a paisagem que os alunos devem copiar .</span>
+<span class="s">Uma casinha de porta e janela , em cima duma coxilha . Um coqueiro do lado</span>
+<span class="s">( onde o nosso amor nasceu - pensa ela no momento mesmo em que risca o troco</span>
+<span class="s">longo e fino ) . Depois , uma estradinha que corre , ondulando como uma cobra</span>
+<span class="s">, e se perde longe no horizonte . Nuvens de fiz do céu preto , um sol redondo</span>
+<span class="s">e gordo , chispando raios , árvores , uma lagoa com marrecos nadando ...</span>
+<span class="s">&quot;&quot;&quot;</span>
+
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+  
+    <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="n">token</span>
+        <span class="n">stem</span> <span class="o">=</span> <span class="n">stemmer</span><span class="o">.</span><span class="n">stem</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+    
+        <span class="k">print</span> <span class="s">&quot;</span><span class="si">%16s</span><span class="s"> - </span><span class="si">%16s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">stem</span><span class="p">)</span>
+  </div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../stem.html" >nltk.stem</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

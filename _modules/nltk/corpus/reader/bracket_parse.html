@@ -1,0 +1,223 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.reader.bracket_parse &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="nltk.corpus.reader" href="../reader.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" accesskey="U">nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.reader.bracket_parse</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Penn Treebank Reader</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;sb@ldc.upenn.edu&gt;</span>
+<span class="c">#         Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Corpus reader for corpora that consist of parenthesis-delineated parse trees.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c"># we use [^\s()]+ instead of \S+? to avoid matching ()</span>
+<span class="n">TAGWORD</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\(([^\s()]+) ([^\s()]+)\)&#39;</span><span class="p">)</span>
+<span class="n">WORD</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\([^\s()]+ ([^\s()]+)\)&#39;</span><span class="p">)</span>
+<span class="n">EMPTY_BRACKETS</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*\(\s*\(&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BracketParseCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.bracket_parse.BracketParseCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">BracketParseCorpusReader</span><span class="p">(</span><span class="n">SyntaxCorpusReader</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reader for corpora that consist of parenthesis-delineated parse</span>
+<span class="sd">    trees.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">comment_char</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">detect_blocks</span><span class="o">=</span><span class="s">&#39;unindented_paren&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">tag_mapping_function</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param root: The root directory for this corpus.</span>
+<span class="sd">        @param fileids: A list or regexp specifying the fileids in this corpus.</span>
+<span class="sd">        @param comment_char: The character which can appear at the start of</span>
+<span class="sd">            a line to indicate that the rest of the line is a comment.</span>
+<span class="sd">        @param detect_blocks: The method that is used to find blocks</span>
+<span class="sd">          in the corpus; can be &#39;unindented_paren&#39; (every unindented</span>
+<span class="sd">          parenthesis starts a new parse) or &#39;sexpr&#39; (brackets are</span>
+<span class="sd">          matched).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">CorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">encoding</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_comment_char</span> <span class="o">=</span> <span class="n">comment_char</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_detect_blocks</span> <span class="o">=</span> <span class="n">detect_blocks</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tag_mapping_function</span> <span class="o">=</span> <span class="n">tag_mapping_function</span>
+
+    <span class="k">def</span> <span class="nf">_read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_blocks</span> <span class="o">==</span> <span class="s">&#39;sexpr&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">read_sexpr_block</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">comment_char</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_comment_char</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_blocks</span> <span class="o">==</span> <span class="s">&#39;blankline&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">read_blankline_block</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_blocks</span> <span class="o">==</span> <span class="s">&#39;unindented_paren&#39;</span><span class="p">:</span>
+            <span class="c"># Tokens start with unindented left parens.</span>
+            <span class="n">toks</span> <span class="o">=</span> <span class="n">read_regexp_block</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">start_re</span><span class="o">=</span><span class="s">r&#39;^\(&#39;</span><span class="p">)</span>
+            <span class="c"># Strip any comments out of the tokens.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_comment_char</span><span class="p">:</span>
+                <span class="n">toks</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;(?m)^</span><span class="si">%s</span><span class="s">.*&#39;</span><span class="o">%</span><span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_comment_char</span><span class="p">),</span>
+                               <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">tok</span><span class="p">)</span>
+                        <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">toks</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">toks</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#39;bad block type&#39;</span>
+    
+    <span class="k">def</span> <span class="nf">_normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="c"># If there&#39;s an empty set of brackets surrounding the actual</span>
+        <span class="c"># parse, then strip them off.</span>
+        <span class="k">if</span> <span class="n">EMPTY_BRACKETS</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">strip</span><span class="p">()[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c"># Replace leaves of the form (!), (,), with (! !), (, ,)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&quot;\((.)\)&quot;</span><span class="p">,</span> <span class="s">r&quot;(\1 \1)&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="c"># Replace leaves of the form (tag word root) with (tag word)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&quot;\(([^\s()]+) ([^\s()]+) [^\s()]+\)&quot;</span><span class="p">,</span> <span class="s">r&quot;(\1 \2)&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">t</span>
+
+    <span class="k">def</span> <span class="nf">_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;Bad tree detected; trying to recover...</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="c"># Try to recover, if we can:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span> <span class="o">==</span> <span class="p">(</span><span class="s">&#39;mismatched parens&#39;</span><span class="p">,):</span>
+                <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">v</span> <span class="o">=</span> <span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">(</span><span class="n">t</span><span class="o">+</span><span class="s">&#39;)&#39;</span><span class="o">*</span><span class="n">n</span><span class="p">))</span>
+                        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;  Recovered by adding </span><span class="si">%d</span><span class="s"> close &quot;</span>
+                                         <span class="s">&quot;paren(s)</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">n</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="n">v</span>
+                    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span> <span class="k">pass</span>
+            <span class="c"># Try something else:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;  Recovered by returning a flat parse.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="c">#sys.stderr.write(&#39; &#39;.join(t.split())+&#39;\n&#39;)</span>
+            <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">simplify_tags</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">tagged_sent</span> <span class="o">=</span> <span class="p">[(</span><span class="n">w</span><span class="p">,</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">w</span><span class="p">)</span> <span class="ow">in</span> <span class="n">TAGWORD</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">(</span><span class="n">t</span><span class="p">))]</span>
+        <span class="k">if</span> <span class="n">simplify_tags</span><span class="p">:</span>
+            <span class="n">tagged_sent</span> <span class="o">=</span> <span class="p">[(</span><span class="n">w</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_mapping_function</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+                           <span class="k">for</span> <span class="p">(</span><span class="n">w</span><span class="p">,</span><span class="n">t</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tagged_sent</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">tagged_sent</span>
+
+    <span class="k">def</span> <span class="nf">_word</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">WORD</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="AlpinoCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.bracket_parse.AlpinoCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">AlpinoCorpusReader</span><span class="p">(</span><span class="n">BracketParseCorpusReader</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reader for the Alpino Dutch Treebank.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">tag_mapping_function</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">BracketParseCorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="s">&#39;alpino\.xml&#39;</span><span class="p">,</span>
+                                 <span class="n">detect_blocks</span><span class="o">=</span><span class="s">&#39;blankline&#39;</span><span class="p">,</span>
+                                 <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">,</span>
+                                 <span class="n">tag_mapping_function</span><span class="o">=</span><span class="n">tag_mapping_function</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">t</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&quot;&lt;alpino_ds&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&quot;&quot;</span>
+        <span class="c"># convert XML to sexpr notation</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;  &lt;node .*? cat=&quot;(\w+)&quot;.*&gt;&#39;</span><span class="p">,</span> <span class="s">r&quot;(\1&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;  &lt;node .*? pos=&quot;(\w+)&quot;.*? word=&quot;([^&quot;]+)&quot;.*/&gt;&#39;</span><span class="p">,</span> <span class="s">r&quot;(\1 \2)&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&quot;  &lt;/node&gt;&quot;</span><span class="p">,</span> <span class="s">r&quot;)&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&quot;&lt;sentence&gt;.*&lt;/sentence&gt;&quot;</span><span class="p">,</span> <span class="s">r&quot;&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&quot;&lt;/?alpino_ds.*&gt;&quot;</span><span class="p">,</span> <span class="s">r&quot;&quot;</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">t</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" >nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

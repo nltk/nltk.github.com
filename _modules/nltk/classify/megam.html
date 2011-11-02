@@ -1,0 +1,267 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.classify.megam &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.classify" href="../classify.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" accesskey="U">nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.classify.megam</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Interface to Megam Classifier</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+<span class="c"># $Id: naivebayes.py 2063 2004-07-17 21:02:24Z edloper $</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A set of functions used to interface with the external U{megam</span>
+<span class="sd">&lt;http://www.cs.utah.edu/~hal/megam/&gt;} maxent optimization package.</span>
+<span class="sd">Before C{megam} can be used, you should tell NLTK where it can find</span>
+<span class="sd">the C{megam} binary, using the L{config_megam()} function.  Typical</span>
+<span class="sd">usage:</span>
+
+<span class="sd">    &gt;&gt;&gt; import nltk</span>
+<span class="sd">    &gt;&gt;&gt; nltk.config_megam(&#39;.../path/to/megam&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; classifier = nltk.MaxentClassifier.train(corpus, &#39;megam&#39;)</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">__docformat__</span> <span class="o">=</span> <span class="s">&#39;epytext en&#39;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">find_binary</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">numpy</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">numpy</span> <span class="o">=</span> <span class="bp">None</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Configuration</span>
+<span class="c">######################################################################</span>
+
+<span class="n">_megam_bin</span> <span class="o">=</span> <span class="bp">None</span>
+<div class="viewcode-block" id="config_megam"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.megam.config_megam">[docs]</a><span class="k">def</span> <span class="nf">config_megam</span><span class="p">(</span><span class="nb">bin</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Configure NLTK&#39;s interface to the C{megam} maxent optimization</span>
+<span class="sd">    package.</span>
+
+<span class="sd">    @param bin: The full path to the C{megam} binary.  If not specified,</span>
+<span class="sd">        then nltk will search the system for a C{megam} binary; and if</span>
+<span class="sd">        one is not found, it will raise a C{LookupError} exception.</span>
+<span class="sd">    @type bin: C{string}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_megam_bin</span>
+    <span class="n">_megam_bin</span> <span class="o">=</span> <span class="n">find_binary</span><span class="p">(</span>
+        <span class="s">&#39;megam&#39;</span><span class="p">,</span> <span class="nb">bin</span><span class="p">,</span>
+        <span class="n">env_vars</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;MEGAM&#39;</span><span class="p">,</span>  <span class="s">&#39;MEGAMHOME&#39;</span><span class="p">],</span>
+        <span class="n">binary_names</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;megam.opt&#39;</span><span class="p">,</span> <span class="s">&#39;megam&#39;</span><span class="p">,</span> <span class="s">&#39;megam_686&#39;</span><span class="p">,</span> <span class="s">&#39;megam_i686.opt&#39;</span><span class="p">],</span>
+        <span class="n">url</span><span class="o">=</span><span class="s">&#39;http://www.cs.utah.edu/~hal/megam/&#39;</span><span class="p">)</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Megam Interface Functions</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="write_megam_file"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.megam.write_megam_file">[docs]</a><span class="k">def</span> <span class="nf">write_megam_file</span><span class="p">(</span><span class="n">train_toks</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span>
+                     <span class="n">bernoulli</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">explicit</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate an input file for C{megam} based on the given corpus of</span>
+<span class="sd">    classified tokens.</span>
+
+<span class="sd">    @type train_toks: C{list} of C{tuples} of (C{dict}, C{str})</span>
+<span class="sd">    @param train_toks: Training data, represented as a list of</span>
+<span class="sd">        pairs, the first member of which is a feature dictionary,</span>
+<span class="sd">        and the second of which is a classification label.</span>
+
+<span class="sd">    @type encoding: L{MaxentFeatureEncodingI}</span>
+<span class="sd">    @param encoding: A feature encoding, used to convert featuresets</span>
+<span class="sd">        into feature vectors. May optionally implement a cost() method</span>
+<span class="sd">        in order to assign different costs to different class predictions.</span>
+
+<span class="sd">    @type stream: C{stream}</span>
+<span class="sd">    @param stream: The stream to which the megam input file should be</span>
+<span class="sd">        written.</span>
+
+<span class="sd">    @param bernoulli: If true, then use the &#39;bernoulli&#39; format.  I.e.,</span>
+<span class="sd">        all joint features have binary values, and are listed iff they</span>
+<span class="sd">        are true.  Otherwise, list feature values explicitly.  If</span>
+<span class="sd">        C{bernoulli=False}, then you must call C{megam} with the</span>
+<span class="sd">        C{-fvals} option.</span>
+
+<span class="sd">    @param explicit: If true, then use the &#39;explicit&#39; format.  I.e.,</span>
+<span class="sd">        list the features that would fire for any of the possible</span>
+<span class="sd">        labels, for each token.  If C{explicit=True}, then you must</span>
+<span class="sd">        call C{megam} with the C{-explicit} option.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Look up the set of labels.</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">encoding</span><span class="o">.</span><span class="n">labels</span><span class="p">()</span>
+    <span class="n">labelnum</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">([(</span><span class="n">label</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">labels</span><span class="p">)])</span>
+
+    <span class="c"># Write the file, which contains one line per instance.</span>
+    <span class="k">for</span> <span class="n">featureset</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">train_toks</span><span class="p">:</span>
+        <span class="c"># First, the instance number (or, in the weighted multiclass case, the cost of each label).</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">encoding</span><span class="p">,</span><span class="s">&#39;cost&#39;</span><span class="p">):</span>
+            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">cost</span><span class="p">(</span><span class="n">featureset</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">l</span><span class="p">))</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">labelnum</span><span class="p">[</span><span class="n">label</span><span class="p">])</span>
+
+        <span class="c"># For implicit file formats, just list the features that fire</span>
+        <span class="c"># for this instance&#39;s actual label.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">explicit</span><span class="p">:</span>
+            <span class="n">_write_megam_features</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">featureset</span><span class="p">,</span> <span class="n">label</span><span class="p">),</span>
+                                  <span class="n">stream</span><span class="p">,</span> <span class="n">bernoulli</span><span class="p">)</span>
+
+        <span class="c"># For explicit formats, list the features that would fire for</span>
+        <span class="c"># any of the possible labels.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">:</span>
+                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; #&#39;</span><span class="p">)</span>
+                <span class="n">_write_megam_features</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">featureset</span><span class="p">,</span> <span class="n">l</span><span class="p">),</span>
+                                      <span class="n">stream</span><span class="p">,</span> <span class="n">bernoulli</span><span class="p">)</span>
+
+        <span class="c"># End of the instance.</span>
+        <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="parse_megam_weights"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.megam.parse_megam_weights">[docs]</a><span class="k">def</span> <span class="nf">parse_megam_weights</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">features_count</span><span class="p">,</span> <span class="n">explicit</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given the stdout output generated by C{megam} when training a</span>
+<span class="sd">    model, return a C{numpy} array containing the corresponding weight</span>
+<span class="sd">    vector.  This function does not currently handle bias features.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">numpy</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;This function requires that numpy be installed&#39;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">explicit</span><span class="p">,</span> <span class="s">&#39;non-explicit not supported yet&#39;</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">features_count</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+            <span class="n">fid</span><span class="p">,</span> <span class="n">weight</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="n">weights</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">fid</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">weight</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">weights</span>
+</div>
+<span class="k">def</span> <span class="nf">_write_megam_features</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">bernoulli</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">vector</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;MEGAM classifier requires the use of an &#39;</span>
+                         <span class="s">&#39;always-on feature.&#39;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">fval</span><span class="p">)</span> <span class="ow">in</span> <span class="n">vector</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">bernoulli</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fval</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">fid</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">fval</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;If bernoulli=True, then all&#39;</span>
+                                 <span class="s">&#39;features must be binary.&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">fval</span><span class="p">))</span>
+
+<div class="viewcode-block" id="call_megam"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.megam.call_megam">[docs]</a><span class="k">def</span> <span class="nf">call_megam</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Call the C{megam} binary with the given arguments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;args should be a list of strings&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_megam_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">config_megam</span><span class="p">()</span>
+
+    <span class="c"># Call megam via a subprocess</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">_megam_bin</span><span class="p">]</span> <span class="o">+</span> <span class="n">args</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">)</span>
+    <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">communicate</span><span class="p">()</span>
+
+    <span class="c"># Check the return code.</span>
+    <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">print</span>
+        <span class="k">print</span> <span class="n">stderr</span>
+        <span class="k">raise</span> <span class="ne">OSError</span><span class="p">(</span><span class="s">&#39;megam command failed!&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">stdout</span>
+</pre></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" >nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

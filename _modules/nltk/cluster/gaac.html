@@ -1,0 +1,242 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.cluster.gaac &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.cluster" href="../cluster.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" accesskey="U">nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.cluster.gaac</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Group Average Agglomerative Clusterer</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Trevor Cohn &lt;tacohn@cs.mu.oz.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="GAAClusterer"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer">[docs]</a><span class="k">class</span> <span class="nc">GAAClusterer</span><span class="p">(</span><span class="n">VectorSpaceClusterer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Group Average Agglomerative starts with each of the N vectors as singleton</span>
+<span class="sd">    clusters. It then iteratively merges pairs of clusters which have the</span>
+<span class="sd">    closest centroids.  This continues until there is only one cluster. The</span>
+<span class="sd">    order of merges gives rise to a dendrogram: a tree with the earlier merges</span>
+<span class="sd">    lower than later merges. The membership of a given number of clusters c, 1</span>
+<span class="sd">    &lt;= c &lt;= N, can be found by cutting the dendrogram at depth c.</span>
+
+<span class="sd">    This clusterer uses the cosine similarity metric only, which allows for</span>
+<span class="sd">    efficient speed-up in the clustering process. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_clusters</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">normalise</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">svd_dimensions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">VectorSpaceClusterer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalise</span><span class="p">,</span> <span class="n">svd_dimensions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span> <span class="o">=</span> <span class="n">num_clusters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_groups_values</span> <span class="o">=</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="GAAClusterer.cluster"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.cluster">[docs]</a>    <span class="k">def</span> <span class="nf">cluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">assign_clusters</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="c"># stores the merge order</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span> <span class="o">=</span> <span class="n">Dendrogram</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">VectorSpaceClusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">assign_clusters</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="GAAClusterer.cluster_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.cluster_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">cluster_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="c"># create a cluster for each vector</span>
+        <span class="n">clusters</span> <span class="o">=</span> <span class="p">[[</span><span class="n">vector</span><span class="p">]</span> <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">]</span>
+
+        <span class="c"># the sum vectors</span>
+        <span class="n">vector_sum</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">vectors</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="c"># find the two best candidate clusters to merge, based on their</span>
+            <span class="c"># S(union c_i, c_j)</span>
+            <span class="n">best</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)):</span>
+                    <span class="n">sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_average_similarity</span><span class="p">(</span>
+                                <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span>
+                                <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">sim</span> <span class="o">&gt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                        <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+
+            <span class="c"># merge them and replace in cluster list</span>
+            <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">best</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="nb">sum</span> <span class="o">=</span> <span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;merging </span><span class="si">%d</span><span class="s"> and </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+
+            <span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">sum</span>
+            <span class="k">del</span> <span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="k">del</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_clusters</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="GAAClusterer.update_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.update_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">update_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_clusters</span><span class="p">):</span>
+        <span class="n">clusters</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span><span class="o">.</span><span class="n">groups</span><span class="p">(</span><span class="n">num_clusters</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">cluster</span> <span class="ow">in</span> <span class="n">clusters</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">cluster</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_normalise</span><span class="p">:</span>
+                <span class="n">centroid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalise</span><span class="p">(</span><span class="n">cluster</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">centroid</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cluster</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">cluster</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_normalise</span><span class="p">:</span>
+                    <span class="n">centroid</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalise</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">centroid</span> <span class="o">+=</span> <span class="n">vector</span>
+            <span class="n">centroid</span> <span class="o">/=</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cluster</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">centroid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="GAAClusterer.classify_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.classify_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">classify_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
+        <span class="n">best</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">):</span>
+            <span class="n">centroid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_average_similarity</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">centroid</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">sim</span> <span class="o">&gt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">best</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="GAAClusterer.dendrogram"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.dendrogram">[docs]</a>    <span class="k">def</span> <span class="nf">dendrogram</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The dendrogram representing the current clustering</span>
+<span class="sd">        @rtype:  Dendrogram</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span>
+</div>
+<div class="viewcode-block" id="GAAClusterer.num_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.num_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">num_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
+</div>
+    <span class="k">def</span> <span class="nf">_average_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v1</span><span class="p">,</span> <span class="n">l1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">l2</span><span class="p">):</span>
+        <span class="nb">sum</span> <span class="o">=</span> <span class="n">v1</span> <span class="o">+</span> <span class="n">v2</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="n">l1</span> <span class="o">+</span> <span class="n">l2</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="nb">sum</span><span class="p">,</span> <span class="nb">sum</span><span class="p">)</span> <span class="o">-</span> <span class="n">length</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">length</span> <span class="o">*</span> <span class="p">(</span><span class="n">length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;GroupAverageAgglomerative Clusterer n=</span><span class="si">%d</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Non-interactive demonstration of the clusterers with simple 2-D data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">cluster</span>
+
+    <span class="c"># use a set of tokens with 2D indices</span>
+    <span class="n">vectors</span> <span class="o">=</span> <span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">]]]</span>
+    
+    <span class="c"># test the GAAC clusterer with 4 clusters</span>
+    <span class="n">clusterer</span> <span class="o">=</span> <span class="n">cluster</span><span class="o">.</span><span class="n">GAAClusterer</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">clusters</span> <span class="o">=</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;Clusterer:&#39;</span><span class="p">,</span> <span class="n">clusterer</span>
+    <span class="k">print</span> <span class="s">&#39;Clustered:&#39;</span><span class="p">,</span> <span class="n">vectors</span>
+    <span class="k">print</span> <span class="s">&#39;As:&#39;</span><span class="p">,</span> <span class="n">clusters</span>
+    <span class="k">print</span>
+    
+    <span class="c"># show the dendrogram</span>
+    <span class="n">clusterer</span><span class="o">.</span><span class="n">dendrogram</span><span class="p">()</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="c"># classify a new vector</span>
+    <span class="n">vector</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;classify(</span><span class="si">%s</span><span class="s">):&#39;</span> <span class="o">%</span> <span class="n">vector</span><span class="p">,</span>
+    <span class="k">print</span> <span class="n">clusterer</span><span class="o">.</span><span class="n">classify</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+    <span class="k">print</span>
+
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../cluster.html" >nltk.cluster</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

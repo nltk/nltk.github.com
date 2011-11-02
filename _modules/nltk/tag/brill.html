@@ -1,0 +1,1419 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.tag.brill &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.tag" href="../tag.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../tag.html" accesskey="U">nltk.tag</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.tag.brill</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Brill Tagger</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Authors: Christopher Maloof &lt;cjmaloof@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#          Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#          Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Brill&#39;s transformational rule-based tagger.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">bisect</span>        <span class="c"># for binary search through a subset of indices</span>
+<span class="kn">import</span> <span class="nn">random</span>        <span class="c"># for shuffling WSJ files</span>
+<span class="kn">import</span> <span class="nn">yaml</span>          <span class="c"># to save and load taggers in files</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">untag</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">######################################################################</span>
+<span class="c">## The Brill Tagger</span>
+<span class="c">######################################################################</span>
+
+<div class="viewcode-block" id="BrillTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTagger">[docs]</a><span class="k">class</span> <span class="nc">BrillTagger</span><span class="p">(</span><span class="n">TaggerI</span><span class="p">,</span> <span class="n">yaml</span><span class="o">.</span><span class="n">YAMLObject</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Brill&#39;s transformational rule-based tagger.  Brill taggers use an</span>
+<span class="sd">    X{initial tagger} (such as L{tag.DefaultTagger}) to assign an initial</span>
+<span class="sd">    tag sequence to a text; and then apply an ordered list of</span>
+<span class="sd">    transformational rules to correct the tags of individual tokens.</span>
+<span class="sd">    These transformation rules are specified by the L{BrillRule}</span>
+<span class="sd">    interface.</span>
+
+<span class="sd">    Brill taggers can be created directly, from an initial tagger and</span>
+<span class="sd">    a list of transformational rules; but more often, Brill taggers</span>
+<span class="sd">    are created by learning rules from a training corpus, using either</span>
+<span class="sd">    L{BrillTaggerTrainer} or L{FastBrillTaggerTrainer}.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!nltk.BrillTagger&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_tagger</span><span class="p">,</span> <span class="n">rules</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param initial_tagger: The initial tagger</span>
+<span class="sd">        @type initial_tagger: L{TaggerI}</span>
+<span class="sd">        @param rules: An ordered list of transformation rules that</span>
+<span class="sd">            should be used to correct the initial tagging.</span>
+<span class="sd">        @type rules: C{list} of L{BrillRule}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span> <span class="o">=</span> <span class="n">initial_tagger</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BrillTagger.rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTagger.rules">[docs]</a>    <span class="k">def</span> <span class="nf">rules</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span>
+</div>
+<div class="viewcode-block" id="BrillTagger.tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTagger.tag">[docs]</a>    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="c"># Inherit documentation from TaggerI</span>
+        
+        <span class="c"># Run the initial tagger.</span>
+        <span class="n">tagged_tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+
+        <span class="c"># Create a dictionary that maps each tag to a list of the</span>
+        <span class="c"># indices of tokens that have that tag.</span>
+        <span class="n">tag_to_positions</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">tag</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tagged_tokens</span><span class="p">):</span>
+            <span class="n">tag_to_positions</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+        <span class="c"># Apply each rule, in order.  Only try to apply rules at</span>
+        <span class="c"># positions that have the desired original tag.</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">:</span>
+            <span class="c"># Find the positions where it might apply</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">tag_to_positions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="c"># Apply the rule at those positions.</span>
+            <span class="n">changed</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">tagged_tokens</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+            <span class="c"># Update tag_to_positions with the positions of tags that</span>
+            <span class="c"># were modified.</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">changed</span><span class="p">:</span>
+                <span class="n">tag_to_positions</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                <span class="n">tag_to_positions</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">tagged_tokens</span>
+
+<span class="c">######################################################################</span>
+<span class="c">## Brill Rules</span>
+<span class="c">######################################################################</span>
+</div></div>
+<div class="viewcode-block" id="BrillRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillRule">[docs]</a><span class="k">class</span> <span class="nc">BrillRule</span><span class="p">(</span><span class="n">yaml</span><span class="o">.</span><span class="n">YAMLObject</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An interface for tag transformations on a tagged corpus, as</span>
+<span class="sd">    performed by brill taggers.  Each transformation finds all tokens</span>
+<span class="sd">    in the corpus that are tagged with a specific X{original tag} and</span>
+<span class="sd">    satisfy a specific X{condition}, and replaces their tags with a</span>
+<span class="sd">    X{replacement tag}.  For any given transformation, the original</span>
+<span class="sd">    tag, replacement tag, and condition are fixed.  Conditions may</span>
+<span class="sd">    depend on the token under consideration, as well as any other</span>
+<span class="sd">    tokens in the corpus.</span>
+
+<span class="sd">    Brill rules must be comparable and hashable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original_tag</span><span class="p">,</span> <span class="n">replacement_tag</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">!=</span> <span class="n">BrillRule</span><span class="p">,</span> \
+               <span class="s">&quot;BrillRule is an abstract base class&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span> <span class="o">=</span> <span class="n">original_tag</span>
+        <span class="sd">&quot;&quot;&quot;The tag which this C{BrillRule} may cause to be replaced.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span> <span class="o">=</span> <span class="n">replacement_tag</span>
+        <span class="sd">&quot;&quot;&quot;The tag with which this C{BrillRule} may replace another tag.&quot;&quot;&quot;</span>
+        
+<div class="viewcode-block" id="BrillRule.apply"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillRule.apply">[docs]</a>    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply this rule at every position in C{positions} where it</span>
+<span class="sd">        applies to the given sentence.  I.e., for each position M{p}</span>
+<span class="sd">        in C{positions}, if C{tokens[M{p}]} is tagged with this rule&#39;s</span>
+<span class="sd">        original tag, and satisfies this rule&#39;s condition, then set</span>
+<span class="sd">        its tag to be this rule&#39;s replacement tag.</span>
+
+<span class="sd">        @param tokens: The tagged sentence</span>
+<span class="sd">        @type tokens: list of Token</span>
+<span class="sd">        @type positions: C{list} of C{int}</span>
+<span class="sd">        @param positions: The positions where the transformation is to</span>
+<span class="sd">            be tried.  If not specified, try it at all positions.</span>
+<span class="sd">        @return: The indices of tokens whose tags were changed by this</span>
+<span class="sd">            rule.</span>
+<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">positions</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+
+        <span class="c"># Determine the indices at which this rule applies.</span>
+        <span class="n">change</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">positions</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">applies</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">i</span><span class="p">)]</span>
+
+        <span class="c"># Make the changes.  Note: this must be done in a separate</span>
+        <span class="c"># step from finding applicable locations, since we don&#39;t want</span>
+        <span class="c"># the rule to interact with itself.</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">change</span><span class="p">:</span>
+            <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="n">change</span>
+</div>
+<div class="viewcode-block" id="BrillRule.applies"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillRule.applies">[docs]</a>    <span class="k">def</span> <span class="nf">applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: True if the rule would change the tag of </span>
+<span class="sd">            C{tokens[index]}, False otherwise</span>
+<span class="sd">        @rtype: Boolean</span>
+
+<span class="sd">        @param tokens: A tagged sentence</span>
+<span class="sd">        @type tokens: C{list} of C{str}</span>
+<span class="sd">        @param index: The index to check</span>
+<span class="sd">        @type index: C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;Brill rules must define applies()&quot;</span>
+        
+    <span class="c"># Rules must be comparable and hashable for the algorithm to work</span></div>
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;Brill rules must be comparable&quot;</span>
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;Brill rules must be comparable&quot;</span>
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;Brill rules must be hashable&quot;</span>
+    
+</div>
+<div class="viewcode-block" id="ProximateTokensRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensRule">[docs]</a><span class="k">class</span> <span class="nc">ProximateTokensRule</span><span class="p">(</span><span class="n">BrillRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An abstract base class for brill rules whose condition checks for</span>
+<span class="sd">    the presence of tokens with given properties at given ranges of</span>
+<span class="sd">    positions, relative to the token.</span>
+
+<span class="sd">    Each subclass of proximate tokens brill rule defines a method</span>
+<span class="sd">    M{extract_property}, which extracts a specific property from the</span>
+<span class="sd">    the token, such as its text or tag.  Each instance is</span>
+<span class="sd">    parameterized by a set of tuples, specifying ranges of positions</span>
+<span class="sd">    and property values to check for in those ranges:</span>
+<span class="sd">    </span>
+<span class="sd">      - (M{start}, M{end}, M{value})</span>
+
+<span class="sd">    The brill rule is then applicable to the M{n}th token iff:</span>
+<span class="sd">    </span>
+<span class="sd">      - The M{n}th token is tagged with the rule&#39;s original tag; and</span>
+<span class="sd">      - For each (M{start}, M{end}, M{value}) triple:</span>
+<span class="sd">        - The property value of at least one token between</span>
+<span class="sd">          M{n+start} and M{n+end} (inclusive) is M{value}.</span>
+
+<span class="sd">    For example, a proximate token brill template with M{start=end=-1}</span>
+<span class="sd">    generates rules that check just the property of the preceding</span>
+<span class="sd">    token.  Note that multiple properties may be included in a single</span>
+<span class="sd">    rule; the rule applies if they all hold.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original_tag</span><span class="p">,</span> <span class="n">replacement_tag</span><span class="p">,</span> <span class="o">*</span><span class="n">conditions</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new brill rule that changes a token&#39;s tag from</span>
+<span class="sd">        C{original_tag} to C{replacement_tag} if all of the properties</span>
+<span class="sd">        specified in C{conditions} hold.</span>
+
+<span class="sd">        @type conditions: C{tuple} of C{(int, int, *)}</span>
+<span class="sd">        @param conditions: A list of 3-tuples C{(start, end, value)},</span>
+<span class="sd">            each of which specifies that the property of at least one</span>
+<span class="sd">            token between M{n}+C{start} and M{n}+C{end} (inclusive) is</span>
+<span class="sd">            C{value}.</span>
+<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any condition.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">!=</span> <span class="n">ProximateTokensRule</span><span class="p">,</span> \
+               <span class="s">&quot;ProximateTokensRule is an abstract base class&quot;</span>
+        <span class="n">BrillRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original_tag</span><span class="p">,</span> <span class="n">replacement_tag</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span> <span class="o">=</span> <span class="n">conditions</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="n">conditions</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">s</span><span class="o">&gt;</span><span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Condition </span><span class="si">%s</span><span class="s"> has an invalid range&#39;</span> <span class="o">%</span>
+                                 <span class="p">((</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">v</span><span class="p">),))</span>
+    
+    <span class="c"># Make Brill rules look nice in YAML.</span>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="ProximateTokensRule.to_yaml"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensRule.to_yaml">[docs]</a>    <span class="k">def</span> <span class="nf">to_yaml</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">dumper</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">node</span> <span class="o">=</span> <span class="n">dumper</span><span class="o">.</span><span class="n">represent_mapping</span><span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">yaml_tag</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="n">description</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="p">),</span>
+            <span class="n">conditions</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">_conditions</span><span class="p">),</span>
+            <span class="n">original</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">original_tag</span><span class="p">,</span>
+            <span class="n">replacement</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">node</span></div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="ProximateTokensRule.from_yaml"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensRule.from_yaml">[docs]</a>    <span class="k">def</span> <span class="nf">from_yaml</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">loader</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="nb">map</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">construct_mapping</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">deep</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="nb">map</span><span class="p">[</span><span class="s">&#39;original&#39;</span><span class="p">],</span> <span class="nb">map</span><span class="p">[</span><span class="s">&#39;replacement&#39;</span><span class="p">],</span>
+        <span class="o">*</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">map</span><span class="p">[</span><span class="s">&#39;conditions&#39;</span><span class="p">]))</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="ProximateTokensRule.extract_property"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensRule.extract_property">[docs]</a>    <span class="k">def</span> <span class="nf">extract_property</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns some property characterizing this token, such as its</span>
+<span class="sd">        base lexical item or its tag.</span>
+
+<span class="sd">        Each implentation of this method should correspond to an</span>
+<span class="sd">        implementation of the method with the same name in a subclass</span>
+<span class="sd">        of L{ProximateTokensTemplate}.</span>
+
+<span class="sd">        @param token: The token</span>
+<span class="sd">        @type token: Token</span>
+<span class="sd">        @return: The property</span>
+<span class="sd">        @rtype: any</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;ProximateTokenRules must define extract_property()&quot;</span>
+</div>
+<div class="viewcode-block" id="ProximateTokensRule.applies"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensRule.applies">[docs]</a>    <span class="k">def</span> <span class="nf">applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="c"># Inherit docs from BrillRule</span>
+        
+        <span class="c"># Does the given token have this rule&#39;s &quot;original tag&quot;?</span>
+        <span class="k">if</span> <span class="n">tokens</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        
+        <span class="c"># Check to make sure that every condition holds.</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span><span class="p">:</span>
+            <span class="c"># Find the (absolute) start and end indices.</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="n">start</span><span class="p">)</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">index</span><span class="o">+</span><span class="n">end</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+            
+            <span class="c"># Look for *any* token that satisfies the condition.</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">e</span><span class="p">):</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">extract_property</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">==</span> <span class="n">val</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># No token satisfied the condition; return false.</span>
+                <span class="k">return</span> <span class="bp">False</span>
+
+        <span class="c"># Every condition checked out, so the rule is applicable.</span>
+        <span class="k">return</span> <span class="bp">True</span>
+</div>
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span> <span class="ow">is</span> <span class="n">other</span> <span class="ow">or</span>
+                <span class="p">(</span><span class="n">other</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span>
+                 <span class="n">other</span><span class="o">.</span><span class="n">__class__</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="ow">and</span> 
+                 <span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">original_tag</span> <span class="ow">and</span> 
+                 <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">replacement_tag</span> <span class="ow">and</span> 
+                 <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_conditions</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">==</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Cache our hash value (justified by profiling.)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__hash</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__hash</span> <span class="o">=</span> <span class="nb">hash</span><span class="p">(</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">,</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span> <span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__hash</span>
+    
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Cache our repr (justified by profiling -- this is used as</span>
+        <span class="c"># a sort key when deterministic=True.)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__repr</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">conditions</span> <span class="o">=</span> <span class="s">&#39; and &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;</span><span class="si">%s</span><span class="s"> in </span><span class="si">%d</span><span class="s">...</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">)</span>
+                                       <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__repr</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;&lt;</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">-&gt;</span><span class="si">%s</span><span class="s"> if </span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span>
+                           <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span><span class="p">,</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">,</span> <span class="n">conditions</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__repr</span>
+                    
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">replacement</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s"> -&gt; </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span><span class="p">,</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">conditions</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">conditions</span> <span class="o">=</span> <span class="s">&#39; if &#39;</span><span class="o">+</span> <span class="s">&#39;, and &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_condition_to_str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+                                               <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conditions</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">replacement</span><span class="o">+</span><span class="n">conditions</span>
+    
+    <span class="k">def</span> <span class="nf">_condition_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">condition</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a string representation of the given condition.</span>
+<span class="sd">        This helper method is used by L{__str__}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">=</span> <span class="n">condition</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;the </span><span class="si">%s</span><span class="s"> of </span><span class="si">%s</span><span class="s"> is </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PROPERTY_NAME</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_range_to_str</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">),</span> <span class="n">value</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_range_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a string representation for the given range.  This</span>
+<span class="sd">        helper method is used by L{__str__}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;this word&#39;</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;the preceding word&#39;</span>
+        <span class="k">elif</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;the following word&#39;</span>
+        <span class="k">elif</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="ow">and</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;word i-</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="o">-</span><span class="n">start</span>
+        <span class="k">elif</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="ow">and</span> <span class="n">start</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;word i+</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">start</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">start</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span> <span class="n">start</span> <span class="o">=</span> <span class="s">&#39;+</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">start</span>
+            <span class="k">if</span> <span class="n">end</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span> <span class="n">end</span> <span class="o">=</span> <span class="s">&#39;+</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">end</span>
+            <span class="k">return</span> <span class="s">&#39;words i</span><span class="si">%s</span><span class="s">...i</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ProximateTagsRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTagsRule">[docs]</a><span class="k">class</span> <span class="nc">ProximateTagsRule</span><span class="p">(</span><span class="n">ProximateTokensRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule which examines the tags of nearby tokens.</span>
+<span class="sd">    @see: superclass L{ProximateTokensRule} for details.</span>
+<span class="sd">    @see: L{SymmetricProximateTokensTemplate}, which generates these rules.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">PROPERTY_NAME</span> <span class="o">=</span> <span class="s">&#39;tag&#39;</span> <span class="c"># for printing.</span>
+    <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!ProximateTagsRule&#39;</span>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="ProximateTagsRule.extract_property"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTagsRule.extract_property">[docs]</a>    <span class="k">def</span> <span class="nf">extract_property</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;@return: The given token&#39;s tag.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">token</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</div></div>
+<div class="viewcode-block" id="ProximateWordsRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateWordsRule">[docs]</a><span class="k">class</span> <span class="nc">ProximateWordsRule</span><span class="p">(</span><span class="n">ProximateTokensRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule which examines the base types of nearby tokens.</span>
+<span class="sd">    @see: L{ProximateTokensRule} for details.</span>
+<span class="sd">    @see: L{SymmetricProximateTokensTemplate}, which generates these rules.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">PROPERTY_NAME</span> <span class="o">=</span> <span class="s">&#39;text&#39;</span> <span class="c"># for printing.</span>
+    <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!ProximateWordsRule&#39;</span>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="ProximateWordsRule.extract_property"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateWordsRule.extract_property">[docs]</a>    <span class="k">def</span> <span class="nf">extract_property</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;@return: The given token&#39;s text.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">token</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<span class="c">######################################################################</span>
+<span class="c">## Brill Templates</span>
+<span class="c">######################################################################</span>
+</div></div>
+<div class="viewcode-block" id="BrillTemplateI"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI">[docs]</a><span class="k">class</span> <span class="nc">BrillTemplateI</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An interface for generating lists of transformational rules that</span>
+<span class="sd">    apply at given sentence positions.  C{BrillTemplateI} is used by</span>
+<span class="sd">    C{Brill} training algorithms to generate candidate rules.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
+
+<div class="viewcode-block" id="BrillTemplateI.applicable_rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI.applicable_rules">[docs]</a>    <span class="k">def</span> <span class="nf">applicable_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of the transformational rules that would correct</span>
+<span class="sd">        the C{i}th subtoken&#39;s tag in the given token.  In particular,</span>
+<span class="sd">        return a list of zero or more rules that would change</span>
+<span class="sd">        C{tagged_tokens[i][1]} to C{correctTag}, if applied</span>
+<span class="sd">        to C{token}.</span>
+
+<span class="sd">        If the C{i}th subtoken already has the correct tag (i.e., if</span>
+<span class="sd">        C{tagged_tokens[i][1]} == C{correctTag}), then</span>
+<span class="sd">        C{applicable_rules} should return the empty list.</span>
+<span class="sd">        </span>
+<span class="sd">        @param tokens: The tagged tokens being tagged.</span>
+<span class="sd">        @type tokens: C{list} of C{tuple}</span>
+<span class="sd">        @param i: The index of the token whose tag should be corrected.</span>
+<span class="sd">        @type i: C{int}</span>
+<span class="sd">        @param correctTag: The correct tag for the C{i}th token.</span>
+<span class="sd">        @type correctTag: (any)</span>
+<span class="sd">        @rtype: C{list} of L{BrillRule}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
+    </div>
+<div class="viewcode-block" id="BrillTemplateI.get_neighborhood"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI.get_neighborhood">[docs]</a>    <span class="k">def</span> <span class="nf">get_neighborhood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the set of indices C{i} such that</span>
+<span class="sd">        C{applicable_rules(token, i, ...)} depends on the value of</span>
+<span class="sd">        the C{index}th subtoken of C{token}.</span>
+
+<span class="sd">        This method is used by the \&quot;fast\&quot; Brill tagger trainer.</span>
+
+<span class="sd">        @param token: The tokens being tagged.</span>
+<span class="sd">        @type token: C{list} of C{tuple}</span>
+<span class="sd">        @param index: The index whose neighborhood should be returned.</span>
+<span class="sd">        @type index: C{int}</span>
+<span class="sd">        @rtype: C{Set}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
+    </div></div>
+<div class="viewcode-block" id="ProximateTokensTemplate"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensTemplate">[docs]</a><span class="k">class</span> <span class="nc">ProximateTokensTemplate</span><span class="p">(</span><span class="n">BrillTemplateI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An brill templates that generates a list of</span>
+<span class="sd">    L{ProximateTokensRule}s that apply at a given sentence</span>
+<span class="sd">    position.  In particular, each C{ProximateTokensTemplate} is</span>
+<span class="sd">    parameterized by a proximate token brill rule class and a list of</span>
+<span class="sd">    boundaries, and generates all rules that:</span>
+<span class="sd">    </span>
+<span class="sd">      - use the given brill rule class</span>
+<span class="sd">      - use the given list of boundaries as the C{start} and C{end}</span>
+<span class="sd">        points for their conditions</span>
+<span class="sd">      - are applicable to the given token.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a template for generating proximate token brill</span>
+<span class="sd">        rules.</span>
+
+<span class="sd">        @type rule_class: C{class}</span>
+<span class="sd">        @param rule_class: The proximate token brill rule class that</span>
+<span class="sd">        should be used to generate new rules.  This class must be a</span>
+<span class="sd">        subclass of L{ProximateTokensRule}.</span>
+<span class="sd">        @type boundaries: C{tuple} of C{(int, int)}</span>
+<span class="sd">        @param boundaries: A list of tuples C{(start, end)}, each of</span>
+<span class="sd">            which specifies a range for which a condition should be</span>
+<span class="sd">            created by each rule.</span>
+<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any boundary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_class</span> <span class="o">=</span> <span class="n">rule_class</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_boundaries</span> <span class="o">=</span> <span class="n">boundaries</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">)</span> <span class="ow">in</span> <span class="n">boundaries</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">s</span><span class="o">&gt;</span><span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Boundary </span><span class="si">%s</span><span class="s"> has an invalid range&#39;</span> <span class="o">%</span>
+                                 <span class="p">((</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">),))</span>
+
+<div class="viewcode-block" id="ProximateTokensTemplate.applicable_rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensTemplate.applicable_rules">[docs]</a>    <span class="k">def</span> <span class="nf">applicable_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correct_tag</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tokens</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">correct_tag</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c"># For each of this template&#39;s boundaries, Find the conditions</span>
+        <span class="c"># that are applicable for the given token.</span>
+        <span class="n">applicable_conditions</span> <span class="o">=</span> \
+             <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_applicable_conditions</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+              <span class="k">for</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_boundaries</span><span class="p">]</span>
+            
+        <span class="c"># Find all combinations of these applicable conditions.  E.g.,</span>
+        <span class="c"># if applicable_conditions=[[A,B], [C,D]], then this will</span>
+        <span class="c"># generate [[A,C], [A,D], [B,C], [B,D]].</span>
+        <span class="n">condition_combos</span> <span class="o">=</span> <span class="p">[[]]</span>
+        <span class="k">for</span> <span class="n">conditions</span> <span class="ow">in</span> <span class="n">applicable_conditions</span><span class="p">:</span>
+            <span class="n">condition_combos</span> <span class="o">=</span> <span class="p">[</span><span class="n">old_conditions</span><span class="o">+</span><span class="p">[</span><span class="n">new_condition</span><span class="p">]</span>
+                                <span class="k">for</span> <span class="n">old_conditions</span> <span class="ow">in</span> <span class="n">condition_combos</span>
+                                <span class="k">for</span> <span class="n">new_condition</span> <span class="ow">in</span> <span class="n">conditions</span><span class="p">]</span>
+
+        <span class="c"># Translate the condition sets into rules.</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_rule_class</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">correct_tag</span><span class="p">,</span> <span class="o">*</span><span class="n">conds</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">conds</span> <span class="ow">in</span> <span class="n">condition_combos</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">_applicable_conditions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A set of all conditions for proximate token rules</span>
+<span class="sd">        that are applicable to C{tokens[index]}, given boundaries of</span>
+<span class="sd">        C{(start, end)}.  I.e., return a list of all tuples C{(start,</span>
+<span class="sd">        end, M{value})}, such the property value of at least one token</span>
+<span class="sd">        between M{index+start} and M{index+end} (inclusive) is</span>
+<span class="sd">        M{value}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">conditions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="n">start</span><span class="p">)</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">index</span><span class="o">+</span><span class="n">end</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">e</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_class</span><span class="o">.</span><span class="n">extract_property</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">conditions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">conditions</span>
+
+<div class="viewcode-block" id="ProximateTokensTemplate.get_neighborhood"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensTemplate.get_neighborhood">[docs]</a>    <span class="k">def</span> <span class="nf">get_neighborhood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="c"># inherit docs from BrillTemplateI</span>
+
+        <span class="c"># applicable_rules(tokens, index, ...) depends on index.</span>
+        <span class="n">neighborhood</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">index</span><span class="p">])</span>
+        
+        <span class="c"># applicable_rules(tokens, i, ...) depends on index if</span>
+        <span class="c"># i+start &lt; index &lt;= i+end.</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_boundaries</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="p">(</span><span class="o">-</span><span class="n">end</span><span class="p">))</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">index</span><span class="o">+</span><span class="p">(</span><span class="o">-</span><span class="n">start</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">e</span><span class="p">):</span>
+                <span class="n">neighborhood</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">neighborhood</span>
+</div></div>
+<div class="viewcode-block" id="SymmetricProximateTokensTemplate"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.SymmetricProximateTokensTemplate">[docs]</a><span class="k">class</span> <span class="nc">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">BrillTemplateI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Simulates two L{ProximateTokensTemplate}s which are symmetric</span>
+<span class="sd">    across the location of the token.  For rules of the form \&quot;If the</span>
+<span class="sd">    M{n}th token is tagged C{A}, and any tag preceding B{or} following</span>
+<span class="sd">    the M{n}th token by a distance between M{x} and M{y} is C{B}, and</span>
+<span class="sd">    ... , then change the tag of the nth token from C{A} to C{C}.\&quot;</span>
+
+<span class="sd">    One C{ProximateTokensTemplate} is formed by passing in the</span>
+<span class="sd">    same arguments given to this class&#39;s constructor: tuples</span>
+<span class="sd">    representing intervals in which a tag may be found.  The other</span>
+<span class="sd">    C{ProximateTokensTemplate} is constructed with the negative</span>
+<span class="sd">    of all the arguments in reversed order.  For example, a</span>
+<span class="sd">    C{SymmetricProximateTokensTemplate} using the pair (-2,-1) and the</span>
+<span class="sd">    constructor C{SymmetricProximateTokensTemplate} generates the same rules as a</span>
+<span class="sd">    C{SymmetricProximateTokensTemplate} using (-2,-1) plus a second</span>
+<span class="sd">    C{SymmetricProximateTokensTemplate} using (1,2).</span>
+
+<span class="sd">    This is useful because we typically don&#39;t want templates to</span>
+<span class="sd">    specify only \&quot;following\&quot; or only \&quot;preceding\&quot;; we&#39;d like our</span>
+<span class="sd">    rules to be able to look in either direction.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a template for generating proximate token brill</span>
+<span class="sd">        rules.</span>
+<span class="sd">        </span>
+<span class="sd">        @type rule_class: C{class}</span>
+<span class="sd">        @param rule_class: The proximate token brill rule class that</span>
+<span class="sd">        should be used to generate new rules.  This class must be a</span>
+<span class="sd">        subclass of L{ProximateTokensRule}.</span>
+<span class="sd">        @type boundaries: C{tuple} of C{(int, int)}</span>
+<span class="sd">        @param boundaries: A list of tuples C{(start, end)}, each of</span>
+<span class="sd">            which specifies a range for which a condition should be</span>
+<span class="sd">            created by each rule.</span>
+<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any boundary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ptt1</span> <span class="o">=</span> <span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">)</span>
+        <span class="nb">reversed</span> <span class="o">=</span> <span class="p">[(</span><span class="o">-</span><span class="n">e</span><span class="p">,</span><span class="o">-</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">)</span> <span class="ow">in</span> <span class="n">boundaries</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ptt2</span> <span class="o">=</span> <span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="nb">reversed</span><span class="p">)</span>
+
+    <span class="c"># Generates lists of a subtype of ProximateTokensRule.</span>
+<div class="viewcode-block" id="SymmetricProximateTokensTemplate.applicable_rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.SymmetricProximateTokensTemplate.applicable_rules">[docs]</a>    <span class="k">def</span> <span class="nf">applicable_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        See L{BrillTemplateI} for full specifications.</span>
+
+<span class="sd">        @rtype: list of ProximateTokensRule</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ptt1</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">)</span> <span class="o">+</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_ptt2</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="SymmetricProximateTokensTemplate.get_neighborhood"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.SymmetricProximateTokensTemplate.get_neighborhood">[docs]</a>    <span class="k">def</span> <span class="nf">get_neighborhood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="c"># inherit docs from BrillTemplateI</span>
+        <span class="n">n1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ptt1</span><span class="o">.</span><span class="n">get_neighborhood</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+        <span class="n">n2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ptt2</span><span class="o">.</span><span class="n">get_neighborhood</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">n1</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">n2</span><span class="p">)</span>
+
+<span class="c">######################################################################</span>
+<span class="c">## Brill Tagger Trainer</span>
+<span class="c">######################################################################</span>
+</div></div>
+<div class="viewcode-block" id="BrillTaggerTrainer"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTaggerTrainer">[docs]</a><span class="k">class</span> <span class="nc">BrillTaggerTrainer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A trainer for brill taggers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_tagger</span><span class="p">,</span> <span class="n">templates</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                 <span class="n">deterministic</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param deterministic: If true, then choose between rules that</span>
+<span class="sd">            have the same score by picking the one whose __repr__</span>
+<span class="sd">            is lexicographically smaller.  If false, then just pick the</span>
+<span class="sd">            first rule we find with a given score -- this will depend</span>
+<span class="sd">            on the order in which keys are returned from dictionaries,</span>
+<span class="sd">            and so may not be the same from one run to the next.  If</span>
+<span class="sd">            not specified, treat as true iff trace &gt; 0.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">deterministic</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">deterministic</span> <span class="o">=</span> <span class="p">(</span><span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span> <span class="o">=</span> <span class="n">initial_tagger</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span> <span class="o">=</span> <span class="n">templates</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span> <span class="o">=</span> <span class="n">deterministic</span>
+
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+    <span class="c"># Training</span>
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+
+<div class="viewcode-block" id="BrillTaggerTrainer.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTaggerTrainer.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">max_rules</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_score</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Trains the Brill tagger on the corpus C{train_token},</span>
+<span class="sd">        producing at most C{max_rules} transformations, each of which</span>
+<span class="sd">        reduces the net number of errors in the corpus by at least</span>
+<span class="sd">        C{min_score}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type train_sents: C{list} of C{list} of L{tuple}</span>
+<span class="sd">        @param train_sents: The corpus of tagged tokens</span>
+<span class="sd">        @type max_rules: C{int}</span>
+<span class="sd">        @param max_rules: The maximum number of transformations to be created</span>
+<span class="sd">        @type min_score: C{int}</span>
+<span class="sd">        @param min_score: The minimum acceptable net error reduction</span>
+<span class="sd">            that each transformation must produce in the corpus.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">print</span> <span class="p">(</span><span class="s">&quot;Training Brill tagger on </span><span class="si">%d</span><span class="s"> &quot;</span>
+                                   <span class="s">&quot;sentences...&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_sents</span><span class="p">))</span>
+
+        <span class="c"># Create a new copy of the training corpus, and run the</span>
+        <span class="c"># initial tagger on it.  We will progressively update this</span>
+        <span class="c"># test corpus to look more like the training corpus.</span>
+        <span class="n">test_sents</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">untag</span><span class="p">(</span><span class="n">sent</span><span class="p">))</span>
+                      <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">train_sents</span><span class="p">]</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_header</span><span class="p">()</span>
+            
+        <span class="c"># Look for useful rules.</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_rules</span><span class="p">:</span>
+                <span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">fixscore</span><span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_best_rule</span><span class="p">(</span><span class="n">test_sents</span><span class="p">,</span>
+                                                          <span class="n">train_sents</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">rule</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">score</span> <span class="o">&lt;</span> <span class="n">min_score</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="k">print</span> <span class="s">&#39;Insufficient improvement; stopping&#39;</span>
+                    <span class="k">break</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c"># Add the rule to our list of rules.</span>
+                    <span class="n">rules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+                    <span class="c"># Use the rules to update the test corpus.  Keep</span>
+                    <span class="c"># track of how many times the rule applied (k).</span>
+                    <span class="n">k</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">test_sents</span><span class="p">:</span>
+                        <span class="n">k</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rule</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">sent</span><span class="p">))</span>
+                    <span class="c"># Display trace output.</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_trace_rule</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">fixscore</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+        <span class="c"># The user can also cancel training manually:</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&quot;Training stopped manually -- </span><span class="si">%d</span><span class="s"> rules found&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span>
+
+        <span class="c"># Create and return a tagger from the rules we found.</span>
+        <span class="k">return</span> <span class="n">BrillTagger</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span><span class="p">,</span> <span class="n">rules</span><span class="p">)</span>
+
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+    <span class="c"># Finding the best rule</span>
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+
+    <span class="c"># Finds the rule that makes the biggest net improvement in the corpus.</span>
+    <span class="c"># Returns a (rule, score) pair.</span></div>
+    <span class="k">def</span> <span class="nf">_best_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
+        <span class="c"># Create a dictionary mapping from each tag to a list of the</span>
+        <span class="c"># indices that have that tag in both test_sents and</span>
+        <span class="c"># train_sents (i.e., where it is correctly tagged).</span>
+        <span class="n">correct_indices</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">sent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">test_sents</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">tagged_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">tagged_word</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="n">tag</span> <span class="o">=</span> <span class="n">tagged_word</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">correct_indices</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span> <span class="p">)</span>
+
+        <span class="c"># Find all the rules that correct at least one token&#39;s tag,</span>
+        <span class="c"># and the number of tags that each rule corrects (in</span>
+        <span class="c"># descending order of number of tags corrected).</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_rules</span><span class="p">(</span><span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">)</span>
+
+        <span class="c"># Keep track of the current best rule, and its score.</span>
+        <span class="n">best_rule</span><span class="p">,</span> <span class="n">best_score</span><span class="p">,</span> <span class="n">best_fixscore</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+
+        <span class="c"># Consider each rule, in descending order of fixscore (the</span>
+        <span class="c"># number of tags that the rule corrects, not including the</span>
+        <span class="c"># number that it breaks).</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">fixscore</span><span class="p">)</span> <span class="ow">in</span> <span class="n">rules</span><span class="p">:</span>
+            <span class="c"># The actual score must be &lt;= fixscore; so if best_score</span>
+            <span class="c"># is bigger than fixscore, then we already have the best</span>
+            <span class="c"># rule.</span>
+            <span class="k">if</span> <span class="n">best_score</span> <span class="o">&gt;</span> <span class="n">fixscore</span> <span class="ow">or</span> <span class="p">(</span><span class="n">best_score</span> <span class="o">==</span> <span class="n">fixscore</span> <span class="ow">and</span>
+                                         <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">best_rule</span><span class="p">,</span> <span class="n">best_score</span><span class="p">,</span> <span class="n">best_fixscore</span>
+
+            <span class="c"># Calculate the actual score, by decrementing fixscore</span>
+            <span class="c"># once for each tag that the rule changes to an incorrect</span>
+            <span class="c"># value.</span>
+            <span class="n">score</span> <span class="o">=</span> <span class="n">fixscore</span>
+            <span class="k">if</span> <span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span> <span class="ow">in</span> <span class="n">correct_indices</span><span class="p">:</span>
+                <span class="k">for</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span> <span class="ow">in</span> <span class="n">correct_indices</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="n">rule</span><span class="o">.</span><span class="n">applies</span><span class="p">(</span><span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">],</span> <span class="n">wordnum</span><span class="p">):</span>
+                        <span class="n">score</span> <span class="o">-=</span> <span class="mi">1</span>
+                        <span class="c"># If the score goes below best_score, then we know</span>
+                        <span class="c"># that this isn&#39;t the best rule; so move on:</span>
+                        <span class="k">if</span> <span class="n">score</span> <span class="o">&lt;</span> <span class="n">best_score</span> <span class="ow">or</span> <span class="p">(</span><span class="n">score</span> <span class="o">==</span> <span class="n">best_score</span> <span class="ow">and</span>
+                                                  <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span><span class="p">):</span>
+                            <span class="k">break</span>
+
+            <span class="c"># If the actual score is better than the best score, then</span>
+            <span class="c"># update best_score and best_rule.</span>
+            <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="n">best_score</span> <span class="ow">or</span> <span class="p">(</span><span class="n">score</span> <span class="o">==</span> <span class="n">best_score</span> <span class="ow">and</span>
+                                      <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span> <span class="ow">and</span>
+                                      <span class="nb">repr</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">repr</span><span class="p">(</span><span class="n">best_rule</span><span class="p">)):</span>
+                <span class="n">best_rule</span><span class="p">,</span> <span class="n">best_score</span><span class="p">,</span> <span class="n">best_fixscore</span> <span class="o">=</span> <span class="n">rule</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">fixscore</span>
+
+        <span class="c"># Return the best rule, and its score.</span>
+        <span class="k">return</span> <span class="n">best_rule</span><span class="p">,</span> <span class="n">best_score</span><span class="p">,</span> <span class="n">best_fixscore</span>
+
+    <span class="k">def</span> <span class="nf">_find_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find all rules that correct at least one token&#39;s tag in</span>
+<span class="sd">        C{test_sents}.</span>
+
+<span class="sd">        @return: A list of tuples C{(rule, fixscore)}, where C{rule}</span>
+<span class="sd">            is a brill rule and C{fixscore} is the number of tokens</span>
+<span class="sd">            whose tag the rule corrects.  Note that C{fixscore} does</span>
+<span class="sd">            I{not} include the number of tokens whose tags are changed</span>
+<span class="sd">            to incorrect values.        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c"># Create a list of all indices that are incorrectly tagged.</span>
+        <span class="n">error_indices</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">sent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">test_sents</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">tagged_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">tagged_word</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="n">error_indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span> <span class="p">)</span>
+
+        <span class="c"># Create a dictionary mapping from rules to their positive-only</span>
+        <span class="c"># scores.</span>
+        <span class="n">rule_score_dict</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span> <span class="ow">in</span> <span class="n">error_indices</span><span class="p">:</span>
+            <span class="n">test_sent</span> <span class="o">=</span> <span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">]</span>
+            <span class="n">train_sent</span> <span class="o">=</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_rules_at</span><span class="p">(</span><span class="n">test_sent</span><span class="p">,</span> <span class="n">train_sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
+                <span class="n">rule_score_dict</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c"># Convert the dictionary into a list of (rule, score) tuples,</span>
+        <span class="c"># sorted in descending order of score.</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">rule_score_dict</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> 
+                      <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="p">(</span><span class="n">rule</span><span class="p">,</span><span class="n">score</span><span class="p">):</span> <span class="o">-</span><span class="n">score</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_find_rules_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sent</span><span class="p">,</span> <span class="n">train_sent</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{Set}</span>
+<span class="sd">        @return: the set of all rules (based on the templates) that</span>
+<span class="sd">        correct token C{i}&#39;s tag in C{test_sent}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">applicable_rules</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">test_sent</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">train_sent</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">correct_tag</span> <span class="o">=</span> <span class="n">train_sent</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span><span class="p">:</span>
+                <span class="n">new_rules</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">test_sent</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span>
+                                                      <span class="n">correct_tag</span><span class="p">)</span>
+                <span class="n">applicable_rules</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">new_rules</span><span class="p">)</span>
+                
+        <span class="k">return</span> <span class="n">applicable_rules</span>
+
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+    <span class="c"># Tracing</span>
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+
+    <span class="k">def</span> <span class="nf">_trace_header</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">print</span> <span class="s">&quot;&quot;&quot;</span>
+<span class="s">           B      |     </span>
+<span class="s">   S   F   r   O  |        Score = Fixed - Broken</span>
+<span class="s">   c   i   o   t  |  R     Fixed = num tags changed incorrect -&gt; correct</span>
+<span class="s">   o   x   k   h  |  u     Broken = num tags changed correct -&gt; incorrect</span>
+<span class="s">   r   e   e   e  |  l     Other = num tags changed incorrect -&gt; incorrect</span>
+<span class="s">   e   d   n   r  |  e</span>
+<span class="s">------------------+-------------------------------------------------------</span>
+<span class="s">        &quot;&quot;&quot;</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_trace_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">fixscore</span><span class="p">,</span> <span class="n">numchanges</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">print</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%4d%4d%4d%4d</span><span class="s"> &#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="n">fixscore</span><span class="p">,</span> <span class="n">fixscore</span><span class="o">-</span><span class="n">score</span><span class="p">,</span>
+                                      <span class="n">numchanges</span><span class="o">-</span><span class="n">fixscore</span><span class="o">*</span><span class="mi">2</span><span class="o">+</span><span class="n">score</span><span class="p">)),</span> <span class="s">&#39;|&#39;</span><span class="p">,</span>
+            <span class="k">print</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rule</span><span class="p">),</span> <span class="n">initial_indent</span><span class="o">=</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">79</span><span class="p">,</span>
+                                <span class="n">subsequent_indent</span><span class="o">=</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">18</span><span class="o">+</span><span class="s">&#39;|   &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span> <span class="n">rule</span>
+
+<span class="c">######################################################################</span>
+<span class="c">## Fast Brill Tagger Trainer</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="FastBrillTaggerTrainer"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.FastBrillTaggerTrainer">[docs]</a><span class="k">class</span> <span class="nc">FastBrillTaggerTrainer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A faster trainer for brill taggers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_tagger</span><span class="p">,</span> <span class="n">templates</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                 <span class="n">deterministic</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">deterministic</span><span class="p">:</span>
+            <span class="n">deterministic</span> <span class="o">=</span> <span class="p">(</span><span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span> <span class="o">=</span> <span class="n">initial_tagger</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span> <span class="o">=</span> <span class="n">templates</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span> <span class="o">=</span> <span class="n">deterministic</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from tags to lists of positions that use that tag.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from positions to the set of rules that are known</span>
+<span class="sd">           to occur at that position.  Position is (sentnum, wordnum).</span>
+<span class="sd">           Initially, this will only contain positions where each rule</span>
+<span class="sd">           applies in a helpful way; but when we examine a rule, we&#39;ll</span>
+<span class="sd">           extend this list to also include positions where each rule</span>
+<span class="sd">           applies in a harmful or neutral way.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from rule to position to effect, specifying the</span>
+<span class="sd">           effect that each rule has on the overall score, at each</span>
+<span class="sd">           position.  Position is (sentnum, wordnum); and effect is</span>
+<span class="sd">           -1, 0, or 1.  As with _rules_by_position, this mapping starts</span>
+<span class="sd">           out only containing rules with positive effects; but when</span>
+<span class="sd">           we examine a rule, we&#39;ll extend this mapping to include</span>
+<span class="sd">           the positions where the rule is harmful or neutral.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from scores to the set of rules whose effect on the</span>
+<span class="sd">           overall score is upper bounded by that score.  Invariant:</span>
+<span class="sd">           rulesByScore[s] will contain r iff the sum of</span>
+<span class="sd">           _positions_by_rule[r] is s.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from rules to upper bounds on their effects on the</span>
+<span class="sd">           overall score.  This is the inverse mapping to _rules_by_score.</span>
+<span class="sd">           Invariant: ruleScores[r] = sum(_positions_by_rule[r])&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="sd">&quot;&quot;&quot;Mapping from rules to the first position where we&#39;re unsure</span>
+<span class="sd">           if the rule applies.  This records the next position we</span>
+<span class="sd">           need to check to see if the rule messed anything up.&quot;&quot;&quot;</span>
+
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+    <span class="c"># Training</span>
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+
+<div class="viewcode-block" id="FastBrillTaggerTrainer.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.FastBrillTaggerTrainer.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">max_rules</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_score</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="c"># Basic idea: Keep track of the rules that apply at each position.</span>
+        <span class="c"># And keep track of the positions to which each rule applies.</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">print</span> <span class="p">(</span><span class="s">&quot;Training Brill tagger on </span><span class="si">%d</span><span class="s"> &quot;</span>
+                                   <span class="s">&quot;sentences...&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_sents</span><span class="p">))</span>
+
+        <span class="c"># Create a new copy of the training corpus, and run the</span>
+        <span class="c"># initial tagger on it.  We will progressively update this</span>
+        <span class="c"># test corpus to look more like the training corpus.</span>
+        <span class="n">test_sents</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">untag</span><span class="p">(</span><span class="n">sent</span><span class="p">))</span>
+                      <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">train_sents</span><span class="p">]</span>
+
+        <span class="c"># Initialize our mappings.  This will find any errors made</span>
+        <span class="c"># by the initial tagger, and use those to generate repair</span>
+        <span class="c"># rules, which are added to the rule mappings.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">print</span> <span class="s">&quot;Finding initial useful rules...&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_mappings</span><span class="p">(</span><span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">print</span> <span class="p">(</span><span class="s">&quot;    Found </span><span class="si">%d</span><span class="s"> useful rules.&quot;</span> <span class="o">%</span>
+                                   <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">))</span>
+
+        <span class="c"># Let the user know what we&#39;re up to.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_header</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span> <span class="k">print</span> <span class="s">&quot;Selecting rules...&quot;</span>
+
+        <span class="c"># Repeatedly select the best rule, and add it to `rules`.</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">while</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_rules</span><span class="p">):</span>
+                <span class="c"># Find the best rule, and add it to our rule list.</span>
+                <span class="n">rule</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_best_rule</span><span class="p">(</span><span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">min_score</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">rule</span><span class="p">:</span>
+                    <span class="n">rules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">break</span> <span class="c"># No more good rules left!</span>
+    
+                <span class="c"># Report the rule that we found.</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_rule</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+    
+                <span class="c"># Apply the new rule at the relevant sites</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_apply_rule</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">)</span>
+                
+                <span class="c"># Update _tag_positions[rule.original_tag] and</span>
+                <span class="c"># _tag_positions[rule.replacement_tag] for the affected</span>
+                <span class="c"># positions (i.e., self._positions_by_rule[rule]).</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_update_tag_positions</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+                
+                <span class="c"># Update rules that were affected by the change.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_update_rules</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">)</span>
+                
+        <span class="c"># The user can cancel training manually:</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&quot;Training stopped manually -- </span><span class="si">%d</span><span class="s"> rules found&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span>
+
+        <span class="c"># Discard our tag position mapping &amp; rule mappings.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_clean</span><span class="p">()</span>
+            
+        <span class="c"># Create and return a tagger from the rules we found.</span>
+        <span class="k">return</span> <span class="n">BrillTagger</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span><span class="p">,</span> <span class="n">rules</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_init_mappings</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the tag position mapping &amp; the rule related</span>
+<span class="sd">        mappings.  For each error in test_sents, find new rules that</span>
+<span class="sd">        would correct them, and add them to the rule mappings.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="c"># Scan through the corpus, initializing the tag_positions</span>
+        <span class="c"># mapping and all the rule-related mappings.</span>
+        <span class="k">for</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">sent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">test_sents</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">wordnum</span><span class="p">,</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
+                
+                <span class="c"># Initialize tag_positions</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span><span class="n">wordnum</span><span class="p">)</span> <span class="p">)</span>
+
+                <span class="c"># If it&#39;s an error token, update the rule-related mappings.</span>
+                <span class="n">correct_tag</span> <span class="o">=</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">tag</span> <span class="o">!=</span> <span class="n">correct_tag</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_rules</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">correct_tag</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_update_rule_applies</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span>
+                                                  <span class="n">train_sents</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span> <span class="o">=</span> <span class="bp">None</span>
+        
+    <span class="k">def</span> <span class="nf">_find_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">new_tag</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use the templates to find rules that apply at index C{wordnum}</span>
+<span class="sd">        in the sentence C{sent} and generate the tag C{new_tag}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">template</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">new_tag</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">rule</span>
+
+    <span class="k">def</span> <span class="nf">_update_rule_applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the rule data tables to reflect the fact that</span>
+<span class="sd">        C{rule} applies at the position C{(sentnum, wordnum)}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span>
+        
+        <span class="c"># If the rule is already known to apply here, ignore.</span>
+        <span class="c"># (This only happens if the position&#39;s tag hasn&#39;t changed.)</span>
+        <span class="k">if</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]:</span>
+            <span class="k">return</span>
+
+        <span class="c"># Update self._positions_by_rule.</span>
+        <span class="n">correct_tag</span> <span class="o">=</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">rule</span><span class="o">.</span><span class="n">replacement_tag</span> <span class="o">==</span> <span class="n">correct_tag</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span> <span class="o">==</span> <span class="n">correct_tag</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c"># was wrong, remains wrong</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c"># Update _rules_by_position</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+
+        <span class="c"># Update _rule_scores.</span>
+        <span class="n">old_score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span>
+
+        <span class="c"># Update _rules_by_score.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="n">old_score</span><span class="p">]</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_update_rule_not_applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the rule data tables to reflect the fact that C{rule}</span>
+<span class="sd">        does not apply at the position C{(sentnum, wordnum)}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span>
+        
+        <span class="c"># Update _rule_scores.</span>
+        <span class="n">old_score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span>
+        
+        <span class="c"># Update _rules_by_score.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="n">old_score</span><span class="p">]</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+        
+        <span class="c"># Update _positions_by_rule</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">rule</span><span class="p">)</span>
+        
+        <span class="c"># Optional addition: if the rule now applies nowhere, delete</span>
+        <span class="c"># all its dictionary entries.</span>
+
+    <span class="k">def</span> <span class="nf">_best_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">min_score</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find the next best rule.  This is done by repeatedly taking a</span>
+<span class="sd">        rule with the highest score and stepping through the corpus to</span>
+<span class="sd">        see where it applies.  When it makes an error (decreasing its</span>
+<span class="sd">        score) it&#39;s bumped down, and we try a new rule with the</span>
+<span class="sd">        highest score.  When we find a rule which has the highest</span>
+<span class="sd">        score AND which has been tested against the entire corpus, we</span>
+<span class="sd">        can conclude that it&#39;s the next best rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span> <span class="o">==</span> <span class="p">{}:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+        <span class="n">max_score</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="n">max_score</span> <span class="o">&gt;=</span> <span class="n">min_score</span><span class="p">:</span>
+            <span class="n">best_rules</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="n">max_score</span><span class="p">])</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_deterministic</span><span class="p">:</span>
+                <span class="n">best_rules</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="nb">repr</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">best_rules</span><span class="p">:</span>
+                <span class="n">positions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span><span class="p">]</span>
+
+                <span class="n">unk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+                <span class="n">start</span> <span class="o">=</span> <span class="n">bisect</span><span class="o">.</span><span class="n">bisect_left</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="n">unk</span><span class="p">)</span>
+                
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">positions</span><span class="p">)):</span>
+                    <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span> <span class="o">=</span> <span class="n">positions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">rule</span><span class="o">.</span><span class="n">applies</span><span class="p">(</span><span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">],</span> <span class="n">wordnum</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_update_rule_applies</span><span class="p">(</span><span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span>
+                                                  <span class="n">train_sents</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_score</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span>
+                                                                  <span class="n">wordnum</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+                            <span class="k">break</span> <span class="c"># The update demoted the rule.</span>
+
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">==</span> <span class="n">max_score</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">train_sents</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">rule</span>
+
+            <span class="c"># We demoted all the rules with score==max_score.</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="n">max_score</span><span class="p">]</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">[</span><span class="n">max_score</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="bp">None</span>
+            <span class="n">max_score</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span><span class="p">)</span>
+
+        <span class="c"># We reached the min-score threshold.</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_apply_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update C{test_sents} by applying C{rule} everywhere where its</span>
+<span class="sd">        conditions are meet.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">update_positions</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">])</span>
+        <span class="n">old_tag</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span>
+        <span class="n">new_tag</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">replacement_tag</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_apply</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">update_positions</span><span class="p">))</span>
+
+        <span class="c"># Update test_sents.</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span> <span class="ow">in</span> <span class="n">update_positions</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">new_tag</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_update_tag_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update _tag_positions to reflect the changes to tags that are</span>
+<span class="sd">        made by C{rule}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Update the tag index.</span>
+        <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]:</span>
+            <span class="c"># Delete the old tag.</span>
+            <span class="n">old_tag_positions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span><span class="p">]</span>
+            <span class="n">old_index</span> <span class="o">=</span> <span class="n">bisect</span><span class="o">.</span><span class="n">bisect_left</span><span class="p">(</span><span class="n">old_tag_positions</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+            <span class="k">del</span> <span class="n">old_tag_positions</span><span class="p">[</span><span class="n">old_index</span><span class="p">]</span>
+            <span class="c"># Insert the new tag.</span>
+            <span class="n">new_tag_positions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag_positions</span><span class="p">[</span><span class="n">rule</span><span class="o">.</span><span class="n">replacement_tag</span><span class="p">]</span>
+            <span class="n">bisect</span><span class="o">.</span><span class="n">insort_left</span><span class="p">(</span><span class="n">new_tag_positions</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_update_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check if we should add or remove any rules from consideration,</span>
+<span class="sd">        given the changes made by C{rule}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Collect a list of all positions that might be affected.</span>
+        <span class="n">neighbors</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span><span class="p">:</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">get_neighborhood</span><span class="p">(</span><span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">],</span> <span class="n">wordnum</span><span class="p">)</span>
+                <span class="n">neighbors</span><span class="o">.</span><span class="n">update</span><span class="p">([(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">n</span><span class="p">])</span>
+
+        <span class="c"># Update the rules at each position.  </span>
+        <span class="n">num_obsolete</span> <span class="o">=</span> <span class="n">num_new</span> <span class="o">=</span> <span class="n">num_unseen</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span> <span class="ow">in</span> <span class="n">neighbors</span><span class="p">:</span>
+            <span class="n">test_sent</span> <span class="o">=</span> <span class="n">test_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">]</span>
+            <span class="n">correct_tag</span> <span class="o">=</span> <span class="n">train_sents</span><span class="p">[</span><span class="n">sentnum</span><span class="p">][</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+
+            <span class="c"># Check if the change causes any rule at this position to</span>
+            <span class="c"># stop matching; if so, then update our rule mappings</span>
+            <span class="c"># accordingly.</span>
+            <span class="n">old_rules</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_position</span><span class="p">[</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">old_rule</span> <span class="ow">in</span> <span class="n">old_rules</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">old_rule</span><span class="o">.</span><span class="n">applies</span><span class="p">(</span><span class="n">test_sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
+                    <span class="n">num_obsolete</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_update_rule_not_applies</span><span class="p">(</span><span class="n">old_rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">)</span>
+
+            <span class="c"># Check if the change causes our templates to propose any</span>
+            <span class="c"># new rules for this position.</span>
+            <span class="n">site_rules</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">new_rule</span> <span class="ow">in</span> <span class="n">template</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">test_sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span>
+                                                          <span class="n">correct_tag</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">new_rule</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">old_rules</span><span class="p">:</span>
+                        <span class="n">num_new</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="n">new_rule</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">:</span>
+                            <span class="n">num_unseen</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="n">old_rules</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">new_rule</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_update_rule_applies</span><span class="p">(</span><span class="n">new_rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span>
+                                                  <span class="n">wordnum</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">)</span>
+
+            <span class="c"># We may have caused other rules to match here, that are</span>
+            <span class="c"># not proposed by our templates -- in particular, rules</span>
+            <span class="c"># that are harmful or neutral.  We therefore need to</span>
+            <span class="c"># update any rule whose first_unknown_position is past</span>
+            <span class="c"># this rule.</span>
+            <span class="k">for</span> <span class="n">new_rule</span><span class="p">,</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_unknown_position</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">pos</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">new_rule</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">old_rules</span><span class="p">:</span>
+                        <span class="n">num_new</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="n">new_rule</span><span class="o">.</span><span class="n">applies</span><span class="p">(</span><span class="n">test_sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">_update_rule_applies</span><span class="p">(</span><span class="n">new_rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span>
+                                                      <span class="n">wordnum</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">)</span>
+            
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_trace_update_rules</span><span class="p">(</span><span class="n">num_obsolete</span><span class="p">,</span> <span class="n">num_new</span><span class="p">,</span> <span class="n">num_unseen</span><span class="p">)</span>
+
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+    <span class="c"># Tracing</span>
+    <span class="c">#////////////////////////////////////////////////////////////</span>
+
+    <span class="k">def</span> <span class="nf">_trace_header</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">print</span> <span class="s">&quot;&quot;&quot;</span>
+<span class="s">           B      |     </span>
+<span class="s">   S   F   r   O  |        Score = Fixed - Broken</span>
+<span class="s">   c   i   o   t  |  R     Fixed = num tags changed incorrect -&gt; correct</span>
+<span class="s">   o   x   k   h  |  u     Broken = num tags changed correct -&gt; incorrect</span>
+<span class="s">   r   e   e   e  |  l     Other = num tags changed incorrect -&gt; incorrect</span>
+<span class="s">   e   d   n   r  |  e</span>
+<span class="s">------------------+-------------------------------------------------------</span>
+<span class="s">        &quot;&quot;&quot;</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_trace_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span> <span class="o">==</span> \
+               <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        
+        <span class="n">changes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="n">num_changed</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">changes</span><span class="p">)</span>
+        <span class="n">num_fixed</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">changes</span> <span class="k">if</span> <span class="n">c</span><span class="o">==</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">num_broken</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">changes</span> <span class="k">if</span> <span class="n">c</span><span class="o">==-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">num_other</span> <span class="o">=</span> <span class="nb">len</span><span class="p">([</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">changes</span> <span class="k">if</span> <span class="n">c</span><span class="o">==</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rule_scores</span><span class="p">[</span><span class="n">rule</span><span class="p">]</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;</span><span class="si">%4d%4d%4d%4d</span><span class="s">  |&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">score</span><span class="p">,</span><span class="n">num_fixed</span><span class="p">,</span><span class="n">num_broken</span><span class="p">,</span><span class="n">num_other</span><span class="p">),</span>
+            <span class="k">print</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rule</span><span class="p">),</span> <span class="n">initial_indent</span><span class="o">=</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">,</span>
+                                <span class="n">subsequent_indent</span><span class="o">=</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">18</span><span class="o">+</span><span class="s">&#39;|   &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span> <span class="n">rule</span>
+
+    <span class="k">def</span> <span class="nf">_trace_apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_updates</span><span class="p">):</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">18</span><span class="o">+</span><span class="s">&#39;|&#39;</span>
+        <span class="k">print</span> <span class="n">prefix</span>
+        <span class="k">print</span> <span class="n">prefix</span><span class="p">,</span> <span class="s">&#39;Applying rule to </span><span class="si">%d</span><span class="s"> positions.&#39;</span> <span class="o">%</span> <span class="n">num_updates</span>
+
+    <span class="k">def</span> <span class="nf">_trace_update_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_obsolete</span><span class="p">,</span> <span class="n">num_new</span><span class="p">,</span> <span class="n">num_unseen</span><span class="p">):</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">18</span><span class="o">+</span><span class="s">&#39;|&#39;</span>
+        <span class="k">print</span> <span class="n">prefix</span><span class="p">,</span> <span class="s">&#39;Updated rule tables:&#39;</span>
+        <span class="k">print</span> <span class="n">prefix</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;  - </span><span class="si">%d</span><span class="s"> rule applications removed&#39;</span> <span class="o">%</span> <span class="n">num_obsolete</span><span class="p">)</span>
+        <span class="k">print</span> <span class="n">prefix</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;  - </span><span class="si">%d</span><span class="s"> rule applications added (</span><span class="si">%d</span><span class="s"> novel)&#39;</span> <span class="o">%</span>
+                       <span class="p">(</span><span class="n">num_new</span><span class="p">,</span> <span class="n">num_unseen</span><span class="p">))</span>
+        <span class="k">print</span> <span class="n">prefix</span>
+
+        
+
+<span class="c">######################################################################</span>
+<span class="c">## Testing</span>
+<span class="c">######################################################################</span>
+
+<span class="c"># returns a list of errors in string format</span></div>
+<div class="viewcode-block" id="error_list"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.error_list">[docs]</a><span class="k">def</span> <span class="nf">error_list</span> <span class="p">(</span><span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">radius</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns a list of human-readable strings indicating the errors in the</span>
+<span class="sd">    given tagging of the corpus.</span>
+
+<span class="sd">    @param train_sents: The correct tagging of the corpus</span>
+<span class="sd">    @type train_sents: C{list} of C{tuple}</span>
+<span class="sd">    @param test_sents: The tagged corpus</span>
+<span class="sd">    @type test_sents: C{list} of C{tuple}</span>
+<span class="sd">    @param radius: How many tokens on either side of a wrongly-tagged token</span>
+<span class="sd">        to include in the error string.  For example, if C{radius}=2,</span>
+<span class="sd">        each error string will show the incorrect token plus two</span>
+<span class="sd">        tokens on either side.</span>
+<span class="sd">    @type radius: int</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">hdr</span> <span class="o">=</span> <span class="p">((</span><span class="s">&#39;</span><span class="si">%25s</span><span class="s"> | </span><span class="si">%s</span><span class="s"> | </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">26</span><span class="o">+</span><span class="s">&#39;+&#39;</span><span class="o">+</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">24</span><span class="o">+</span><span class="s">&#39;+&#39;</span><span class="o">+</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">26</span><span class="p">)</span> <span class="o">%</span>
+           <span class="p">(</span><span class="s">&#39;left context&#39;</span><span class="p">,</span> <span class="s">&#39;word/test-&gt;gold&#39;</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="mi">22</span><span class="p">),</span> <span class="s">&#39;right context&#39;</span><span class="p">))</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[</span><span class="n">hdr</span><span class="p">]</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">train_sent</span><span class="p">,</span> <span class="n">test_sent</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">wordnum</span><span class="p">,</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">train_pos</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">train_sent</span><span class="p">):</span>
+            <span class="n">test_pos</span> <span class="o">=</span> <span class="n">test_sent</span><span class="p">[</span><span class="n">wordnum</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">train_pos</span> <span class="o">!=</span> <span class="n">test_pos</span><span class="p">:</span>
+                <span class="n">left</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">w</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">train_sent</span><span class="p">[:</span><span class="n">wordnum</span><span class="p">])</span>
+                <span class="n">right</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">w</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">train_sent</span><span class="p">[</span><span class="n">wordnum</span><span class="o">+</span><span class="mi">1</span><span class="p">:])</span>
+                <span class="n">mid</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">/</span><span class="si">%s</span><span class="s">-&gt;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">test_pos</span><span class="p">,</span> <span class="n">train_pos</span><span class="p">)</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%25s</span><span class="s"> | </span><span class="si">%s</span><span class="s"> | </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                              <span class="p">(</span><span class="n">left</span><span class="p">[</span><span class="o">-</span><span class="mi">25</span><span class="p">:],</span> <span class="n">mid</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="mi">22</span><span class="p">),</span> <span class="n">right</span><span class="p">[:</span><span class="mi">25</span><span class="p">]))</span>
+
+    <span class="k">return</span> <span class="n">errors</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># Demonstration</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">num_sents</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">max_rules</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_score</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+         <span class="n">error_output</span><span class="o">=</span><span class="s">&quot;errors.out&quot;</span><span class="p">,</span> <span class="n">rule_output</span><span class="o">=</span><span class="s">&quot;rules.yaml&quot;</span><span class="p">,</span>
+         <span class="n">randomize</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">train</span><span class="o">=.</span><span class="mi">8</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Brill Tagger Demonstration</span>
+
+<span class="sd">    @param num_sents: how many sentences of training and testing data to use</span>
+<span class="sd">    @type num_sents: L{int}</span>
+<span class="sd">    @param max_rules: maximum number of rule instances to create</span>
+<span class="sd">    @type max_rules: L{int}</span>
+<span class="sd">    @param min_score: the minimum score for a rule in order for it to</span>
+<span class="sd">        be considered</span>
+<span class="sd">    @type min_score: L{int}</span>
+<span class="sd">    @param error_output: the file where errors will be saved</span>
+<span class="sd">    @type error_output: C{string}</span>
+<span class="sd">    @param rule_output: the file where rules will be saved</span>
+<span class="sd">    @type rule_output: C{string}</span>
+<span class="sd">    @param randomize: whether the training data should be a random subset</span>
+<span class="sd">        of the corpus</span>
+<span class="sd">    @type randomize: boolean</span>
+<span class="sd">    @param train: the fraction of the the corpus to be used for training</span>
+<span class="sd">        (1=all)</span>
+<span class="sd">    @type train: L{float}</span>
+<span class="sd">    @param trace: the level of diagnostic tracing output to produce (0-4)</span>
+<span class="sd">    @type trace: L{int}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">tag</span>
+    <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">brill</span>
+
+    <span class="n">nn_cd_tagger</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">RegexpTagger</span><span class="p">([(</span><span class="s">r&#39;^-?[0-9]+(.[0-9]+)?$&#39;</span><span class="p">,</span> <span class="s">&#39;CD&#39;</span><span class="p">),</span>
+                                     <span class="p">(</span><span class="s">r&#39;.*&#39;</span><span class="p">,</span> <span class="s">&#39;NN&#39;</span><span class="p">)])</span>
+
+    <span class="c"># train is the proportion of data used in training; the rest is reserved</span>
+    <span class="c"># for testing.</span>
+    <span class="k">print</span> <span class="s">&quot;Loading tagged data... &quot;</span>
+    <span class="n">tagged_data</span> <span class="o">=</span> <span class="n">treebank</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">randomize</span><span class="p">:</span>
+        <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sents</span><span class="p">))</span>
+        <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">sents</span><span class="p">)</span>
+    <span class="n">cutoff</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">num_sents</span><span class="o">*</span><span class="n">train</span><span class="p">)</span>
+    <span class="n">training_data</span> <span class="o">=</span> <span class="n">tagged_data</span><span class="p">[:</span><span class="n">cutoff</span><span class="p">]</span>
+    <span class="n">gold_data</span> <span class="o">=</span> <span class="n">tagged_data</span><span class="p">[</span><span class="n">cutoff</span><span class="p">:</span><span class="n">num_sents</span><span class="p">]</span>
+    <span class="n">testing_data</span> <span class="o">=</span> <span class="p">[[</span><span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">sent</span><span class="p">]</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">gold_data</span><span class="p">]</span>
+    <span class="k">print</span> <span class="s">&quot;Done loading.&quot;</span>
+
+    <span class="c"># Unigram tagger</span>
+    <span class="k">print</span> <span class="s">&quot;Training unigram tagger:&quot;</span>
+    <span class="n">unigram_tagger</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">UnigramTagger</span><span class="p">(</span><span class="n">training_data</span><span class="p">,</span>
+                                       <span class="n">backoff</span><span class="o">=</span><span class="n">nn_cd_tagger</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">gold_data</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;    [accuracy: </span><span class="si">%f</span><span class="s">]&quot;</span> <span class="o">%</span> <span class="n">unigram_tagger</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gold_data</span><span class="p">)</span>
+
+    <span class="c"># Bigram tagger</span>
+    <span class="k">print</span> <span class="s">&quot;Training bigram tagger:&quot;</span>
+    <span class="n">bigram_tagger</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">BigramTagger</span><span class="p">(</span><span class="n">training_data</span><span class="p">,</span>
+                                     <span class="n">backoff</span><span class="o">=</span><span class="n">unigram_tagger</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">gold_data</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;    [accuracy: </span><span class="si">%f</span><span class="s">]&quot;</span> <span class="o">%</span> <span class="n">bigram_tagger</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gold_data</span><span class="p">)</span>
+
+    <span class="c"># Brill tagger</span>
+    <span class="n">templates</span> <span class="o">=</span> <span class="p">[</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateTagsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateTagsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateTagsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateTagsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateWordsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateWordsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateWordsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateWordsRule</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateTagsRule</span><span class="p">,</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)),</span>
+      <span class="n">brill</span><span class="o">.</span><span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">brill</span><span class="o">.</span><span class="n">ProximateWordsRule</span><span class="p">,</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)),</span>
+      <span class="p">]</span>
+    <span class="n">trainer</span> <span class="o">=</span> <span class="n">brill</span><span class="o">.</span><span class="n">FastBrillTaggerTrainer</span><span class="p">(</span><span class="n">bigram_tagger</span><span class="p">,</span> <span class="n">templates</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+    <span class="c">#trainer = brill.BrillTaggerTrainer(u, templates, trace)</span>
+    <span class="n">brill_tagger</span> <span class="o">=</span> <span class="n">trainer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">training_data</span><span class="p">,</span> <span class="n">max_rules</span><span class="p">,</span> <span class="n">min_score</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">gold_data</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Brill accuracy: </span><span class="si">%f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">brill_tagger</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gold_data</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">trace</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Rules: &quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">brill_tagger</span><span class="o">.</span><span class="n">rules</span><span class="p">():</span>
+            <span class="k">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rule</span><span class="p">))</span>
+
+    <span class="n">print_rules</span> <span class="o">=</span> <span class="nb">file</span><span class="p">(</span><span class="n">rule_output</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+    <span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">brill_tagger</span><span class="p">,</span> <span class="n">print_rules</span><span class="p">)</span>
+    <span class="n">print_rules</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="n">testing_data</span> <span class="o">=</span> <span class="n">brill_tagger</span><span class="o">.</span><span class="n">batch_tag</span><span class="p">(</span><span class="n">testing_data</span><span class="p">)</span>
+    <span class="n">error_file</span> <span class="o">=</span> <span class="nb">file</span><span class="p">(</span><span class="n">error_output</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+    <span class="n">error_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Errors for Brill Tagger </span><span class="si">%r</span><span class="se">\n\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">rule_output</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">error_list</span><span class="p">(</span><span class="n">gold_data</span><span class="p">,</span> <span class="n">testing_data</span><span class="p">):</span>
+        <span class="n">error_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">e</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+    <span class="n">error_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;Done; rules and errors saved to </span><span class="si">%s</span><span class="s"> and </span><span class="si">%s</span><span class="s">.&quot;</span> <span class="o">%</span>
+           <span class="p">(</span><span class="n">rule_output</span><span class="p">,</span> <span class="n">error_output</span><span class="p">))</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+    <span class="c">#demo(num_sents=1000000, train=1.0, max_rules=10000)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../tag.html" >nltk.tag</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

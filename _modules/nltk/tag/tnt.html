@@ -1,0 +1,715 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.tag.tnt &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.tag" href="../tag.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../tag.html" accesskey="U">nltk.tag</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.tag.tnt</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: TnT Tagger</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Sam Huston &lt;sjh900@gmail.com&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt; (modifications)</span>
+<span class="c">#         </span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Implementation of &#39;TnT - A Statisical Part of Speech Tagger&#39;</span>
+<span class="sd">by Thorsten Brants</span>
+
+<span class="sd">http://acl.ldc.upenn.edu/A/A00/A00-1031.pdf</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="TnT"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.TnT">[docs]</a><span class="k">class</span> <span class="nc">TnT</span><span class="p">(</span><span class="n">TaggerI</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    TnT - Statistical POS tagger</span>
+
+<span class="sd">    IMPORTANT NOTES:</span>
+
+<span class="sd">    * DOES NOT AUTOMATICALLY DEAL WITH UNSEEN WORDS</span>
+<span class="sd">      It is possible to provide an untrained POS tagger to</span>
+<span class="sd">      create tags for unknown words, see __init__ function</span>
+
+<span class="sd">    * SHOULD BE USED WITH SENTENCE-DELIMITED INPUT</span>
+<span class="sd">      - Due to the nature of this tagger, it works best when</span>
+<span class="sd">       trained over sentence delimited input.</span>
+<span class="sd">     - However it still produces good results if the training</span>
+<span class="sd">       data and testing data are separated on all punctuation eg: [,.?!]</span>
+<span class="sd">     - Input for training is expected to be a list of sentences</span>
+<span class="sd">       where each sentence is a list of (word, tag) tuples</span>
+<span class="sd">     - Input for tag function is a single sentence</span>
+<span class="sd">       Input for tagdata function is a list of sentences</span>
+<span class="sd">       Output is of a similar form</span>
+
+<span class="sd">    * Function provided to process text that is unsegmented</span>
+<span class="sd">      - Please see basic_sent_chop()</span>
+
+
+<span class="sd">    TnT uses a second order Markov model to produce tags for</span>
+<span class="sd">    a sequence of input, specifically:</span>
+
+<span class="sd">      argmax [Proj(P(t_i|t_i-1,t_i-2)P(w_i|t_i))] P(t_T+1 | t_T)</span>
+
+<span class="sd">    IE: the maximum projection of a set of probabilities</span>
+
+<span class="sd">    The set of possible tags for a given word is derived</span>
+<span class="sd">    from the training data. It is the set of all tags</span>
+<span class="sd">    that exact word has been assigned.</span>
+
+<span class="sd">    The probability of a tag for a given word is the linear</span>
+<span class="sd">    interpolation of 3 markov models; a zero-order, first-order,</span>
+<span class="sd">    and a second order model.</span>
+
+<span class="sd">      P(t_i| t_i-1, t_i-2) = l1*P(t_i) + l2*P(t_i| t_i-1) +</span>
+<span class="sd">                             l3*P(t_i| t_i-1, t_i-2)</span>
+
+<span class="sd">    A beam search is used to limit the memory usage of the algorithm.</span>
+<span class="sd">    The degree of the beam can be changed using N in the initialization.</span>
+<span class="sd">    N represents the maximum number of possible solutions to maintain</span>
+<span class="sd">    while tagging.</span>
+<span class="sd">   </span>
+<span class="sd">    It is possible to differentiate the tags which are assigned to</span>
+<span class="sd">    capitalized words. However this does not result in a significant</span>
+<span class="sd">    gain in the accuracy of the results. </span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unk</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">Trained</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Construct a TnT statistical tagger. Tagger must be trained</span>
+<span class="sd">        before being used to tag input.</span>
+
+<span class="sd">        @param unk: instance of a POS tagger, conforms to TaggerI</span>
+<span class="sd">        @type  unk:(TaggerI)</span>
+<span class="sd">        @param Trained: Indication that the POS tagger is trained or not</span>
+<span class="sd">        @type  Trained: boolean</span>
+<span class="sd">        @param N: Beam search degree (see above)</span>
+<span class="sd">        @type  N:(int)</span>
+<span class="sd">        @param C: Capitalization flag </span>
+<span class="sd">        @type  C: boolean</span>
+
+<span class="sd">        Initializer, creates frequency distributions to be used</span>
+<span class="sd">        for tagging</span>
+
+<span class="sd">        _lx values represent the portion of the tri/bi/uni taggers</span>
+<span class="sd">        to be used to calculate the probability</span>
+<span class="sd">      </span>
+<span class="sd">        N value is the number of possible solutions to maintain</span>
+<span class="sd">        while tagging. A good value for this is 1000</span>
+
+<span class="sd">        C is a boolean value which specifies to use or</span>
+<span class="sd">        not use the Capitalization of the word as additional</span>
+<span class="sd">        information for tagging.</span>
+<span class="sd">        NOTE: using capitalization may not increase the accuracy</span>
+<span class="sd">        of the tagger</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_uni</span>  <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">FreqDist</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_bi</span>   <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">ConditionalFreqDist</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span>  <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">ConditionalFreqDist</span><span class="p">()</span> 
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wd</span>   <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">ConditionalFreqDist</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_eos</span>  <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">ConditionalFreqDist</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l1</span>   <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l2</span>   <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l3</span>   <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span>    <span class="o">=</span> <span class="n">N</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_C</span>    <span class="o">=</span> <span class="n">C</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_T</span>    <span class="o">=</span> <span class="n">Trained</span>
+      
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unk</span> <span class="o">=</span> <span class="n">unk</span>
+
+        <span class="c"># statistical tools (ignore or delete me)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unknown</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">known</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="TnT.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.TnT.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Uses a set of tagged data to train the tagger.</span>
+<span class="sd">        If an unknown word tagger is specified,</span>
+<span class="sd">        it is trained on the same data.   </span>
+
+<span class="sd">        @param data: List of lists of (word, tag) tuples</span>
+<span class="sd">        @type data: L{tuple} of L{str}</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c"># Ensure that local C flag is initialized before use</span>
+        <span class="n">C</span> <span class="o">=</span> <span class="bp">False</span>
+      
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unk</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_T</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_unk</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+      
+        <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">history</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;BOS&#39;</span><span class="p">,</span> <span class="s">&#39;BOS&#39;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">sent</span><span class="p">:</span>
+            
+                <span class="c"># if capitalization is requested,</span>
+                <span class="c"># and the word begins with a capital</span>
+                <span class="c"># set local flag C to True</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_C</span> <span class="ow">and</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">isupper</span><span class="p">():</span> <span class="n">C</span><span class="o">=</span><span class="bp">True</span>
+            
+                <span class="bp">self</span><span class="o">.</span><span class="n">_wd</span><span class="p">[</span><span class="n">w</span><span class="p">]</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_bi</span><span class="p">[</span><span class="n">history</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">history</span><span class="p">)]</span><span class="o">.</span><span class="n">inc</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+
+                <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+                <span class="c"># set local flag C to false for the next word</span>
+                <span class="n">C</span> <span class="o">=</span> <span class="bp">False</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_eos</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="s">&#39;EOS&#39;</span><span class="p">)</span>
+
+
+        <span class="c"># compute lambda values from the trained frequency distributions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compute_lambda</span><span class="p">()</span>
+
+        <span class="c">#(debugging -- ignore or delete me)</span>
+        <span class="c">#print &quot;lambdas&quot;</span>
+        <span class="c">#print i, self._l1, i, self._l2, i, self._l3</span>
+
+</div>
+    <span class="k">def</span> <span class="nf">_compute_lambda</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        creates lambda values based upon training data</span>
+
+<span class="sd">        NOTE: no need to explicitly reference C,</span>
+<span class="sd">        it is contained within the tag variable :: tag == (tag,C)</span>
+
+<span class="sd">        for each tag trigram (t1, t2, t3)</span>
+<span class="sd">        depending on the maximum value of</span>
+<span class="sd">        - f(t1,t2,t3)-1 / f(t1,t2)-1</span>
+<span class="sd">        - f(t2,t3)-1 / f(t2)-1</span>
+<span class="sd">        - f(t3)-1 / N-1</span>
+
+<span class="sd">        increment l3,l2, or l1 by f(t1,t2,t3)</span>
+
+<span class="sd">        ISSUES -- Resolutions:</span>
+<span class="sd">        if 2 values are equal, increment both lambda values</span>
+<span class="sd">        by (f(t1,t2,t3) / 2)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c"># temporary lambda variables</span>
+        <span class="n">tl1</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">tl2</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">tl3</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="c"># for each t1,t2 in system</span>
+        <span class="k">for</span> <span class="n">history</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="o">.</span><span class="n">conditions</span><span class="p">():</span>
+            <span class="p">(</span><span class="n">h1</span><span class="p">,</span> <span class="n">h2</span><span class="p">)</span> <span class="o">=</span> <span class="n">history</span>
+         
+            <span class="c"># for each t3 given t1,t2 in system</span>
+            <span class="c"># (NOTE: tag actually represents (tag,C))</span>
+            <span class="c"># However no effect within this function</span>
+            <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">]</span><span class="o">.</span><span class="n">samples</span><span class="p">():</span>
+
+                <span class="c"># if there has only been 1 occurance of this tag in the data</span>
+                <span class="c"># then ignore this trigram. </span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="c"># safe_div provides a safe floating point division</span>
+                <span class="c"># it returns -1 if the denominator is 0</span>
+                <span class="n">c3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_safe_div</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">]</span><span class="o">.</span><span class="n">N</span><span class="p">()</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+                <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_safe_div</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_bi</span><span class="p">[</span><span class="n">h2</span><span class="p">][</span><span class="n">tag</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_bi</span><span class="p">[</span><span class="n">h2</span><span class="p">]</span><span class="o">.</span><span class="n">N</span><span class="p">()</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+                <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_safe_div</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="o">.</span><span class="n">N</span><span class="p">()</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+
+
+                <span class="c"># if c1 is the maximum value:</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">c1</span> <span class="o">&gt;</span> <span class="n">c3</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">c1</span> <span class="o">&gt;</span> <span class="n">c2</span><span class="p">):</span>
+                    <span class="n">tl1</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">]</span>
+
+                <span class="c"># if c2 is the maximum value</span>
+                <span class="k">elif</span> <span class="p">(</span><span class="n">c2</span> <span class="o">&gt;</span> <span class="n">c3</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">c2</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">):</span>
+                    <span class="n">tl2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">]</span>
+
+                <span class="c"># if c3 is the maximum value</span>
+                <span class="k">elif</span> <span class="p">(</span><span class="n">c3</span> <span class="o">&gt;</span> <span class="n">c2</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">c3</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">):</span>
+                    <span class="n">tl3</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">]</span>
+
+                <span class="c"># if c3, and c2 are equal and larger than c1</span>
+                <span class="k">elif</span> <span class="p">(</span><span class="n">c3</span> <span class="o">==</span> <span class="n">c2</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">c3</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">):</span>
+                    <span class="n">tl2</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">])</span> <span class="o">/</span><span class="mf">2.0</span>
+                    <span class="n">tl3</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">])</span> <span class="o">/</span><span class="mf">2.0</span>
+
+                <span class="c"># if c1, and c2 are equal and larger than c3</span>
+                <span class="c"># this might be a dumb thing to do....(not sure yet)</span>
+                <span class="k">elif</span> <span class="p">(</span><span class="n">c2</span> <span class="o">==</span> <span class="n">c1</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">c1</span> <span class="o">&gt;</span> <span class="n">c3</span><span class="p">):</span>
+                    <span class="n">tl1</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">])</span> <span class="o">/</span><span class="mf">2.0</span>
+                    <span class="n">tl2</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="n">history</span><span class="p">][</span><span class="n">tag</span><span class="p">])</span> <span class="o">/</span><span class="mf">2.0</span>
+
+                <span class="c"># otherwise there might be a problem</span>
+                <span class="c"># eg: all values = 0</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c">#print &quot;Problem&quot;, c1, c2 ,c3</span>
+                    <span class="k">pass</span>
+
+        <span class="c"># Lambda normalisation:</span>
+        <span class="c"># ensures that l1+l2+l3 = 1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l1</span> <span class="o">=</span> <span class="n">tl1</span> <span class="o">/</span> <span class="p">(</span><span class="n">tl1</span><span class="o">+</span><span class="n">tl2</span><span class="o">+</span><span class="n">tl3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l2</span> <span class="o">=</span> <span class="n">tl2</span> <span class="o">/</span> <span class="p">(</span><span class="n">tl1</span><span class="o">+</span><span class="n">tl2</span><span class="o">+</span><span class="n">tl3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_l3</span> <span class="o">=</span> <span class="n">tl3</span> <span class="o">/</span> <span class="p">(</span><span class="n">tl1</span><span class="o">+</span><span class="n">tl2</span><span class="o">+</span><span class="n">tl3</span><span class="p">)</span>
+
+
+
+    <span class="k">def</span> <span class="nf">_safe_div</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Safe floating point division function, does not allow division by 0</span>
+<span class="sd">        returns -1 if the denominator is 0</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">v2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TnT.tagdata"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.TnT.tagdata">[docs]</a>    <span class="k">def</span> <span class="nf">tagdata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Tags each sentence in a list of sentences</span>
+
+<span class="sd">        @param data:list of list of words</span>
+<span class="sd">        @type data: [[string,],]</span>
+<span class="sd">        @return: list of list of (word, tag) tuples</span>
+
+<span class="sd">        Invokes tag(sent) function for each sentence</span>
+<span class="sd">        compiles the results into a list of tagged sentences</span>
+<span class="sd">        each tagged sentence is a list of (word, tag) tuples</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">res1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">res1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+</div>
+<div class="viewcode-block" id="TnT.tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.TnT.tag">[docs]</a>    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Tags a single sentence</span>
+
+<span class="sd">        @param data: list of words</span>
+<span class="sd">        @type data: [string,]</span>
+
+<span class="sd">        @return: [(word, tag),]</span>
+
+<span class="sd">        Calls recursive function &#39;_tagword&#39;</span>
+<span class="sd">        to produce a list of tags</span>
+
+<span class="sd">        Associates the sequence of returned tags</span>
+<span class="sd">        with the correct words in the input sequence</span>
+
+<span class="sd">        returns a list of (word, tag) tuples</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">current_state</span> <span class="o">=</span> <span class="p">[([</span><span class="s">&#39;BOS&#39;</span><span class="p">,</span> <span class="s">&#39;BOS&#39;</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">)]</span>
+
+        <span class="n">sent</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="n">tags</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tagword</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">current_state</span><span class="p">)</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sent</span><span class="p">)):</span>
+            <span class="c"># unpack and discard the C flags</span>
+            <span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">)</span> <span class="o">=</span> <span class="n">tags</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">sent</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">t</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">res</span>
+
+</div>
+    <span class="k">def</span> <span class="nf">_tagword</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="n">current_states</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        @param sent : List of words remaining in the sentence</span>
+<span class="sd">        @type sent  : [word,]</span>
+<span class="sd">        @param current_states : List of possible tag combinations for</span>
+<span class="sd">                                the sentence so far, and the probability</span>
+<span class="sd">                                associated with each tag combination</span>
+<span class="sd">        @type current_states  : [([tag, ],prob), ]</span>
+
+<span class="sd">        Tags the first word in the sentence and</span>
+<span class="sd">        recursively tags the reminder of sentence</span>
+
+<span class="sd">        Uses formula specified above to calculate the probability</span>
+<span class="sd">        of a particular tag</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c"># if this word marks the end of the sentance,</span>
+        <span class="c"># return the most probable tag</span>
+        <span class="k">if</span> <span class="n">sent</span> <span class="o">==</span> <span class="p">[]:</span>
+            <span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="n">p</span><span class="p">)</span> <span class="o">=</span> <span class="n">current_states</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">h</span>
+
+        <span class="c"># otherwise there are more words to be tagged</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="n">sent</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">sent</span> <span class="o">=</span> <span class="n">sent</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">new_states</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c"># if the Capitalisation is requested,</span>
+        <span class="c"># initalise the flag for this word</span>
+        <span class="n">C</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_C</span> <span class="ow">and</span> <span class="n">word</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">isupper</span><span class="p">():</span> <span class="n">C</span><span class="o">=</span><span class="bp">True</span>
+
+        <span class="c"># if word is known</span>
+        <span class="c"># compute the set of possible tags</span>
+        <span class="c"># and their associated probabilities</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wd</span><span class="o">.</span><span class="n">conditions</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">known</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="k">for</span> <span class="p">(</span><span class="n">history</span><span class="p">,</span> <span class="n">curr_sent_prob</span><span class="p">)</span> <span class="ow">in</span> <span class="n">current_states</span><span class="p">:</span>
+                <span class="n">probs</span> <span class="o">=</span> <span class="p">[]</span>
+
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wd</span><span class="p">[</span><span class="n">word</span><span class="p">]</span><span class="o">.</span><span class="n">samples</span><span class="p">():</span>  
+                    <span class="n">p_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="o">.</span><span class="n">freq</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                    <span class="n">p_bi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bi</span><span class="p">[</span><span class="n">history</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span><span class="o">.</span><span class="n">freq</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                    <span class="n">p_tri</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tri</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">history</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:])]</span><span class="o">.</span><span class="n">freq</span><span class="p">((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">))</span>
+                    <span class="n">p_wd</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wd</span><span class="p">[</span><span class="n">word</span><span class="p">][</span><span class="n">t</span><span class="p">])</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_uni</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">)])</span>
+                    <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_l1</span> <span class="o">*</span><span class="n">p_uni</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_l2</span> <span class="o">*</span><span class="n">p_bi</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_l3</span> <span class="o">*</span><span class="n">p_tri</span>
+                    <span class="n">p2</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">p_wd</span>
+               
+                    <span class="n">probs</span><span class="o">.</span><span class="n">append</span><span class="p">(((</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">),</span> <span class="n">p2</span><span class="p">))</span>
+            
+
+                <span class="c"># compute the result of appending each tag to this history</span>
+                <span class="k">for</span> <span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="n">prob</span><span class="p">)</span> <span class="ow">in</span> <span class="n">probs</span><span class="p">:</span>
+                    <span class="n">new_states</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">history</span> <span class="o">+</span> <span class="p">[</span><span class="n">tag</span><span class="p">],</span> <span class="n">curr_sent_prob</span><span class="o">*</span><span class="n">prob</span><span class="p">))</span>
+
+
+
+
+        <span class="c"># otherwise a new word, set of possible tags is unknown</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unknown</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c"># since a set of possible tags,</span>
+            <span class="c"># and the probability of each specific tag</span>
+            <span class="c"># can not be returned from most classifiers:</span>
+            <span class="c"># specify that any unknown words are tagged with certainty</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="mi">1</span>
+
+            <span class="c"># if no unknown word tagger has been specified</span>
+            <span class="c"># then use the tag &#39;Unk&#39;</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unk</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">tag</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;Unk&#39;</span><span class="p">,</span><span class="n">C</span><span class="p">)</span> 
+
+            <span class="c"># otherwise apply the unknown word tagger</span>
+            <span class="k">else</span> <span class="p">:</span>
+                <span class="p">[(</span><span class="n">_w</span><span class="p">,</span> <span class="n">t</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_unk</span><span class="o">.</span><span class="n">tag</span><span class="p">([</span><span class="n">word</span><span class="p">]))</span>
+                <span class="n">tag</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">C</span><span class="p">)</span>
+            
+            <span class="k">for</span> <span class="p">(</span><span class="n">history</span><span class="p">,</span> <span class="n">prob</span><span class="p">)</span> <span class="ow">in</span> <span class="n">current_states</span><span class="p">:</span>
+                <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+
+            <span class="n">new_states</span> <span class="o">=</span> <span class="n">current_states</span>
+
+
+
+        <span class="c"># now have computed a set of possible new_states</span>
+
+        <span class="c"># sort states by prob</span>
+        <span class="c"># _cmp_tup is a comparison function,</span>
+        <span class="c"># set is now ordered greatest to least probability</span>
+        <span class="n">new_states</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cmp_tup</span><span class="p">)</span>
+
+        <span class="c"># del everything after N (threshold)</span>
+        <span class="c"># this is the beam search cut</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_states</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_N</span><span class="p">:</span>
+            <span class="n">new_states</span> <span class="o">=</span> <span class="n">new_states</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">_N</span><span class="p">]</span>
+          
+
+        <span class="c"># compute the tags for the rest of the sentence</span>
+        <span class="c"># return the best list of tags for the sentence</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tagword</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">new_states</span><span class="p">)</span>
+
+      
+   
+    <span class="k">def</span> <span class="nf">_cmp_tup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">(</span><span class="n">_hq</span><span class="p">,</span> <span class="n">p1</span><span class="p">),</span> <span class="p">(</span><span class="n">_h2</span><span class="p">,</span> <span class="n">p2</span><span class="p">)):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        comparison function</span>
+
+<span class="sd">        @params : (_, prob)</span>
+<span class="sd">        @types  : (_, int) tuple</span>
+<span class="sd">      </span>
+<span class="sd">        used to sort a list of these tuples</span>
+<span class="sd">        into descending order</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">p2</span><span class="o">-</span><span class="n">p1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+      
+
+<span class="c">########################################</span>
+<span class="c"># helper function -- basic sentence tokenizer</span>
+<span class="c">########################################</span>
+</div>
+<div class="viewcode-block" id="basic_sent_chop"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.basic_sent_chop">[docs]</a><span class="k">def</span> <span class="nf">basic_sent_chop</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Basic method for tokenizing input into sentences</span>
+<span class="sd">    for this tagger:</span>
+
+<span class="sd">    @param data: list of tokens</span>
+<span class="sd">                 tokens can be either</span>
+<span class="sd">                 words or (word, tag) tuples</span>
+<span class="sd">    @type data: [string,]</span>
+<span class="sd">                or [(string, string),]</span>
+
+<span class="sd">    @param raw: boolean flag marking the input data</span>
+<span class="sd">                as a list of words or a list of tagged words</span>
+<span class="sd">    @type raw: Boolean</span>
+
+<span class="sd">    @ret : list of sentences</span>
+<span class="sd">           sentences are a list of tokens</span>
+<span class="sd">           tokens are the same as the input</span>
+
+<span class="sd">    Function takes a list of tokens and separates the tokens into lists</span>
+<span class="sd">    where each list represents a sentence fragment</span>
+<span class="sd">    This function can separate both tagged and raw sequences into</span>
+<span class="sd">    basic sentences.</span>
+
+<span class="sd">    Sentence markers are the set of [,.!?]</span>
+
+<span class="sd">    This is a simple method which enhances the performance of the TnT</span>
+<span class="sd">    tagger. Better sentence tokenization will further enhance the results.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+   
+    <span class="n">new_data</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">curr_sent</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">sent_mark</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;,&#39;</span><span class="p">,</span><span class="s">&#39;.&#39;</span><span class="p">,</span><span class="s">&#39;?&#39;</span><span class="p">,</span><span class="s">&#39;!&#39;</span><span class="p">]</span>
+
+
+    <span class="k">if</span> <span class="n">raw</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">sent_mark</span><span class="p">:</span>
+                <span class="n">curr_sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+                <span class="n">new_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">curr_sent</span><span class="p">)</span>
+                <span class="n">curr_sent</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">curr_sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span><span class="n">tag</span><span class="p">)</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">sent_mark</span><span class="p">:</span>
+                <span class="n">curr_sent</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span><span class="n">tag</span><span class="p">))</span>
+                <span class="n">new_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">curr_sent</span><span class="p">)</span>
+                <span class="n">curr_sent</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">curr_sent</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span><span class="n">tag</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">new_data</span>
+
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">tnt</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">brown</span>
+    <span class="n">sents</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">brown</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">())</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">brown</span><span class="o">.</span><span class="n">sents</span><span class="p">())</span>
+
+    <span class="c"># create and train the tagger</span>
+    <span class="n">tagger</span> <span class="o">=</span> <span class="n">tnt</span><span class="o">.</span><span class="n">TnT</span><span class="p">()</span>
+    <span class="n">tagger</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">sents</span><span class="p">[</span><span class="mi">200</span><span class="p">:</span><span class="mi">1000</span><span class="p">])</span>
+
+    <span class="c"># tag some data</span>
+    <span class="n">tagged_data</span> <span class="o">=</span> <span class="n">tagger</span><span class="o">.</span><span class="n">tagdata</span><span class="p">(</span><span class="n">test</span><span class="p">[</span><span class="mi">100</span><span class="p">:</span><span class="mi">120</span><span class="p">])</span>
+
+    <span class="c"># print results</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_data</span><span class="p">)):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">tagged_data</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">sents</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">100</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)):</span>
+            <span class="k">print</span> <span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="s">&#39;--&#39;</span><span class="p">,</span> <span class="n">t</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">print</span>
+
+</div>
+<div class="viewcode-block" id="demo2"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.demo2">[docs]</a><span class="k">def</span> <span class="nf">demo2</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">tag</span>
+    <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">tnt</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span>
+
+    <span class="n">d</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">treebank</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">())</span>
+
+    <span class="n">t</span> <span class="o">=</span> <span class="n">tnt</span><span class="o">.</span><span class="n">TnT</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">tnt</span><span class="o">.</span><span class="n">TnT</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">d</span><span class="p">[(</span><span class="mi">11</span><span class="p">)</span><span class="o">*</span><span class="mi">100</span><span class="p">:])</span>
+    <span class="n">s</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">d</span><span class="p">[(</span><span class="mi">11</span><span class="p">)</span><span class="o">*</span><span class="mi">100</span><span class="p">:])</span>
+   
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+        <span class="n">tacc</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="mi">100</span><span class="p">:((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="mi">100</span><span class="p">)])</span>
+        <span class="n">tp_un</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span><span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">tp_kn</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span> <span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">unknown</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">print</span> <span class="s">&#39;Capitalization off:&#39;</span>
+        <span class="k">print</span> <span class="s">&#39;Accuracy:&#39;</span><span class="p">,</span> <span class="n">tacc</span>
+        <span class="k">print</span> <span class="s">&#39;Percentage known:&#39;</span><span class="p">,</span> <span class="n">tp_kn</span>
+        <span class="k">print</span> <span class="s">&#39;Percentage unknown:&#39;</span><span class="p">,</span> <span class="n">tp_un</span>
+        <span class="k">print</span> <span class="s">&#39;Accuracy over known words:&#39;</span><span class="p">,</span> <span class="p">(</span><span class="n">tacc</span> <span class="o">/</span> <span class="n">tp_kn</span><span class="p">)</span>
+      
+        <span class="n">sacc</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="mi">100</span><span class="p">:((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="mi">100</span><span class="p">)])</span>
+        <span class="n">sp_un</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span><span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">sp_kn</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">s</span><span class="o">.</span><span class="n">unknown</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">print</span> <span class="s">&#39;Capitalization on:&#39;</span>
+        <span class="k">print</span> <span class="s">&#39;Accuracy:&#39;</span><span class="p">,</span> <span class="n">sacc</span>
+        <span class="k">print</span> <span class="s">&#39;Percentage known:&#39;</span><span class="p">,</span> <span class="n">sp_kn</span>
+        <span class="k">print</span> <span class="s">&#39;Percentage unknown:&#39;</span><span class="p">,</span> <span class="n">sp_un</span>
+        <span class="k">print</span> <span class="s">&#39;Accuracy over known words:&#39;</span><span class="p">,</span> <span class="p">(</span><span class="n">sacc</span> <span class="o">/</span> <span class="n">sp_kn</span><span class="p">)</span>   
+</div>
+<div class="viewcode-block" id="demo3"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.tnt.demo3">[docs]</a><span class="k">def</span> <span class="nf">demo3</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">tag</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span><span class="p">,</span> <span class="n">brown</span>
+    <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">tnt</span>
+
+    <span class="n">d</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">treebank</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">())</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">brown</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">())</span>
+
+    <span class="n">d</span> <span class="o">=</span> <span class="n">d</span><span class="p">[:</span><span class="mi">1000</span><span class="p">]</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="n">e</span><span class="p">[:</span><span class="mi">1000</span><span class="p">]</span>
+
+    <span class="n">d10</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="o">*</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">e10</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">*</span><span class="mf">0.1</span><span class="p">)</span>
+
+    <span class="n">tknacc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">sknacc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tallacc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">sallacc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tknown</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">sknown</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+
+        <span class="n">t</span> <span class="o">=</span> <span class="n">tnt</span><span class="o">.</span><span class="n">TnT</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">tnt</span><span class="o">.</span><span class="n">TnT</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+        <span class="n">dtest</span> <span class="o">=</span> <span class="n">d</span><span class="p">[(</span><span class="n">i</span><span class="o">*</span><span class="n">d10</span><span class="p">):((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">d10</span><span class="p">)]</span>
+        <span class="n">etest</span> <span class="o">=</span> <span class="n">e</span><span class="p">[(</span><span class="n">i</span><span class="o">*</span><span class="n">e10</span><span class="p">):((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">e10</span><span class="p">)]</span>
+      
+        <span class="n">dtrain</span> <span class="o">=</span> <span class="n">d</span><span class="p">[:(</span><span class="n">i</span><span class="o">*</span><span class="n">d10</span><span class="p">)]</span> <span class="o">+</span> <span class="n">d</span><span class="p">[((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">d10</span><span class="p">):]</span>
+        <span class="n">etrain</span> <span class="o">=</span> <span class="n">e</span><span class="p">[:(</span><span class="n">i</span><span class="o">*</span><span class="n">e10</span><span class="p">)]</span> <span class="o">+</span> <span class="n">e</span><span class="p">[((</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">e10</span><span class="p">):]</span>     
+
+        <span class="n">t</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">dtrain</span><span class="p">)</span>
+        <span class="n">s</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">etrain</span><span class="p">)</span>
+   
+        <span class="n">tacc</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dtest</span><span class="p">)</span>
+        <span class="n">tp_un</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span><span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">tp_kn</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span> <span class="n">t</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">tknown</span> <span class="o">+=</span> <span class="n">tp_kn</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">unknown</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">known</span> <span class="o">=</span> <span class="mi">0</span>
+      
+        <span class="n">sacc</span> <span class="o">=</span> <span class="n">tag</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">etest</span><span class="p">)</span>
+        <span class="n">sp_un</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">sp_kn</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="n">sknown</span> <span class="o">+=</span> <span class="n">sp_kn</span>
+        <span class="n">s</span><span class="o">.</span><span class="n">unknown</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">s</span><span class="o">.</span><span class="n">known</span> <span class="o">=</span> <span class="mi">0</span> 
+
+        <span class="n">tknacc</span> <span class="o">+=</span> <span class="p">(</span><span class="n">tacc</span> <span class="o">/</span> <span class="n">tp_kn</span><span class="p">)</span>
+        <span class="n">sknacc</span> <span class="o">+=</span> <span class="p">(</span><span class="n">sacc</span> <span class="o">/</span> <span class="n">tp_kn</span><span class="p">)</span>
+        <span class="n">tallacc</span> <span class="o">+=</span> <span class="n">tacc</span>
+        <span class="n">sallacc</span> <span class="o">+=</span> <span class="n">sacc</span>
+
+        <span class="c">#print i+1, (tacc / tp_kn), i+1, (sacc / tp_kn), i+1, tacc, i+1, sacc</span>
+      
+
+    <span class="k">print</span> <span class="s">&quot;brown: acc over words known:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">tknacc</span>
+    <span class="k">print</span> <span class="s">&quot;     : overall accuracy:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">tallacc</span>
+    <span class="k">print</span> <span class="s">&quot;     : words known:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">tknown</span>
+    <span class="k">print</span> <span class="s">&quot;treebank: acc over words known:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">sknacc</span>
+    <span class="k">print</span> <span class="s">&quot;        : overall accuracy:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">sallacc</span>
+    <span class="k">print</span> <span class="s">&quot;        : words known:&quot;</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">sknown</span>
+
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../tag.html" >nltk.tag</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

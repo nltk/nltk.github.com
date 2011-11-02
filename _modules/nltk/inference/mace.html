@@ -1,0 +1,409 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.inference.mace &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.inference" href="../inference.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../inference.html" accesskey="U">nltk.inference</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.inference.mace</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Interface to the Mace4 Model Builder </span>
+<span class="c">#</span>
+<span class="c"># Author: Dan Garrette &lt;dhgarrette@gmail.com&gt;</span>
+<span class="c">#         Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
+
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+
+<span class="kn">from</span> <span class="nn">nltk.sem.logic</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">Valuation</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="n">ModelBuilder</span><span class="p">,</span> <span class="n">BaseModelBuilderCommand</span>
+<span class="kn">from</span> <span class="nn">prover9</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A model builder that makes use of the external &#39;Mace4&#39; package.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="MaceCommand"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.MaceCommand">[docs]</a><span class="k">class</span> <span class="nc">MaceCommand</span><span class="p">(</span><span class="n">Prover9CommandParent</span><span class="p">,</span> <span class="n">BaseModelBuilderCommand</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A L{MaceCommand} specific to the L{Mace} model builder.  It contains</span>
+<span class="sd">    a print_assumptions() method that is used to print the list</span>
+<span class="sd">    of assumptions in multiple formats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_interpformat_bin</span> <span class="o">=</span> <span class="bp">None</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">max_models</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">model_builder</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param goal: Input expression to prove</span>
+<span class="sd">        @type goal: L{logic.Expression}</span>
+<span class="sd">        @param assumptions: Input expressions to use as assumptions in</span>
+<span class="sd">            the proof.</span>
+<span class="sd">        @type assumptions: C{list} of L{logic.Expression}</span>
+<span class="sd">        @param max_models: The maximum number of models that Mace will try before</span>
+<span class="sd">            simply returning false. (Use 0 for no maximum.)</span>
+<span class="sd">        @type max_models: C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">model_builder</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_builder</span><span class="p">,</span> <span class="n">Mace</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">model_builder</span> <span class="o">=</span> <span class="n">Mace</span><span class="p">(</span><span class="n">max_models</span><span class="p">)</span>
+        
+        <span class="n">BaseModelBuilderCommand</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_builder</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">)</span>
+        
+    <span class="n">valuation</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="k">lambda</span> <span class="n">mbc</span><span class="p">:</span> <span class="n">mbc</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="s">&#39;valuation&#39;</span><span class="p">))</span>
+        
+    <span class="k">def</span> <span class="nf">_convert2val</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valuation_str</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform the output file into an NLTK-style Valuation. </span>
+<span class="sd">        </span>
+<span class="sd">        @return: A model if one is generated; None otherwise.</span>
+<span class="sd">        @rtype: L{nltk.sem.Valuation} </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">valuation_standard_format</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform_output</span><span class="p">(</span><span class="n">valuation_str</span><span class="p">,</span> <span class="s">&#39;standard&#39;</span><span class="p">)</span>
+        
+        <span class="n">val</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">valuation_standard_format</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="bp">False</span><span class="p">):</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            
+            <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;interpretation&#39;</span><span class="p">):</span>
+                <span class="c"># find the number of entities in the model</span>
+                <span class="n">num_entities</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+            
+            <span class="k">elif</span> <span class="n">l</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;function&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">l</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;_&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="c"># replace the integer identifier with a corresponding alphabetic character</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">is_indvar</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;[&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;]&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+                <span class="n">val</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_model_var</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
+            
+            <span class="k">elif</span> <span class="n">l</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;relation&#39;</span><span class="p">):</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="k">if</span> <span class="s">&#39;(&#39;</span> <span class="ow">in</span> <span class="n">l</span><span class="p">:</span>
+                    <span class="c">#relation is not nullary</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="n">l</span><span class="p">[:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                    <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;[&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;]&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span>
+                    <span class="n">val</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_set</span><span class="p">(</span><span class="n">num_entities</span><span class="p">,</span> <span class="n">values</span><span class="p">)))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c">#relation is nullary</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="n">l</span><span class="p">[:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                    <span class="n">value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;[&#39;</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">l</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;]&#39;</span><span class="p">)]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+                    <span class="n">val</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="o">==</span> <span class="mi">1</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">Valuation</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+        
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_make_relation_set</span><span class="p">(</span><span class="n">num_entities</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert a Mace4-style relation table into a dictionary.</span>
+<span class="sd">        </span>
+<span class="sd">        @parameter num_entities: the number of entities in the model; determines the row length in the table.</span>
+<span class="sd">        @type num_entities: C{int}</span>
+<span class="sd">        @parameter values: a list of 1&#39;s and 0&#39;s that represent whether a relation holds in a Mace4 model.</span>
+<span class="sd">        @type values: C{list} of C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">position</span> <span class="ow">in</span> <span class="p">[</span><span class="n">pos</span> <span class="k">for</span> <span class="p">(</span><span class="n">pos</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]:</span>
+            <span class="n">r</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_tuple</span><span class="p">(</span><span class="n">position</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">num_entities</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">r</span>
+                
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_make_relation_tuple</span><span class="p">(</span><span class="n">position</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">num_entities</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span> 
+            <span class="n">sublist_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">/</span> <span class="n">num_entities</span>
+            <span class="n">sublist_start</span> <span class="o">=</span> <span class="n">position</span> <span class="o">/</span> <span class="n">sublist_size</span>
+            <span class="n">sublist_position</span> <span class="o">=</span> <span class="n">position</span> <span class="o">%</span> <span class="n">sublist_size</span>
+            
+            <span class="n">sublist</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">sublist_start</span><span class="o">*</span><span class="n">sublist_size</span><span class="p">:(</span><span class="n">sublist_start</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">sublist_size</span><span class="p">]</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_model_var</span><span class="p">(</span><span class="n">sublist_start</span><span class="p">)]</span> <span class="o">+</span> \
+                   <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_tuple</span><span class="p">(</span><span class="n">sublist_position</span><span class="p">,</span> 
+                                                    <span class="n">sublist</span><span class="p">,</span> 
+                                                    <span class="n">num_entities</span><span class="p">)</span>
+                
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_make_model_var</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Pick an alphabetic character as identifier for an entity in the model.</span>
+<span class="sd">        </span>
+<span class="sd">        @parameter value: where to index into the list of characters</span>
+<span class="sd">        @type value: C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">letter</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;b&#39;</span><span class="p">,</span><span class="s">&#39;c&#39;</span><span class="p">,</span><span class="s">&#39;d&#39;</span><span class="p">,</span><span class="s">&#39;e&#39;</span><span class="p">,</span><span class="s">&#39;f&#39;</span><span class="p">,</span><span class="s">&#39;g&#39;</span><span class="p">,</span><span class="s">&#39;h&#39;</span><span class="p">,</span><span class="s">&#39;i&#39;</span><span class="p">,</span><span class="s">&#39;j&#39;</span><span class="p">,</span><span class="s">&#39;k&#39;</span><span class="p">,</span><span class="s">&#39;l&#39;</span><span class="p">,</span><span class="s">&#39;m&#39;</span><span class="p">,</span><span class="s">&#39;n&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;o&#39;</span><span class="p">,</span><span class="s">&#39;p&#39;</span><span class="p">,</span><span class="s">&#39;q&#39;</span><span class="p">,</span><span class="s">&#39;r&#39;</span><span class="p">,</span><span class="s">&#39;s&#39;</span><span class="p">,</span><span class="s">&#39;t&#39;</span><span class="p">,</span><span class="s">&#39;u&#39;</span><span class="p">,</span><span class="s">&#39;v&#39;</span><span class="p">,</span><span class="s">&#39;w&#39;</span><span class="p">,</span><span class="s">&#39;x&#39;</span><span class="p">,</span><span class="s">&#39;y&#39;</span><span class="p">,</span><span class="s">&#39;z&#39;</span><span class="p">][</span><span class="n">value</span><span class="p">]</span>
+        <span class="n">num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">/</span> <span class="mi">26</span>
+        <span class="k">if</span> <span class="n">num</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">letter</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">num</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">letter</span>
+                
+    <span class="k">def</span> <span class="nf">_decorate_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valuation_str</span><span class="p">,</span> <span class="n">format</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Print out a Mace4 model using any Mace4 C{interpformat} format. </span>
+<span class="sd">        See U{http://www.cs.unm.edu/~mccune/mace4/manual/} for details.</span>
+<span class="sd">        </span>
+<span class="sd">        @param valuation_str: C{str} with the model builder&#39;s output </span>
+<span class="sd">        @param format: C{str} indicating the format for displaying</span>
+<span class="sd">        models. Defaults to &#39;standard&#39; format.</span>
+<span class="sd">        @return: C{str}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">format</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">valuation_str</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;valuation&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert2val</span><span class="p">(</span><span class="n">valuation_str</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform_output</span><span class="p">(</span><span class="n">valuation_str</span><span class="p">,</span> <span class="n">format</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_transform_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valuation_str</span><span class="p">,</span> <span class="n">format</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform the output file into any Mace4 C{interpformat} format. </span>
+<span class="sd">        </span>
+<span class="sd">        @parameter format: Output format for displaying models. </span>
+<span class="sd">        @type format: C{str}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="s">&#39;standard2&#39;</span><span class="p">,</span> <span class="s">&#39;portable&#39;</span><span class="p">,</span> <span class="s">&#39;tabular&#39;</span><span class="p">,</span> 
+                      <span class="s">&#39;raw&#39;</span><span class="p">,</span> <span class="s">&#39;cooked&#39;</span><span class="p">,</span> <span class="s">&#39;xml&#39;</span><span class="p">,</span> <span class="s">&#39;tex&#39;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call_interpformat</span><span class="p">(</span><span class="n">valuation_str</span><span class="p">,</span> <span class="p">[</span><span class="n">format</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&quot;The specified format does not exist&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_call_interpformat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[],</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the C{interpformat} binary with the given input.</span>
+<span class="sd">    </span>
+<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        @param args: A list of command-line arguments.</span>
+<span class="sd">        @return: A tuple (stdout, returncode)</span>
+<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_interpformat_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_interpformat_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modelbuilder</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span>
+                                                <span class="s">&#39;interpformat&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modelbuilder</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">input_str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_interpformat_bin</span><span class="p">,</span> 
+                                        <span class="n">args</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="Mace"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.Mace">[docs]</a><span class="k">class</span> <span class="nc">Mace</span><span class="p">(</span><span class="n">Prover9Parent</span><span class="p">,</span> <span class="n">ModelBuilder</span><span class="p">):</span>
+    <span class="n">_mace4_bin</span> <span class="o">=</span> <span class="bp">None</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">end_size</span><span class="o">=</span><span class="mi">500</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_end_size</span> <span class="o">=</span> <span class="n">end_size</span>
+        <span class="sd">&quot;&quot;&quot;The maximum model size that Mace will try before </span>
+<span class="sd">           simply returning false. (Use -1 for no maximum.)&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_build_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use Mace4 to build a first order model.</span>
+<span class="sd">        </span>
+<span class="sd">        @return: C{True} if a model was found (i.e. Mace returns value of 0),</span>
+<span class="sd">        else C{False}        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">assumptions</span><span class="p">:</span>
+            <span class="n">assumptions</span> <span class="o">=</span> <span class="p">[]</span>
+            
+        <span class="n">stdout</span><span class="p">,</span> <span class="n">returncode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call_mace4</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prover9_input</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">),</span>
+                                              <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">returncode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stdout</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_call_mace4</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[],</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the C{mace4} binary with the given input.</span>
+<span class="sd">    </span>
+<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        @param args: A list of command-line arguments.</span>
+<span class="sd">        @return: A tuple (stdout, returncode)</span>
+<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mace4_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mace4_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span><span class="s">&#39;mace4&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+
+        <span class="n">updated_input_str</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_end_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">updated_input_str</span> <span class="o">+=</span> <span class="s">&#39;assign(end_size, </span><span class="si">%d</span><span class="s">).</span><span class="se">\n\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_end_size</span>
+        <span class="n">updated_input_str</span> <span class="o">+=</span> <span class="n">input_str</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">updated_input_str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mace4_bin</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+    
+</div>
+<div class="viewcode-block" id="spacer"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.spacer">[docs]</a><span class="k">def</span> <span class="nf">spacer</span><span class="p">(</span><span class="n">num</span><span class="o">=</span><span class="mi">30</span><span class="p">):</span>
+    <span class="k">print</span> <span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="n">num</span>
+</div>
+<div class="viewcode-block" id="decode_result"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.decode_result">[docs]</a><span class="k">def</span> <span class="nf">decode_result</span><span class="p">(</span><span class="n">found</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Decode the result of model_found() </span>
+<span class="sd">    </span>
+<span class="sd">    @parameter found: The output of model_found() </span>
+<span class="sd">    @type found: C{boolean}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span><span class="bp">True</span><span class="p">:</span> <span class="s">&#39;Countermodel found&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">:</span> <span class="s">&#39;No countermodel found&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">:</span> <span class="s">&#39;None&#39;</span><span class="p">}[</span><span class="n">found</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="test_model_found"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.test_model_found">[docs]</a><span class="k">def</span> <span class="nf">test_model_found</span><span class="p">(</span><span class="n">arguments</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Try some proofs and exhibit the results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lp</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">)</span> <span class="ow">in</span> <span class="n">arguments</span><span class="p">:</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">goal</span><span class="p">)</span>
+        <span class="n">alist</span> <span class="o">=</span> <span class="p">[</span><span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">assumptions</span><span class="p">]</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">MaceCommand</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="n">alist</span><span class="p">,</span> <span class="n">end_size</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+        <span class="n">found</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">build_model</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">alist</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;   </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">a</span>
+        <span class="k">print</span> <span class="s">&#39;|- </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">decode_result</span><span class="p">(</span><span class="n">found</span><span class="p">))</span>
+        
+        </div>
+<div class="viewcode-block" id="test_build_model"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.test_build_model">[docs]</a><span class="k">def</span> <span class="nf">test_build_model</span><span class="p">(</span><span class="n">arguments</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Try to build a L{nltk.sem.Valuation}.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lp</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s">&#39;all x.man(x)&#39;</span><span class="p">)</span>
+    <span class="n">alist</span> <span class="o">=</span> <span class="p">[</span><span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;man(John)&#39;</span><span class="p">,</span> 
+                                   <span class="s">&#39;man(Socrates)&#39;</span><span class="p">,</span> 
+                                   <span class="s">&#39;man(Bill)&#39;</span><span class="p">,</span> 
+                                   <span class="s">&#39;some x.(-(x = John) &amp; man(x) &amp; sees(John,x))&#39;</span><span class="p">,</span>
+                                   <span class="s">&#39;some x.(-(x = Bill) &amp; man(x))&#39;</span><span class="p">,</span>
+                                   <span class="s">&#39;all x.some y.(man(x) -&gt; gives(Socrates,x,y))&#39;</span><span class="p">]]</span>
+    
+    <span class="n">m</span> <span class="o">=</span> <span class="n">MaceCommand</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="n">alist</span><span class="p">)</span>
+    <span class="n">m</span><span class="o">.</span><span class="n">build_model</span><span class="p">()</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="k">print</span> <span class="s">&quot;Assumptions and Goal&quot;</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">alist</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&#39;   </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">a</span>
+    <span class="k">print</span> <span class="s">&#39;|- </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">decode_result</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">build_model</span><span class="p">()))</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="c">#print m.model(&#39;standard&#39;)</span>
+    <span class="c">#print m.model(&#39;cooked&#39;)</span>
+    <span class="k">print</span> <span class="s">&quot;Valuation&quot;</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">m</span><span class="o">.</span><span class="n">valuation</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+</div>
+<div class="viewcode-block" id="test_transform_output"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.test_transform_output">[docs]</a><span class="k">def</span> <span class="nf">test_transform_output</span><span class="p">(</span><span class="n">argument_pair</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Transform the model into various Mace4 C{interpformat} formats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lp</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">argument_pair</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">alist</span> <span class="o">=</span> <span class="p">[</span><span class="n">lp</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">argument_pair</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">MaceCommand</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="n">alist</span><span class="p">)</span>
+    <span class="n">m</span><span class="o">.</span><span class="n">build_model</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">alist</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&#39;   </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">a</span>
+    <span class="k">print</span> <span class="s">&#39;|- </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">build_model</span><span class="p">())</span>
+    <span class="k">for</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="s">&#39;portable&#39;</span><span class="p">,</span> <span class="s">&#39;xml&#39;</span><span class="p">,</span> <span class="s">&#39;cooked&#39;</span><span class="p">]:</span>
+        <span class="n">spacer</span><span class="p">()</span>
+        <span class="k">print</span> <span class="s">&quot;Using &#39;</span><span class="si">%s</span><span class="s">&#39; format&quot;</span> <span class="o">%</span> <span class="n">format</span> 
+        <span class="n">spacer</span><span class="p">()</span>
+        <span class="k">print</span> <span class="n">m</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="n">format</span><span class="o">=</span><span class="n">format</span><span class="p">)</span>
+        </div>
+<div class="viewcode-block" id="test_make_relation_set"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.test_make_relation_set">[docs]</a><span class="k">def</span> <span class="nf">test_make_relation_set</span><span class="p">():</span>
+    <span class="k">print</span> <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_set</span><span class="p">(</span><span class="n">num_entities</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span> <span class="o">==</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;c&#39;</span><span class="p">,),</span> <span class="p">(</span><span class="s">&#39;a&#39;</span><span class="p">,)])</span>
+    <span class="k">print</span> <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_set</span><span class="p">(</span><span class="n">num_entities</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;c&#39;</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">)])</span>
+    <span class="k">print</span> <span class="n">MaceCommand</span><span class="o">.</span><span class="n">_make_relation_set</span><span class="p">(</span><span class="n">num_entities</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;a&#39;</span><span class="p">,</span> <span class="s">&#39;b&#39;</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;b&#39;</span><span class="p">,</span> <span class="s">&#39;b&#39;</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">)])</span>
+    </div>
+<span class="n">arguments</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="s">&#39;mortal(Socrates)&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;all x.(man(x) -&gt; mortal(x))&#39;</span><span class="p">,</span> <span class="s">&#39;man(Socrates)&#39;</span><span class="p">]),</span>
+    <span class="p">(</span><span class="s">&#39;(not mortal(Socrates))&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;all x.(man(x) -&gt; mortal(x))&#39;</span><span class="p">,</span> <span class="s">&#39;man(Socrates)&#39;</span><span class="p">])</span>
+<span class="p">]</span>
+
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.mace.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="n">test_model_found</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+    <span class="n">test_build_model</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+    <span class="n">test_transform_output</span><span class="p">(</span><span class="n">arguments</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../inference.html" >nltk.inference</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

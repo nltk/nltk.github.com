@@ -1,0 +1,292 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.etree.ElementPath &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.etree.ElementPath</h1><div class="highlight"><pre>
+<span class="c">#</span>
+<span class="c"># ElementTree</span>
+<span class="c"># $Id: ElementPath.py 1858 2004-06-17 21:31:41Z Fredrik $</span>
+<span class="c">#</span>
+<span class="c"># limited xpath support for element trees</span>
+<span class="c">#</span>
+<span class="c"># history:</span>
+<span class="c"># 2003-05-23 fl   created</span>
+<span class="c"># 2003-05-28 fl   added support for // etc</span>
+<span class="c"># 2003-08-27 fl   fixed parsing of periods in element names</span>
+<span class="c">#</span>
+<span class="c"># Copyright (c) 2003-2004 by Fredrik Lundh.  All rights reserved.</span>
+<span class="c">#</span>
+<span class="c"># fredrik@pythonware.com</span>
+<span class="c"># http://www.pythonware.com</span>
+<span class="c">#</span>
+<span class="c"># --------------------------------------------------------------------</span>
+<span class="c"># The ElementTree toolkit is</span>
+<span class="c">#</span>
+<span class="c"># Copyright (c) 1999-2004 by Fredrik Lundh</span>
+<span class="c">#</span>
+<span class="c"># By obtaining, using, and/or copying this software and/or its</span>
+<span class="c"># associated documentation, you agree that you have read, understood,</span>
+<span class="c"># and will comply with the following terms and conditions:</span>
+<span class="c">#</span>
+<span class="c"># Permission to use, copy, modify, and distribute this software and</span>
+<span class="c"># its associated documentation for any purpose and without fee is</span>
+<span class="c"># hereby granted, provided that the above copyright notice appears in</span>
+<span class="c"># all copies, and that both that copyright notice and this permission</span>
+<span class="c"># notice appear in supporting documentation, and that the name of</span>
+<span class="c"># Secret Labs AB or the author not be used in advertising or publicity</span>
+<span class="c"># pertaining to distribution of the software without specific, written</span>
+<span class="c"># prior permission.</span>
+<span class="c">#</span>
+<span class="c"># SECRET LABS AB AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD</span>
+<span class="c"># TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANT-</span>
+<span class="c"># ABILITY AND FITNESS.  IN NO EVENT SHALL SECRET LABS AB OR THE AUTHOR</span>
+<span class="c"># BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY</span>
+<span class="c"># DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,</span>
+<span class="c"># WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS</span>
+<span class="c"># ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE</span>
+<span class="c"># OF THIS SOFTWARE.</span>
+<span class="c"># --------------------------------------------------------------------</span>
+
+<span class="c"># Licensed to PSF under a Contributor Agreement.</span>
+<span class="c"># See http://www.python.org/2.4/license for licensing details.</span>
+
+<span class="c">##</span>
+<span class="c"># Implementation module for XPath support.  There&#39;s usually no reason</span>
+<span class="c"># to import this module directly; the &lt;b&gt;ElementTree&lt;/b&gt; does this for</span>
+<span class="c"># you, if needed.</span>
+<span class="c">##</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="n">xpath_tokenizer</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+    <span class="s">&quot;(::|\.\.|\(\)|[/.*:\[\]\(\)@=])|((?:\{[^}]+\})?[^/:\[\]\(\)@=\s]+)|\s+&quot;</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">findall</span>
+
+<div class="viewcode-block" id="xpath_descendant_or_self"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.xpath_descendant_or_self">[docs]</a><span class="k">class</span> <span class="nc">xpath_descendant_or_self</span><span class="p">:</span>
+    <span class="k">pass</span>
+
+<span class="c">##</span>
+<span class="c"># Wrapper for a compiled XPath.</span>
+</div>
+<div class="viewcode-block" id="Path"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.Path">[docs]</a><span class="k">class</span> <span class="nc">Path</span><span class="p">:</span>
+
+    <span class="c">##</span>
+    <span class="c"># Create an Path instance from an XPath expression.</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">xpath_tokenizer</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="c"># the current version supports &#39;path/path&#39;-style expressions only</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tag</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">tokens</span> <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;/&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="s">&quot;cannot use absolute path on element&quot;</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">tokens</span><span class="p">:</span>
+            <span class="n">op</span><span class="p">,</span> <span class="n">tag</span> <span class="o">=</span> <span class="n">tokens</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tag</span> <span class="ow">or</span> <span class="n">op</span> <span class="o">==</span> <span class="s">&quot;*&quot;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tag</span> <span class="ow">or</span> <span class="n">op</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">op</span> <span class="o">==</span> <span class="s">&quot;.&quot;</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">elif</span> <span class="n">op</span> <span class="o">==</span> <span class="s">&quot;/&quot;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">xpath_descendant_or_self</span><span class="p">())</span>
+                <span class="k">continue</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="s">&quot;unsupported path syntax (</span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="n">op</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tokens</span><span class="p">:</span>
+                <span class="n">op</span><span class="p">,</span> <span class="n">tag</span> <span class="o">=</span> <span class="n">tokens</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">op</span> <span class="o">!=</span> <span class="s">&quot;/&quot;</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span>
+                        <span class="s">&quot;expected path separator (</span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">op</span> <span class="ow">or</span> <span class="n">tag</span><span class="p">)</span>
+                        <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">xpath_descendant_or_self</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="s">&quot;path cannot end with //&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">type</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tag</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c">##</span>
+    <span class="c"># Find first matching object.</span>
+
+<div class="viewcode-block" id="Path.find"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.Path.find">[docs]</a>    <span class="k">def</span> <span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">):</span>
+        <span class="n">tag</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tag</span>
+        <span class="k">if</span> <span class="n">tag</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">nodeset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">nodeset</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">None</span>
+            <span class="k">return</span> <span class="n">nodeset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">elem</span><span class="o">.</span><span class="n">tag</span> <span class="o">==</span> <span class="n">tag</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">elem</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="c">##</span>
+    <span class="c"># Find text for first matching object.</span>
+</div>
+<div class="viewcode-block" id="Path.findtext"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.Path.findtext">[docs]</a>    <span class="k">def</span> <span class="nf">findtext</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">tag</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tag</span>
+        <span class="k">if</span> <span class="n">tag</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">nodeset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">nodeset</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">default</span>
+            <span class="k">return</span> <span class="n">nodeset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span> <span class="ow">or</span> <span class="s">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">elem</span><span class="o">.</span><span class="n">tag</span> <span class="o">==</span> <span class="n">tag</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">elem</span><span class="o">.</span><span class="n">text</span> <span class="ow">or</span> <span class="s">&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">default</span>
+
+    <span class="c">##</span>
+    <span class="c"># Find all matching objects.</span>
+</div>
+<div class="viewcode-block" id="Path.findall"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.Path.findall">[docs]</a>    <span class="k">def</span> <span class="nf">findall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">):</span>
+        <span class="n">nodeset</span> <span class="o">=</span> <span class="p">[</span><span class="n">element</span><span class="p">]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">nodeset</span>
+            <span class="nb">set</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">xpath_descendant_or_self</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">tag</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">)):</span>
+                        <span class="n">tag</span> <span class="o">=</span> <span class="bp">None</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">index</span> <span class="o">=</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                    <span class="n">tag</span> <span class="o">=</span> <span class="bp">None</span> <span class="c"># invalid path</span>
+                <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">nodeset</span><span class="p">:</span>
+                    <span class="n">new</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">getiterator</span><span class="p">(</span><span class="n">tag</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">new</span> <span class="ow">and</span> <span class="n">new</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">node</span><span class="p">:</span>
+                        <span class="nb">set</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="nb">set</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">nodeset</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">node</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s">&quot;*&quot;</span> <span class="ow">or</span> <span class="n">node</span><span class="o">.</span><span class="n">tag</span> <span class="o">==</span> <span class="n">path</span><span class="p">:</span>
+                            <span class="nb">set</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+            <span class="n">nodeset</span> <span class="o">=</span> <span class="nb">set</span>
+</div></div>
+<span class="n">_cache</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="c">##</span>
+<span class="c"># (Internal) Compile path.</span>
+
+<span class="k">def</span> <span class="nf">_compile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">p</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">p</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">_cache</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">100</span><span class="p">:</span>
+        <span class="n">_cache</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+    <span class="n">_cache</span><span class="p">[</span><span class="n">path</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span>
+    <span class="k">return</span> <span class="n">p</span>
+
+<span class="c">##</span>
+<span class="c"># Find first matching object.</span>
+
+<div class="viewcode-block" id="find"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.find">[docs]</a><span class="k">def</span> <span class="nf">find</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">_compile</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+
+<span class="c">##</span>
+<span class="c"># Find text for first matching object.</span>
+</div>
+<div class="viewcode-block" id="findtext"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.findtext">[docs]</a><span class="k">def</span> <span class="nf">findtext</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">_compile</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">findtext</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+
+<span class="c">##</span>
+<span class="c"># Find all matching objects.</span>
+</div>
+<div class="viewcode-block" id="findall"><a class="viewcode-back" href="../../../api/nltk.etree.html#nltk.etree.ElementPath.findall">[docs]</a><span class="k">def</span> <span class="nf">findall</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">_compile</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">element</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

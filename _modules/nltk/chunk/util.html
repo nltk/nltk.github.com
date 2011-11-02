@@ -1,0 +1,683 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.chunk.util &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.chunk" href="../chunk.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../chunk.html" accesskey="U">nltk.chunk</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.chunk.util</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Chunk format conversions</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt; (minor additions)</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">string</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">import</span> <span class="nn">nltk.tag.util</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">## EVALUATION</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+
+<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">accuracy</span> <span class="k">as</span> <span class="n">_accuracy</span>
+<div class="viewcode-block" id="accuracy"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.accuracy">[docs]</a><span class="k">def</span> <span class="nf">accuracy</span><span class="p">(</span><span class="n">chunker</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Score the accuracy of the chunker against the gold standard.</span>
+<span class="sd">    Strip the chunk information from the gold standard and rechunk it using</span>
+<span class="sd">    the chunker, then compute the accuracy score.</span>
+
+<span class="sd">    @type chunker: C{ChunkParserI}</span>
+<span class="sd">    @param chunker: The chunker being evaluated.</span>
+<span class="sd">    @type gold: C{tree}</span>
+<span class="sd">    @param gold: The chunk structures to score the chunker on.</span>
+<span class="sd">    @rtype: C{float}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">gold_tags</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">test_tags</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">gold_tree</span> <span class="ow">in</span> <span class="n">gold</span><span class="p">:</span>
+        <span class="n">test_tree</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">gold_tree</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+        <span class="n">gold_tags</span> <span class="o">+=</span> <span class="n">tree2conlltags</span><span class="p">(</span><span class="n">gold_tree</span><span class="p">)</span>
+        <span class="n">test_tags</span> <span class="o">+=</span> <span class="n">tree2conlltags</span><span class="p">(</span><span class="n">test_tree</span><span class="p">)</span>
+
+<span class="c">#    print &#39;GOLD:&#39;, gold_tags[:50]</span>
+<span class="c">#    print &#39;TEST:&#39;, test_tags[:50]</span>
+    <span class="k">return</span> <span class="n">_accuracy</span><span class="p">(</span><span class="n">gold_tags</span><span class="p">,</span> <span class="n">test_tags</span><span class="p">)</span>
+
+
+<span class="c"># Patched for increased performance by Yoav Goldberg &lt;yoavg@cs.bgu.ac.il&gt;, 2006-01-13</span>
+<span class="c">#  -- statistics are evaluated only on demand, instead of at every sentence evaluation</span>
+<span class="c">#</span>
+<span class="c"># SB: use nltk.metrics for precision/recall scoring?</span>
+<span class="c">#</span></div>
+<div class="viewcode-block" id="ChunkScore"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore">[docs]</a><span class="k">class</span> <span class="nc">ChunkScore</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A utility class for scoring chunk parsers.  C{ChunkScore} can</span>
+<span class="sd">    evaluate a chunk parser&#39;s output, based on a number of statistics</span>
+<span class="sd">    (precision, recall, f-measure, misssed chunks, incorrect chunks).</span>
+<span class="sd">    It can also combine the scores from the parsing of multiple texts;</span>
+<span class="sd">    this makes it signifigantly easier to evaluate a chunk parser that</span>
+<span class="sd">    operates one sentence at a time.</span>
+
+<span class="sd">    Texts are evaluated with the C{score} method.  The results of</span>
+<span class="sd">    evaluation can be accessed via a number of accessor methods, such</span>
+<span class="sd">    as C{precision} and C{f_measure}.  A typical use of the</span>
+<span class="sd">    C{ChunkScore} class is::</span>
+
+<span class="sd">        &gt;&gt;&gt; chunkscore = ChunkScore()</span>
+<span class="sd">        &gt;&gt;&gt; for correct in correct_sentences:</span>
+<span class="sd">        ...     guess = chunkparser.parse(correct.leaves())</span>
+<span class="sd">        ...     chunkscore.score(correct, guess)</span>
+<span class="sd">        &gt;&gt;&gt; print &#39;F Measure:&#39;, chunkscore.f_measure()</span>
+<span class="sd">        F Measure: 0.823</span>
+
+<span class="sd">    @ivar kwargs: Keyword arguments:</span>
+
+<span class="sd">        - max_tp_examples: The maximum number actual examples of true</span>
+<span class="sd">          positives to record.  This affects the C{correct} member</span>
+<span class="sd">          function: C{correct} will not return more than this number</span>
+<span class="sd">          of true positive examples.  This does *not* affect any of</span>
+<span class="sd">          the numerical metrics (precision, recall, or f-measure)</span>
+
+<span class="sd">        - max_fp_examples: The maximum number actual examples of false</span>
+<span class="sd">          positives to record.  This affects the C{incorrect} member</span>
+<span class="sd">          function and the C{guessed} member function: C{incorrect}</span>
+<span class="sd">          will not return more than this number of examples, and</span>
+<span class="sd">          C{guessed} will not return more than this number of true</span>
+<span class="sd">          positive examples.  This does *not* affect any of the</span>
+<span class="sd">          numerical metrics (precision, recall, or f-measure)</span>
+<span class="sd">        </span>
+<span class="sd">        - max_fn_examples: The maximum number actual examples of false</span>
+<span class="sd">          negatives to record.  This affects the C{missed} member</span>
+<span class="sd">          function and the C{correct} member function: C{missed}</span>
+<span class="sd">          will not return more than this number of examples, and</span>
+<span class="sd">          C{correct} will not return more than this number of true</span>
+<span class="sd">          negative examples.  This does *not* affect any of the</span>
+<span class="sd">          numerical metrics (precision, recall, or f-measure)</span>
+
+<span class="sd">        - chunk_node: A regular expression indicating which chunks</span>
+<span class="sd">          should be compared.  Defaults to C{&#39;.*&#39;} (i.e., all chunks).</span>
+<span class="sd">        </span>
+<span class="sd">    @type _tp: C{list} of C{Token}</span>
+<span class="sd">    @ivar _tp: List of true positives</span>
+<span class="sd">    @type _fp: C{list} of C{Token}</span>
+<span class="sd">    @ivar _fp: List of false positives</span>
+<span class="sd">    @type _fn: C{list} of C{Token}</span>
+<span class="sd">    @ivar _fn: List of false negatives</span>
+<span class="sd">    </span>
+<span class="sd">    @type _tp_num: C{int}</span>
+<span class="sd">    @ivar _tp_num: Number of true positives</span>
+<span class="sd">    @type _fp_num: C{int}</span>
+<span class="sd">    @ivar _fp_num: Number of false positives</span>
+<span class="sd">    @type _fn_num: C{int}</span>
+<span class="sd">    @ivar _fn_num: Number of false negatives.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_correct</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tp</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fp</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fn</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_tp</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;max_tp_examples&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_fp</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;max_fp_examples&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_fn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;max_fn_examples&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_node</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;chunk_node&#39;</span><span class="p">,</span> <span class="s">&#39;.*&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fp_num</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fn_num</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tags_correct</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tags_total</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_measuresNeedUpdate</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">_updateMeasures</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_measuresNeedUpdate</span><span class="p">):</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_tp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span> <span class="o">&amp;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_correct</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_fn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_correct</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_fp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_correct</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tp</span><span class="p">)</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_fp_num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fp</span><span class="p">)</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_fn_num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fn</span><span class="p">)</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_measuresNeedUpdate</span> <span class="o">=</span> <span class="bp">False</span>
+
+<div class="viewcode-block" id="ChunkScore.score"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.score">[docs]</a>    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">correct</span><span class="p">,</span> <span class="n">guessed</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a correctly chunked sentence, score another chunked</span>
+<span class="sd">        version of the same sentence.</span>
+<span class="sd">        </span>
+<span class="sd">        @type correct: chunk structure</span>
+<span class="sd">        @param correct: The known-correct (&quot;gold standard&quot;) chunked</span>
+<span class="sd">            sentence.</span>
+<span class="sd">        @type guessed: chunk structure</span>
+<span class="sd">        @param guessed: The chunked sentence to be scored.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_correct</span> <span class="o">|=</span> <span class="n">_chunksets</span><span class="p">(</span><span class="n">correct</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_count</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_node</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span> <span class="o">|=</span> <span class="n">_chunksets</span><span class="p">(</span><span class="n">guessed</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_count</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_node</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_measuresNeedUpdate</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="c"># Keep track of per-tag accuracy (if possible)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">correct_tags</span> <span class="o">=</span> <span class="n">tree2conlltags</span><span class="p">(</span><span class="n">correct</span><span class="p">)</span>
+            <span class="n">guessed_tags</span> <span class="o">=</span> <span class="n">tree2conlltags</span><span class="p">(</span><span class="n">guessed</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="c"># This exception case is for nested chunk structures,</span>
+            <span class="c"># where tree2conlltags will fail with a ValueError: &quot;Tree</span>
+            <span class="c"># is too deeply nested to be printed in CoNLL format.&quot;</span>
+            <span class="n">correct_tags</span> <span class="o">=</span> <span class="n">guessed_tags</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tags_total</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">correct_tags</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tags_correct</span> <span class="o">+=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">g</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">guessed_tags</span><span class="p">,</span>
+                                                     <span class="n">correct_tags</span><span class="p">)</span>
+                                  <span class="k">if</span> <span class="n">t</span><span class="o">==</span><span class="n">g</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ChunkScore.accuracy"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.accuracy">[docs]</a>    <span class="k">def</span> <span class="nf">accuracy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The overall tag-based accuracy for all text that have</span>
+<span class="sd">            been scored by this C{ChunkScore}, using the IOB (conll2000)</span>
+<span class="sd">            tag encoding.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tags_total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tags_correct</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">_tags_total</span>
+</div>
+<div class="viewcode-block" id="ChunkScore.precision"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.precision">[docs]</a>    <span class="k">def</span> <span class="nf">precision</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the overall precision for all texts that have been</span>
+<span class="sd">            scored by this C{ChunkScore}.</span>
+<span class="sd">        @rtype: C{float}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="n">div</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fp_num</span>
+        <span class="k">if</span> <span class="n">div</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span> <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span><span class="p">)</span> <span class="o">/</span> <span class="n">div</span>
+    </div>
+<div class="viewcode-block" id="ChunkScore.recall"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.recall">[docs]</a>    <span class="k">def</span> <span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the overall recall for all texts that have been</span>
+<span class="sd">            scored by this C{ChunkScore}.</span>
+<span class="sd">        @rtype: C{float}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="n">div</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fn_num</span>
+        <span class="k">if</span> <span class="n">div</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span> <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span><span class="p">)</span> <span class="o">/</span> <span class="n">div</span>
+    </div>
+<div class="viewcode-block" id="ChunkScore.f_measure"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.f_measure">[docs]</a>    <span class="k">def</span> <span class="nf">f_measure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the overall F measure for all texts that have been</span>
+<span class="sd">            scored by this C{ChunkScore}.</span>
+<span class="sd">        @rtype: C{float}</span>
+<span class="sd">        </span>
+<span class="sd">        @param alpha: the relative weighting of precision and recall.</span>
+<span class="sd">            Larger alpha biases the score towards the precision value,</span>
+<span class="sd">            while smaller alpha biases the score towards the recall</span>
+<span class="sd">            value.  C{alpha} should have a value in the range [0,1].</span>
+<span class="sd">        @type alpha: C{float}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">precision</span><span class="p">()</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recall</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">r</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>    <span class="c"># what if alpha is 0 or 1?</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="o">/</span><span class="p">(</span><span class="n">alpha</span><span class="o">/</span><span class="n">p</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">alpha</span><span class="p">)</span><span class="o">/</span><span class="n">r</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="ChunkScore.missed"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.missed">[docs]</a>    <span class="k">def</span> <span class="nf">missed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{list} of chunks</span>
+<span class="sd">        @return: the chunks which were included in the</span>
+<span class="sd">            correct chunk structures, but not in the guessed chunk</span>
+<span class="sd">            structures, listed in input order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fn</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">]</span>  <span class="c"># discard position information</span>
+    </div>
+<div class="viewcode-block" id="ChunkScore.incorrect"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.incorrect">[docs]</a>    <span class="k">def</span> <span class="nf">incorrect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{list} of chunks</span>
+<span class="sd">        @return: the chunks which were included in the</span>
+<span class="sd">            guessed chunk structures, but not in the correct chunk</span>
+<span class="sd">            structures, listed in input order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fp</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">]</span>  <span class="c"># discard position information</span>
+    </div>
+<div class="viewcode-block" id="ChunkScore.correct"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.correct">[docs]</a>    <span class="k">def</span> <span class="nf">correct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{list} of chunks</span>
+<span class="sd">        @return: the chunks which were included in the correct</span>
+<span class="sd">            chunk structures, listed in input order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_correct</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">]</span>  <span class="c"># discard position information</span>
+</div>
+<div class="viewcode-block" id="ChunkScore.guessed"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ChunkScore.guessed">[docs]</a>    <span class="k">def</span> <span class="nf">guessed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{list} of chunks</span>
+<span class="sd">        @return: the chunks which were included in the guessed</span>
+<span class="sd">            chunk structures, listed in input order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_guessed</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">]</span>  <span class="c"># discard position information</span>
+</div>
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_updateMeasures</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tp_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fn_num</span>
+    
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{String}</span>
+<span class="sd">        @return: a concise representation of this C{ChunkScoring}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;ChunkScoring of &#39;</span><span class="o">+</span><span class="sb">`len(self)`</span><span class="o">+</span><span class="s">&#39; chunks&gt;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{String}</span>
+<span class="sd">        @return: a verbose representation of this C{ChunkScoring}.</span>
+<span class="sd">            This representation includes the precision, recall, and</span>
+<span class="sd">            f-measure scores.  For other information about the score,</span>
+<span class="sd">            use the accessor methods (e.g., C{missed()} and</span>
+<span class="sd">            C{incorrect()}). </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&quot;ChunkParse score:</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">+</span>
+                <span class="p">(</span><span class="s">&quot;    IOB Accuracy: </span><span class="si">%5.1f%%</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">accuracy</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">))</span> <span class="o">+</span>
+                <span class="p">(</span><span class="s">&quot;    Precision:    </span><span class="si">%5.1f%%</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">precision</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">))</span> <span class="o">+</span>
+                <span class="p">(</span><span class="s">&quot;    Recall:       </span><span class="si">%5.1f%%</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">recall</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">))</span><span class="o">+</span>
+                <span class="p">(</span><span class="s">&quot;    F-Measure:    </span><span class="si">%5.1f%%</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f_measure</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">)))</span>
+        
+<span class="c"># extract chunks, and assign unique id, the absolute position of</span>
+<span class="c"># the first word of the chunk</span></div>
+<span class="k">def</span> <span class="nf">_chunksets</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">chunk_node</span><span class="p">):</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">chunks</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">t</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">chunk_node</span><span class="p">,</span> <span class="n">child</span><span class="o">.</span><span class="n">node</span><span class="p">):</span>
+                <span class="n">chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(((</span><span class="n">count</span><span class="p">,</span> <span class="n">pos</span><span class="p">),</span> <span class="n">child</span><span class="o">.</span><span class="n">freeze</span><span class="p">()))</span>
+            <span class="n">pos</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="tagstr2tree"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.tagstr2tree">[docs]</a><span class="k">def</span> <span class="nf">tagstr2tree</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">chunk_node</span><span class="o">=</span><span class="s">&quot;NP&quot;</span><span class="p">,</span> <span class="n">top_node</span><span class="o">=</span><span class="s">&quot;S&quot;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s">&#39;/&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Divide a string of bracketted tagged text into</span>
+<span class="sd">    chunks and unchunked tokens, and produce a C{Tree}.</span>
+<span class="sd">    Chunks are marked by square brackets (C{[...]}).  Words are</span>
+<span class="sd">    delimited by whitespace, and each word should have the form</span>
+<span class="sd">    C{I{text}/I{tag}}.  Words that do not contain a slash are</span>
+<span class="sd">    assigned a C{tag} of C{None}.</span>
+
+<span class="sd">    @return: A tree corresponding to the string representation.</span>
+<span class="sd">    @rtype: C{tree}</span>
+<span class="sd">    @param s: The string to be converted</span>
+<span class="sd">    @type s: C{string}</span>
+<span class="sd">    @param chunk_node: The label to use for chunk nodes</span>
+<span class="sd">    @type chunk_node: C{string}</span>
+<span class="sd">    @param top_node: The label to use for the root of the tree</span>
+<span class="sd">    @type top_node: C{string}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">WORD_OR_BRACKET</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\[|\]|[^\[\]\s]+&#39;</span><span class="p">)</span>
+
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[</span><span class="n">Tree</span><span class="p">(</span><span class="n">top_node</span><span class="p">,</span> <span class="p">[])]</span>
+    <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">WORD_OR_BRACKET</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">text</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;[&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unexpected [ at char </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">match</span><span class="o">.</span><span class="n">start</span><span class="p">())</span>
+            <span class="n">chunk</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="n">chunk_node</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">text</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;]&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unexpected ] at char </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">match</span><span class="o">.</span><span class="n">start</span><span class="p">())</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">sep</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">tag</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">str2tuple</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">sep</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Expected ] at char </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<span class="c">### CONLL</span>
+</div>
+<span class="n">_LINE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(\S+)\s+(\S+)\s+([IOB])-?(\S+)?&#39;</span><span class="p">)</span>
+<div class="viewcode-block" id="conllstr2tree"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.conllstr2tree">[docs]</a><span class="k">def</span> <span class="nf">conllstr2tree</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">chunk_types</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;NP&#39;</span><span class="p">,</span> <span class="s">&#39;PP&#39;</span><span class="p">,</span> <span class="s">&#39;VP&#39;</span><span class="p">),</span> <span class="n">top_node</span><span class="o">=</span><span class="s">&quot;S&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a CoNLL IOB string into a tree.  Uses the specified chunk types</span>
+<span class="sd">    (defaults to NP, PP and VP), and creates a tree rooted at a node</span>
+<span class="sd">    labeled S (by default).</span>
+
+<span class="sd">    @param s: The CoNLL string to be converted.</span>
+<span class="sd">    @type s: C{string}</span>
+<span class="sd">    @param chunk_types: The chunk types to be converted.</span>
+<span class="sd">    @type chunk_types: C{tuple}</span>
+<span class="sd">    @param top_node: The node label to use for the root.</span>
+<span class="sd">    @type top_node: C{string}</span>
+<span class="sd">    @return: A chunk structure for a single sentence</span>
+<span class="sd">        encoded in the given CONLL 2000 style string.</span>
+<span class="sd">    @rtype: L{Tree}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[</span><span class="n">Tree</span><span class="p">(</span><span class="n">top_node</span><span class="p">,</span> <span class="p">[])]</span>
+
+    <span class="k">for</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span> <span class="k">continue</span>
+
+        <span class="c"># Decode the line.</span>
+        <span class="n">match</span> <span class="o">=</span> <span class="n">_LINE_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">match</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Error on line </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">lineno</span>
+        <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">chunk_type</span><span class="p">)</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+
+        <span class="c"># If it&#39;s a chunk type we don&#39;t care about, treat it as O.</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">chunk_types</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span>
+            <span class="n">chunk_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">chunk_types</span><span class="p">):</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="s">&#39;O&#39;</span>
+
+        <span class="c"># For &quot;Begin&quot;/&quot;Outside&quot;, finish any completed chunks -</span>
+        <span class="c"># also do so for &quot;Inside&quot; which don&#39;t match the previous token.</span>
+        <span class="n">mismatch_I</span> <span class="o">=</span> <span class="n">state</span> <span class="o">==</span> <span class="s">&#39;I&#39;</span> <span class="ow">and</span> <span class="n">chunk_type</span> <span class="o">!=</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">node</span>
+        <span class="k">if</span> <span class="n">state</span> <span class="ow">in</span> <span class="s">&#39;BO&#39;</span> <span class="ow">or</span> <span class="n">mismatch_I</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span> <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+        <span class="c"># For &quot;Begin&quot;, start a new chunk.</span>
+        <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="s">&#39;B&#39;</span> <span class="ow">or</span> <span class="n">mismatch_I</span><span class="p">:</span>
+            <span class="n">chunk</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="n">chunk_type</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+
+        <span class="c"># Add the new word token.</span>
+        <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span> <span class="n">tag</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="tree2conlltags"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.tree2conlltags">[docs]</a><span class="k">def</span> <span class="nf">tree2conlltags</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a tree to the CoNLL IOB tag format</span>
+
+<span class="sd">    @param t: The tree to be converted.</span>
+<span class="sd">    @type t: C{Tree}</span>
+<span class="sd">    @return: A list of 3-tuples containing word, tag and IOB tag.</span>
+<span class="sd">    @rtype: C{list} of C{tuple}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">tags</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">t</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">category</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="n">node</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s">&quot;B-&quot;</span>
+            <span class="k">for</span> <span class="n">contents</span> <span class="ow">in</span> <span class="n">child</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">contents</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&quot;Tree is too deeply nested to be printed in CoNLL format&quot;</span>
+                <span class="n">tags</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">contents</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">contents</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">prefix</span><span class="o">+</span><span class="n">category</span><span class="p">))</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="s">&quot;I-&quot;</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">tags</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">child</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">child</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s">&quot;O&quot;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">tags</span>
+</div>
+<div class="viewcode-block" id="conlltags2tree"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.conlltags2tree">[docs]</a><span class="k">def</span> <span class="nf">conlltags2tree</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">chunk_types</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;NP&#39;</span><span class="p">,</span><span class="s">&#39;PP&#39;</span><span class="p">,</span><span class="s">&#39;VP&#39;</span><span class="p">),</span>
+                   <span class="n">top_node</span><span class="o">=</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert the CoNLL IOB format to a tree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">top_node</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">postag</span><span class="p">,</span> <span class="n">chunktag</span><span class="p">)</span> <span class="ow">in</span> <span class="n">sentence</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">chunktag</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Bad conll tag sequence&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># Treat as O</span>
+                <span class="n">tree</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span><span class="n">postag</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">chunktag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;B-&#39;</span><span class="p">):</span>
+            <span class="n">tree</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">chunktag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[(</span><span class="n">word</span><span class="p">,</span><span class="n">postag</span><span class="p">)]))</span>
+        <span class="k">elif</span> <span class="n">chunktag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;I-&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span><span class="o">==</span><span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">)</span> <span class="ow">or</span>
+                <span class="n">tree</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">node</span> <span class="o">!=</span> <span class="n">chunktag</span><span class="p">[</span><span class="mi">2</span><span class="p">:]):</span>
+                <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Bad conll tag sequence&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c"># Treat as B-*</span>
+                    <span class="n">tree</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">chunktag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[(</span><span class="n">word</span><span class="p">,</span><span class="n">postag</span><span class="p">)]))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">tree</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span><span class="n">postag</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">chunktag</span> <span class="o">==</span> <span class="s">&#39;O&#39;</span><span class="p">:</span>
+            <span class="n">tree</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">word</span><span class="p">,</span><span class="n">postag</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Bad conll tag </span><span class="si">%r</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">chunktag</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tree</span>
+</div>
+<div class="viewcode-block" id="tree2conllstr"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.tree2conllstr">[docs]</a><span class="k">def</span> <span class="nf">tree2conllstr</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a tree to the CoNLL IOB string format</span>
+
+<span class="sd">    @param t: The tree to be converted.</span>
+<span class="sd">    @type t: C{Tree}</span>
+<span class="sd">    @return: A multiline string where each line contains a word, tag and IOB tag.</span>
+<span class="sd">    @rtype: C{string}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">string</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">token</span><span class="p">)</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tree2conlltags</span><span class="p">(</span><span class="n">t</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
+
+<span class="c">### IEER</span>
+</div>
+<span class="n">_IEER_DOC_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&lt;DOC&gt;\s*&#39;</span>
+                          <span class="s">r&#39;(&lt;DOCNO&gt;\s*(?P&lt;docno&gt;.+?)\s*&lt;/DOCNO&gt;\s*)?&#39;</span>
+                          <span class="s">r&#39;(&lt;DOCTYPE&gt;\s*(?P&lt;doctype&gt;.+?)\s*&lt;/DOCTYPE&gt;\s*)?&#39;</span>
+                          <span class="s">r&#39;(&lt;DATE_TIME&gt;\s*(?P&lt;date_time&gt;.+?)\s*&lt;/DATE_TIME&gt;\s*)?&#39;</span>
+                          <span class="s">r&#39;&lt;BODY&gt;\s*&#39;</span>
+                          <span class="s">r&#39;(&lt;HEADLINE&gt;\s*(?P&lt;headline&gt;.+?)\s*&lt;/HEADLINE&gt;\s*)?&#39;</span>
+                          <span class="s">r&#39;&lt;TEXT&gt;(?P&lt;text&gt;.*?)&lt;/TEXT&gt;\s*&#39;</span>
+                          <span class="s">r&#39;&lt;/BODY&gt;\s*&lt;/DOC&gt;\s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">)</span>
+
+<span class="n">_IEER_TYPE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;&lt;b_\w+\s+[^&gt;]*?type=&quot;(?P&lt;type&gt;\w+)&quot;&#39;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_ieer_read_text</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">top_node</span><span class="p">):</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[</span><span class="n">Tree</span><span class="p">(</span><span class="n">top_node</span><span class="p">,</span> <span class="p">[])]</span>
+    <span class="c"># s will be None if there is no headline in the text</span>
+    <span class="c"># return the empty list in place of a Tree</span>
+    <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">piece_m</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="s">&#39;&lt;[^&gt;]+&gt;|[^\s&lt;]+&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="n">piece</span> <span class="o">=</span> <span class="n">piece_m</span><span class="o">.</span><span class="n">group</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">piece</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;&lt;b_&#39;</span><span class="p">):</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="n">_IEER_TYPE_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">piece</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">m</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;XXXX&#39;</span><span class="p">,</span> <span class="n">piece</span>
+                <span class="n">chunk</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;type&#39;</span><span class="p">),</span> <span class="p">[])</span>
+                <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+                <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">piece</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;&lt;e_&#39;</span><span class="p">):</span>
+                <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+<span class="c">#           elif piece.startswith(&#39;&lt;&#39;):</span>
+<span class="c">#               print &quot;ERROR:&quot;, piece</span>
+<span class="c">#               raise ValueError # Unexpected HTML</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">piece</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad IEER string (error at character </span><span class="si">%d</span><span class="s">)&#39;</span> <span class="o">%</span>
+                             <span class="n">piece_m</span><span class="o">.</span><span class="n">start</span><span class="p">())</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad IEER string&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="ieerstr2tree"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.ieerstr2tree">[docs]</a><span class="k">def</span> <span class="nf">ieerstr2tree</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">chunk_types</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;LOCATION&#39;</span><span class="p">,</span> <span class="s">&#39;ORGANIZATION&#39;</span><span class="p">,</span> <span class="s">&#39;PERSON&#39;</span><span class="p">,</span> <span class="s">&#39;DURATION&#39;</span><span class="p">,</span>
+               <span class="s">&#39;DATE&#39;</span><span class="p">,</span> <span class="s">&#39;CARDINAL&#39;</span><span class="p">,</span> <span class="s">&#39;PERCENT&#39;</span><span class="p">,</span> <span class="s">&#39;MONEY&#39;</span><span class="p">,</span> <span class="s">&#39;MEASURE&#39;</span><span class="p">],</span> <span class="n">top_node</span><span class="o">=</span><span class="s">&quot;S&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a string of chunked tagged text in the IEER named</span>
+<span class="sd">    entity format into a chunk structure.  Chunks are of several</span>
+<span class="sd">    types, LOCATION, ORGANIZATION, PERSON, DURATION, DATE, CARDINAL,</span>
+<span class="sd">    PERCENT, MONEY, and MEASURE.</span>
+
+<span class="sd">    @return: A chunk structure containing the chunked tagged text that is</span>
+<span class="sd">        encoded in the given IEER style string.</span>
+<span class="sd">    @rtype: L{Tree}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># Try looking for a single document.  If that doesn&#39;t work, then just</span>
+    <span class="c"># treat everything as if it was within the &lt;TEXT&gt;...&lt;/TEXT&gt;.</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_IEER_DOC_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s">&#39;text&#39;</span><span class="p">:</span> <span class="n">_ieer_read_text</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;text&#39;</span><span class="p">),</span> <span class="n">top_node</span><span class="p">),</span>
+            <span class="s">&#39;docno&#39;</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;docno&#39;</span><span class="p">),</span>
+            <span class="s">&#39;doctype&#39;</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;doctype&#39;</span><span class="p">),</span>
+            <span class="s">&#39;date_time&#39;</span><span class="p">:</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;date_time&#39;</span><span class="p">),</span>
+            <span class="c">#&#39;headline&#39;: m.group(&#39;headline&#39;)</span>
+            <span class="c"># we want to capture NEs in the headline too!</span>
+            <span class="s">&#39;headline&#39;</span><span class="p">:</span> <span class="n">_ieer_read_text</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;headline&#39;</span><span class="p">),</span> <span class="n">top_node</span><span class="p">),</span>
+            <span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_ieer_read_text</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">top_node</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.util.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+
+    <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;[ Pierre/NNP Vinken/NNP ] ,/, [ 61/CD years/NNS ] old/JJ ,/, will/MD join/VB [ the/DT board/NN ] ./.&quot;</span>
+    <span class="kn">import</span> <span class="nn">nltk</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">chunk</span><span class="o">.</span><span class="n">tagstr2tree</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">chunk_node</span><span class="o">=</span><span class="s">&#39;NP&#39;</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">t</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+    <span class="k">print</span>
+
+    <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;</span>
+<span class="s">These DT B-NP</span>
+<span class="s">research NN I-NP</span>
+<span class="s">protocols NNS I-NP</span>
+<span class="s">offer VBP B-VP</span>
+<span class="s">to TO B-PP</span>
+<span class="s">the DT B-NP</span>
+<span class="s">patient NN I-NP</span>
+<span class="s">not RB O</span>
+<span class="s">only RB O</span>
+<span class="s">the DT B-NP</span>
+<span class="s">very RB I-NP</span>
+<span class="s">best JJS I-NP</span>
+<span class="s">therapy NN I-NP</span>
+<span class="s">which WDT B-NP</span>
+<span class="s">we PRP B-NP</span>
+<span class="s">have VBP B-VP</span>
+<span class="s">established VBN I-VP</span>
+<span class="s">today NN B-NP</span>
+<span class="s">but CC B-NP</span>
+<span class="s">also RB I-NP</span>
+<span class="s">the DT B-NP</span>
+<span class="s">hope NN I-NP</span>
+<span class="s">of IN B-PP</span>
+<span class="s">something NN B-NP</span>
+<span class="s">still RB B-ADJP</span>
+<span class="s">better JJR I-ADJP</span>
+<span class="s">. . O</span>
+<span class="s">&quot;&quot;&quot;</span>
+
+    <span class="n">conll_tree</span> <span class="o">=</span> <span class="n">conllstr2tree</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">chunk_types</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;NP&#39;</span><span class="p">,</span> <span class="s">&#39;PP&#39;</span><span class="p">))</span>
+    <span class="k">print</span> <span class="n">conll_tree</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+
+    <span class="c"># Demonstrate CoNLL output</span>
+    <span class="k">print</span> <span class="s">&quot;CoNLL output:&quot;</span>
+    <span class="k">print</span> <span class="n">nltk</span><span class="o">.</span><span class="n">chunk</span><span class="o">.</span><span class="n">tree2conllstr</span><span class="p">(</span><span class="n">conll_tree</span><span class="p">)</span>
+    <span class="k">print</span>
+
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../chunk.html" >nltk.chunk</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,249 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.metrics.distance &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.metrics" href="../metrics.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" accesskey="U">nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.metrics.distance</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Distance Metrics</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c">#         Tom Lippincott &lt;tom@cs.columbia.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Distance Metrics.</span>
+
+<span class="sd">Compute the distance between two items (usually strings).</span>
+<span class="sd">As metrics, they must satisfy the following three requirements:</span>
+
+<span class="sd">1. d(a, a) = 0</span>
+<span class="sd">2. d(a, b) &gt;= 0</span>
+<span class="sd">3. d(a, c) &lt;= d(a, b) + d(b, c)</span>
+<span class="sd"> </span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="k">def</span> <span class="nf">_edit_dist_init</span><span class="p">(</span><span class="n">len1</span><span class="p">,</span> <span class="n">len2</span><span class="p">):</span>
+    <span class="n">lev</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">len1</span><span class="p">):</span>
+        <span class="n">lev</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">len2</span><span class="p">)</span>  <span class="c"># initialize 2-D array to zero</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">len1</span><span class="p">):</span>
+        <span class="n">lev</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>           <span class="c"># column 0: 0,1,2,3,4,...</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">len2</span><span class="p">):</span>
+        <span class="n">lev</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span>           <span class="c"># row 0: 0,1,2,3,4,...</span>
+    <span class="k">return</span> <span class="n">lev</span>
+
+<span class="k">def</span> <span class="nf">_edit_dist_step</span><span class="p">(</span><span class="n">lev</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span><span class="p">):</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">lev</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">j</span>  <span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>            <span class="c"># skipping s1[i]</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">lev</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">c1</span> <span class="o">!=</span> <span class="n">c2</span><span class="p">)</span>   <span class="c"># matching s1[i] with s2[j]</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">lev</span><span class="p">[</span><span class="n">i</span>  <span class="p">][</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>            <span class="c"># skipping s2[j]</span>
+    <span class="n">lev</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">,</span><span class="n">c</span><span class="p">)</span>           <span class="c"># pick the cheapest</span>
+
+<div class="viewcode-block" id="edit_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.edit_distance">[docs]</a><span class="k">def</span> <span class="nf">edit_distance</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the Levenshtein edit-distance between two strings.</span>
+<span class="sd">    The edit distance is the number of characters that need to be</span>
+<span class="sd">    substituted, inserted, or deleted, to transform s1 into s2.  For</span>
+<span class="sd">    example, transforming &quot;rain&quot; to &quot;shine&quot; requires three steps,</span>
+<span class="sd">    consisting of two substitutions and one insertion:</span>
+<span class="sd">    &quot;rain&quot; -&gt; &quot;sain&quot; -&gt; &quot;shin&quot; -&gt; &quot;shine&quot;.  These operations could have</span>
+<span class="sd">    been done in other orders, but at least three steps are needed.</span>
+
+<span class="sd">    @param s1, s2: The strings to be analysed</span>
+<span class="sd">    @type s1: C{string}</span>
+<span class="sd">    @type s2: C{string}</span>
+<span class="sd">    @rtype C{int}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># set up a 2-D array</span>
+    <span class="n">len1</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">s1</span><span class="p">);</span> <span class="n">len2</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">s2</span><span class="p">)</span>
+    <span class="n">lev</span> <span class="o">=</span> <span class="n">_edit_dist_init</span><span class="p">(</span><span class="n">len1</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">len2</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c"># iterate over the array</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">len1</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span> <span class="p">(</span><span class="n">len2</span><span class="p">):</span>
+            <span class="n">_edit_dist_step</span><span class="p">(</span><span class="n">lev</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">s1</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">s2</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">lev</span><span class="p">[</span><span class="n">len1</span><span class="p">][</span><span class="n">len2</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="binary_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.binary_distance">[docs]</a><span class="k">def</span> <span class="nf">binary_distance</span><span class="p">(</span><span class="n">label1</span><span class="p">,</span> <span class="n">label2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Simple equality test.</span>
+
+<span class="sd">    0.0 if the labels are identical, 1.0 if they are different.</span>
+
+<span class="sd">    &gt;&gt;&gt; binary_distance(1,1)</span>
+<span class="sd">    0.0</span>
+
+<span class="sd">    &gt;&gt;&gt; binary_distance(1,3)</span>
+<span class="sd">    1.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">label1</span> <span class="o">==</span> <span class="n">label2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">1.0</span>
+
+</div>
+<div class="viewcode-block" id="jaccard_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.jaccard_distance">[docs]</a><span class="k">def</span> <span class="nf">jaccard_distance</span><span class="p">(</span><span class="n">label1</span><span class="p">,</span> <span class="n">label2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Distance metric comparing set-similarity.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">label1</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">label2</span><span class="p">))</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">label1</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">label2</span><span class="p">)))</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">label1</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">label2</span><span class="p">)))</span>
+
+</div>
+<div class="viewcode-block" id="masi_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.masi_distance">[docs]</a><span class="k">def</span> <span class="nf">masi_distance</span><span class="p">(</span><span class="n">label1</span><span class="p">,</span> <span class="n">label2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Distance metric that takes into account partial agreement when multiple</span>
+<span class="sd">    labels are assigned.</span>
+
+<span class="sd">    &gt;&gt;&gt; masi_distance(set([1,2]),set([1,2,3,4]))</span>
+<span class="sd">    0.5</span>
+
+<span class="sd">    Passonneau 2005, Measuring Agreement on Set-Valued Items (MASI) for Semantic and Pragmatic Annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">return</span> <span class="mi">1</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">label1</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">label2</span><span class="p">)))</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">label1</span><span class="p">),</span><span class="nb">len</span><span class="p">(</span><span class="n">label2</span><span class="p">)))</span>
+
+</div>
+<div class="viewcode-block" id="interval_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.interval_distance">[docs]</a><span class="k">def</span> <span class="nf">interval_distance</span><span class="p">(</span><span class="n">label1</span><span class="p">,</span><span class="n">label2</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Krippendorff&#39;1 interval distance metric</span>
+
+<span class="sd">    &gt;&gt;&gt; interval_distance(1,10)</span>
+<span class="sd">    81</span>
+
+<span class="sd">    Krippendorff 1980, Content Analysis: An Introduction to its Methodology</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">pow</span><span class="p">(</span><span class="n">label1</span><span class="o">-</span><span class="n">label2</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>
+<span class="c">#        return pow(list(label1)[0]-list(label2)[0],2)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;non-numeric labels not supported with interval distance&quot;</span>
+
+</div>
+<div class="viewcode-block" id="presence"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.presence">[docs]</a><span class="k">def</span> <span class="nf">presence</span><span class="p">(</span><span class="n">label</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Higher-order function to test presence of a given label</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">:</span> <span class="mf">1.0</span><span class="o">*</span><span class="p">((</span><span class="n">label</span> <span class="ow">in</span> <span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="n">label</span> <span class="ow">in</span> <span class="n">y</span><span class="p">))</span>
+
+</div>
+<div class="viewcode-block" id="fractional_presence"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.fractional_presence">[docs]</a><span class="k">def</span> <span class="nf">fractional_presence</span><span class="p">(</span><span class="n">label</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">:</span><span class="nb">abs</span><span class="p">((</span><span class="nb">float</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">))</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">))))</span><span class="o">*</span><span class="p">(</span><span class="n">label</span> <span class="ow">in</span> <span class="n">x</span> <span class="ow">and</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">y</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="o">*</span><span class="p">(</span><span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span> <span class="ow">and</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">y</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">abs</span><span class="p">((</span><span class="nb">float</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">))))</span><span class="o">*</span><span class="p">(</span><span class="n">label</span> <span class="ow">in</span> <span class="n">x</span> <span class="ow">and</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">y</span><span class="p">)</span> <span class="ow">or</span> <span class="p">((</span><span class="nb">float</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">))))</span><span class="o">*</span><span class="p">(</span><span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span> <span class="ow">and</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">y</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="custom_distance"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.custom_distance">[docs]</a><span class="k">def</span> <span class="nf">custom_distance</span><span class="p">(</span><span class="nb">file</span><span class="p">):</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">open</span><span class="p">(</span><span class="nb">file</span><span class="p">):</span>
+        <span class="n">labelA</span><span class="p">,</span> <span class="n">labelB</span><span class="p">,</span> <span class="n">dist</span> <span class="o">=</span> <span class="n">l</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\t</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="n">labelA</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">([</span><span class="n">labelA</span><span class="p">])</span>
+        <span class="n">labelB</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">([</span><span class="n">labelB</span><span class="p">])</span>
+        <span class="n">data</span><span class="p">[</span><span class="nb">frozenset</span><span class="p">([</span><span class="n">labelA</span><span class="p">,</span><span class="n">labelB</span><span class="p">])]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">dist</span><span class="p">)</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">:</span><span class="n">data</span><span class="p">[</span><span class="nb">frozenset</span><span class="p">([</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">])]</span>
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.distance.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="s">&quot;rain&quot;</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="s">&quot;shine&quot;</span>
+    <span class="k">print</span> <span class="s">&quot;Edit distance between &#39;</span><span class="si">%s</span><span class="s">&#39; and &#39;</span><span class="si">%s</span><span class="s">&#39;:&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">s1</span><span class="p">,</span><span class="n">s2</span><span class="p">),</span> <span class="n">edit_distance</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+    
+    <span class="n">s1</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">])</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&quot;s1:&quot;</span><span class="p">,</span> <span class="n">s1</span>
+    <span class="k">print</span> <span class="s">&quot;s2:&quot;</span><span class="p">,</span> <span class="n">s2</span>
+    <span class="k">print</span> <span class="s">&quot;Binary distance:&quot;</span><span class="p">,</span> <span class="n">binary_distance</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&quot;Jaccard distance:&quot;</span><span class="p">,</span> <span class="n">jaccard_distance</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&quot;MASI distance:&quot;</span><span class="p">,</span> <span class="n">masi_distance</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" >nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

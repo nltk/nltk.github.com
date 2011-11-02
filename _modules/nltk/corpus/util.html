@@ -1,0 +1,171 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.util &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.corpus" href="../corpus.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../corpus.html" accesskey="U">nltk.corpus</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.util</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Corpus Reader Utility Functions</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Lazy Corpus Loader</span>
+<span class="c">######################################################################</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">nltk</span>
+
+<span class="n">TRY_ZIPFILE_FIRST</span> <span class="o">=</span> <span class="bp">False</span>
+
+<div class="viewcode-block" id="LazyCorpusLoader"><a class="viewcode-back" href="../../../api/nltk.corpus.html#nltk.corpus.util.LazyCorpusLoader">[docs]</a><span class="k">class</span> <span class="nc">LazyCorpusLoader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A proxy object which is used to stand in for a corpus object</span>
+<span class="sd">    before the corpus is loaded.  This allows NLTK to create an object</span>
+<span class="sd">    for each corpus, but defer the costs associated with loading those</span>
+<span class="sd">    corpora until the first time that they&#39;re actually accessed.</span>
+
+<span class="sd">    The first time this object is accessed in any way, it will load</span>
+<span class="sd">    the corresponding corpus, and transform itself into that corpus</span>
+<span class="sd">    (by modifying its own C{__class__} and C{__dict__} attributes).</span>
+
+<span class="sd">    If the corpus can not be found, then accessing this object will</span>
+<span class="sd">    raise an exception, displaying installation instructions for the</span>
+<span class="sd">    NLTK data package.  Once they&#39;ve properly installed the data</span>
+<span class="sd">    package (or modified C{nltk.data.path} to point to its location),</span>
+<span class="sd">    they can then use the corpus object without restarting python.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">reader_cls</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="kn">from</span> <span class="nn">nltk.corpus.reader.api</span> <span class="kn">import</span> <span class="n">CorpusReader</span>
+        <span class="k">assert</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">reader_cls</span><span class="p">,</span> <span class="n">CorpusReader</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span> <span class="o">=</span> <span class="n">reader_cls</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__args</span> <span class="o">=</span> <span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__kwargs</span> <span class="o">=</span> <span class="n">kwargs</span>
+
+    <span class="k">def</span> <span class="nf">__load</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Find the corpus root directory.</span>
+        <span class="n">zip_name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;(([^/]*)(/.*)?)&#39;</span><span class="p">,</span> <span class="s">r&#39;\2.zip/\1/&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">TRY_ZIPFILE_FIRST</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span> 
+                <span class="n">root</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">zip_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span>
+                <span class="k">raise</span>
+                <span class="n">root</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">root</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">LookupError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span> <span class="n">root</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">zip_name</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span> <span class="k">raise</span> <span class="n">e</span>
+
+        <span class="c"># Load the corpus.</span>
+        <span class="n">corpus</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">__args</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">__kwargs</span><span class="p">)</span>
+        
+        <span class="c"># This is where the magic happens!  Transform ourselves into</span>
+        <span class="c"># the corpus by modifying our own __dict__ and __class__ to</span>
+        <span class="c"># match that of the corpus.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">__dict__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">__class__</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__load</span><span class="p">()</span>
+        <span class="c"># This looks circular, but its not, since __load() changes our</span>
+        <span class="c"># __class__ to something new:</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;</span><span class="si">%s</span><span class="s"> in </span><span class="si">%r</span><span class="s"> (not loaded yet)&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="s">&#39;.../corpora/&#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../corpus.html" >nltk.corpus</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

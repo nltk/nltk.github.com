@@ -1,0 +1,304 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.decorators &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.decorators</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Decorator module by Michele Simionato &lt;michelesimionato@libero.it&gt;</span>
+<span class="sd">Copyright Michele Simionato, distributed under the terms of the BSD License (see below).</span>
+<span class="sd">http://www.phyast.pitt.edu/~micheles/python/documentation.html</span>
+
+<span class="sd">Included in NLTK for its support of a nice memoization decorator.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">__docformat__</span> <span class="o">=</span> <span class="s">&#39;restructuredtext en&#39;</span>
+
+<span class="c">## The basic trick is to generate the source code for the decorated function</span>
+<span class="c">## with the right signature and to evaluate it.</span>
+<span class="c">## Uncomment the statement &#39;print &gt;&gt; sys.stderr, func_src&#39;  in _decorator</span>
+<span class="c">## to understand what is going on.</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;decorator&quot;</span><span class="p">,</span> <span class="s">&quot;new_wrapper&quot;</span><span class="p">,</span> <span class="s">&quot;getinfo&quot;</span><span class="p">]</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="c"># Hack to keep NLTK&#39;s &quot;tokenize&quot; module from colliding with the &quot;tokenize&quot; in</span>
+<span class="c"># the Python standard library.</span>
+<span class="n">old_sys_path</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">[:]</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="k">if</span> <span class="s">&quot;nltk&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">p</span><span class="p">]</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">old_sys_path</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">set</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">sets</span> <span class="kn">import</span> <span class="n">Set</span> <span class="k">as</span> <span class="nb">set</span>
+
+<div class="viewcode-block" id="getinfo"><a class="viewcode-back" href="../../api/nltk.html#nltk.decorators.getinfo">[docs]</a><span class="k">def</span> <span class="nf">getinfo</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns an info dictionary containing:</span>
+<span class="sd">    - name (the name of the function : str)</span>
+<span class="sd">    - argnames (the names of the arguments : list)</span>
+<span class="sd">    - defaults (the values of the default arguments : tuple)</span>
+<span class="sd">    - signature (the signature : str)</span>
+<span class="sd">    - doc (the docstring : str)</span>
+<span class="sd">    - module (the module name : str)</span>
+<span class="sd">    - dict (the function __dict__ : str)</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; def f(self, x=1, y=2, *args, **kw): pass</span>
+
+<span class="sd">    &gt;&gt;&gt; info = getinfo(f)</span>
+
+<span class="sd">    &gt;&gt;&gt; info[&quot;name&quot;]</span>
+<span class="sd">    &#39;f&#39;</span>
+<span class="sd">    &gt;&gt;&gt; info[&quot;argnames&quot;]</span>
+<span class="sd">    [&#39;self&#39;, &#39;x&#39;, &#39;y&#39;, &#39;args&#39;, &#39;kw&#39;]</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; info[&quot;defaults&quot;]</span>
+<span class="sd">    (1, 2)</span>
+
+<span class="sd">    &gt;&gt;&gt; info[&quot;signature&quot;]</span>
+<span class="sd">    &#39;self, x, y, *args, **kw&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="n">inspect</span><span class="o">.</span><span class="n">ismethod</span><span class="p">(</span><span class="n">func</span><span class="p">)</span> <span class="ow">or</span> <span class="n">inspect</span><span class="o">.</span><span class="n">isfunction</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="n">regargs</span><span class="p">,</span> <span class="n">varargs</span><span class="p">,</span> <span class="n">varkwargs</span><span class="p">,</span> <span class="n">defaults</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getargspec</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="n">argnames</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">regargs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">varargs</span><span class="p">:</span>
+        <span class="n">argnames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">varargs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">varkwargs</span><span class="p">:</span>
+        <span class="n">argnames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">varkwargs</span><span class="p">)</span>
+    <span class="n">signature</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">formatargspec</span><span class="p">(</span><span class="n">regargs</span><span class="p">,</span> <span class="n">varargs</span><span class="p">,</span> <span class="n">varkwargs</span><span class="p">,</span> <span class="n">defaults</span><span class="p">,</span>
+                                      <span class="n">formatvalue</span><span class="o">=</span><span class="k">lambda</span> <span class="n">value</span><span class="p">:</span> <span class="s">&quot;&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">argnames</span><span class="o">=</span><span class="n">argnames</span><span class="p">,</span> <span class="n">signature</span><span class="o">=</span><span class="n">signature</span><span class="p">,</span>
+                <span class="n">defaults</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">func_defaults</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">__doc__</span><span class="p">,</span>
+                <span class="n">module</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">__module__</span><span class="p">,</span> <span class="nb">dict</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">__dict__</span><span class="p">,</span>
+                <span class="nb">globals</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">func_globals</span><span class="p">,</span> <span class="n">closure</span><span class="o">=</span><span class="n">func</span><span class="o">.</span><span class="n">func_closure</span><span class="p">)</span>
+
+<span class="c"># akin to functools.update_wrapper</span></div>
+<span class="k">def</span> <span class="nf">update_wrapper</span><span class="p">(</span><span class="n">wrapper</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">infodict</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">infodict</span> <span class="o">=</span> <span class="n">infodict</span> <span class="ow">or</span> <span class="n">getinfo</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">wrapper</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&#39;name&#39;</span><span class="p">]</span>
+    <span class="k">except</span><span class="p">:</span> <span class="c"># Python version &lt; 2.4</span>
+        <span class="k">pass</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&#39;doc&#39;</span><span class="p">]</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">__module__</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&#39;module&#39;</span><span class="p">]</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">infodict</span><span class="p">[</span><span class="s">&#39;dict&#39;</span><span class="p">])</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">func_defaults</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&#39;defaults&#39;</span><span class="p">]</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">undecorated</span> <span class="o">=</span> <span class="n">model</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<div class="viewcode-block" id="new_wrapper"><a class="viewcode-back" href="../../api/nltk.html#nltk.decorators.new_wrapper">[docs]</a><span class="k">def</span> <span class="nf">new_wrapper</span><span class="p">(</span><span class="n">wrapper</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An improvement over functools.update_wrapper. The wrapper is a generic</span>
+<span class="sd">    callable object. It works by generating a copy of the wrapper with the </span>
+<span class="sd">    right signature and by updating the copy, not the original.</span>
+<span class="sd">    Moreovoer, &#39;model&#39; can be a dictionary with keys &#39;name&#39;, &#39;doc&#39;, &#39;module&#39;,</span>
+<span class="sd">    &#39;dict&#39;, &#39;defaults&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">infodict</span> <span class="o">=</span> <span class="n">model</span>
+    <span class="k">else</span><span class="p">:</span> <span class="c"># assume model is a function</span>
+        <span class="n">infodict</span> <span class="o">=</span> <span class="n">getinfo</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="s">&#39;_wrapper_&#39;</span> <span class="ow">in</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&quot;argnames&quot;</span><span class="p">],</span> <span class="p">(</span>
+        <span class="s">&#39;&quot;_wrapper_&quot; is a reserved argument name!&#39;</span><span class="p">)</span>
+    <span class="n">src</span> <span class="o">=</span> <span class="s">&quot;lambda </span><span class="si">%(signature)s</span><span class="s">: _wrapper_(</span><span class="si">%(signature)s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="n">infodict</span>
+    <span class="n">funcopy</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">_wrapper_</span><span class="o">=</span><span class="n">wrapper</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">update_wrapper</span><span class="p">(</span><span class="n">funcopy</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">infodict</span><span class="p">)</span>
+
+<span class="c"># helper used in decorator_factory</span></div>
+<span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">new_wrapper</span><span class="p">(</span><span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">),</span> <span class="n">func</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">decorator_factory</span><span class="p">(</span><span class="n">cls</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Take a class with a ``.caller`` method and return a callable decorator</span>
+<span class="sd">    object. It works by adding a suitable __call__ method to the class;</span>
+<span class="sd">    it raises a TypeError if the class already has a nontrivial __call__</span>
+<span class="sd">    method.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">attrs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">dir</span><span class="p">(</span><span class="n">cls</span><span class="p">))</span>
+    <span class="k">if</span> <span class="s">&#39;__call__&#39;</span> <span class="ow">in</span> <span class="n">attrs</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;You cannot decorate a class with a nontrivial &#39;</span>
+                        <span class="s">&#39;__call__ method&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s">&#39;call&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">attrs</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;You cannot decorate a class without a &#39;</span>
+                        <span class="s">&#39;.call method&#39;</span><span class="p">)</span>
+    <span class="n">cls</span><span class="o">.</span><span class="n">__call__</span> <span class="o">=</span> <span class="n">__call__</span>
+    <span class="k">return</span> <span class="n">cls</span>
+
+<div class="viewcode-block" id="decorator"><a class="viewcode-back" href="../../api/nltk.html#nltk.decorators.decorator">[docs]</a><span class="k">def</span> <span class="nf">decorator</span><span class="p">(</span><span class="n">caller</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    General purpose decorator factory: takes a caller function as</span>
+<span class="sd">    input and returns a decorator with the same attributes.</span>
+<span class="sd">    A caller function is any function like this::</span>
+
+<span class="sd">     def caller(func, *args, **kw):</span>
+<span class="sd">         # do something</span>
+<span class="sd">         return func(*args, **kw)</span>
+<span class="sd">    </span>
+<span class="sd">    Here is an example of usage:</span>
+
+<span class="sd">    &gt;&gt;&gt; @decorator</span>
+<span class="sd">    ... def chatty(f, *args, **kw):</span>
+<span class="sd">    ...     print &quot;Calling %r&quot; % f.__name__</span>
+<span class="sd">    ...     return f(*args, **kw)</span>
+
+<span class="sd">    &gt;&gt;&gt; chatty.__name__</span>
+<span class="sd">    &#39;chatty&#39;</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; @chatty</span>
+<span class="sd">    ... def f(): pass</span>
+<span class="sd">    ...</span>
+<span class="sd">    &gt;&gt;&gt; f()</span>
+<span class="sd">    Calling &#39;f&#39;</span>
+
+<span class="sd">    decorator can also take in input a class with a .caller method; in this</span>
+<span class="sd">    case it converts the class into a factory of callable decorator objects.</span>
+<span class="sd">    See the documentation for an example.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">inspect</span><span class="o">.</span><span class="n">isclass</span><span class="p">(</span><span class="n">caller</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">decorator_factory</span><span class="p">(</span><span class="n">caller</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span> <span class="c"># the real meat is here</span>
+        <span class="n">infodict</span> <span class="o">=</span> <span class="n">getinfo</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+        <span class="n">argnames</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s">&#39;argnames&#39;</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="p">(</span><span class="s">&#39;_call_&#39;</span> <span class="ow">in</span> <span class="n">argnames</span> <span class="ow">or</span> <span class="s">&#39;_func_&#39;</span> <span class="ow">in</span> <span class="n">argnames</span><span class="p">),</span> <span class="p">(</span>
+            <span class="s">&#39;You cannot use _call_ or _func_ as argument names!&#39;</span><span class="p">)</span>
+        <span class="n">src</span> <span class="o">=</span> <span class="s">&quot;lambda </span><span class="si">%(signature)s</span><span class="s">: _call_(_func_, </span><span class="si">%(signature)s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="n">infodict</span>
+        <span class="c"># import sys; print &gt;&gt; sys.stderr, src # for debugging purposes</span>
+        <span class="n">dec_func</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="n">_func_</span><span class="o">=</span><span class="n">func</span><span class="p">,</span> <span class="n">_call_</span><span class="o">=</span><span class="n">caller</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">update_wrapper</span><span class="p">(</span><span class="n">dec_func</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">infodict</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">update_wrapper</span><span class="p">(</span><span class="n">_decorator</span><span class="p">,</span> <span class="n">caller</span><span class="p">)</span>
+</div>
+<span class="k">def</span> <span class="nf">getattr_</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default_thunk</span><span class="p">):</span>
+    <span class="s">&quot;Similar to .setdefault in dictionaries.&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="n">default</span> <span class="o">=</span> <span class="n">default_thunk</span><span class="p">()</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">default</span>
+
+<span class="nd">@decorator</span>
+<span class="k">def</span> <span class="nf">memoize</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">dic</span> <span class="o">=</span> <span class="n">getattr_</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="s">&quot;memoize_dic&quot;</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span>
+    <span class="c"># memoize_dic is created at the first call</span>
+    <span class="k">if</span> <span class="n">args</span> <span class="ow">in</span> <span class="n">dic</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dic</span><span class="p">[</span><span class="n">args</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="n">dic</span><span class="p">[</span><span class="n">args</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span><span class="p">;</span> <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">()</span>
+
+<span class="c">##########################     LEGALESE    ###############################</span>
+      
+<span class="c">##   Redistributions of source code must retain the above copyright </span>
+<span class="c">##   notice, this list of conditions and the following disclaimer.</span>
+<span class="c">##   Redistributions in bytecode form must reproduce the above copyright</span>
+<span class="c">##   notice, this list of conditions and the following disclaimer in</span>
+<span class="c">##   the documentation and/or other materials provided with the</span>
+<span class="c">##   distribution. </span>
+
+<span class="c">##   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS</span>
+<span class="c">##   &quot;AS IS&quot; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT</span>
+<span class="c">##   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR</span>
+<span class="c">##   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT</span>
+<span class="c">##   HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,</span>
+<span class="c">##   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,</span>
+<span class="c">##   BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS</span>
+<span class="c">##   OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND</span>
+<span class="c">##   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR</span>
+<span class="c">##   TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE</span>
+<span class="c">##   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH</span>
+<span class="c">##   DAMAGE.</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

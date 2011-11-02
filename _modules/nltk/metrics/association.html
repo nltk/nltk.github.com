@@ -1,0 +1,381 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.metrics.association &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.metrics" href="../metrics.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" accesskey="U">nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.metrics.association</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Ngram Association Measures</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Joel Nothman &lt;jnothman@student.usyd.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Provides scoring functions for a number of association measures through a</span>
+<span class="sd">generic, abstract implementation in L{NgramAssocMeasures}, and n-specific</span>
+<span class="sd">L{BigramAssocMeasures} and L{TrigramAssocMeasures}.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">math</span> <span class="kn">as</span> <span class="nn">_math</span>
+<span class="n">_log2</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">_math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="n">_ln</span> <span class="o">=</span> <span class="n">_math</span><span class="o">.</span><span class="n">log</span>
+
+<span class="n">_product</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="nb">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">x</span> <span class="o">*</span> <span class="n">y</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+<span class="n">_SMALL</span> <span class="o">=</span> <span class="mf">1e-20</span>
+
+
+<span class="c">### Indices to marginals arguments:</span>
+
+<span class="n">NGRAM</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="sd">&quot;&quot;&quot;Marginals index for the ngram count&quot;&quot;&quot;</span>
+
+<span class="n">UNIGRAMS</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span>
+<span class="sd">&quot;&quot;&quot;Marginals index for a tuple of each unigram count&quot;&quot;&quot;</span>
+
+<span class="n">TOTAL</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="sd">&quot;&quot;&quot;Marginals index for the number of words in the data&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="NgramAssocMeasures"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures">[docs]</a><span class="k">class</span> <span class="nc">NgramAssocMeasures</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An abstract class defining a collection of generic association measures.</span>
+<span class="sd">    Each public method returns a score, taking the following arguments:</span>
+<span class="sd">        score_fn(count_of_ngram,</span>
+<span class="sd">                 (count_of_n-1gram_1, ..., count_of_n-1gram_j),</span>
+<span class="sd">                 (count_of_n-2gram_1, ..., count_of_n-2gram_k),</span>
+<span class="sd">                 ...,</span>
+<span class="sd">                 (count_of_1gram_1, ..., count_of_1gram_n),</span>
+<span class="sd">                 count_of_total_words)</span>
+<span class="sd">    See L{BigramAssocMeasures} and L{TrigramAssocMeasures}</span>
+
+<span class="sd">    Inheriting classes should define a property _n, and a method _contingency</span>
+<span class="sd">    which calculates contingency values from marginals in order for all</span>
+<span class="sd">    association measures defined here to be usable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of a contingency table from marginal values.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">,</span> <span class="p">(</span><span class="s">&quot;The contingency table is not available&quot;</span>
+                                    <span class="s">&quot;in the general ngram case&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_marginals</span><span class="p">(</span><span class="o">*</span><span class="n">contingency</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of contingency table marginals from its values.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">,</span> <span class="p">(</span><span class="s">&quot;The contingency table is not available&quot;</span>
+                                    <span class="s">&quot;in the general ngram case&quot;</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_expected_values</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">cont</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates expected values for a contingency table.&quot;&quot;&quot;</span>
+        <span class="n">n_all</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">cont</span><span class="p">)</span>
+        <span class="n">bits</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">_n</span><span class="p">)]</span>
+
+        <span class="c"># For each contingency table cell</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cont</span><span class="p">)):</span>
+            <span class="c"># Yield the expected value</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">_product</span><span class="p">(</span><span class="n">cont</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">cont</span><span class="p">[</span><span class="n">i</span> <span class="o">^</span> <span class="n">j</span><span class="p">]</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">bits</span><span class="p">)</span> <span class="o">/</span>
+                   <span class="nb">float</span><span class="p">(</span><span class="n">n_all</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.raw_freq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.raw_freq">[docs]</a>    <span class="k">def</span> <span class="nf">raw_freq</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams by their frequency&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">])</span> <span class="o">/</span> <span class="n">marginals</span><span class="p">[</span><span class="n">TOTAL</span><span class="p">]</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.student_t"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.student_t">[docs]</a>    <span class="k">def</span> <span class="nf">student_t</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using Student&#39;s t test with independence hypothesis</span>
+<span class="sd">        for unigrams, as in Manning and Schutze 5.3.2.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">((</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">*</span> <span class="n">marginals</span><span class="p">[</span><span class="n">TOTAL</span><span class="p">]</span> <span class="o">-</span>
+                 <span class="n">_product</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">UNIGRAMS</span><span class="p">]))</span> <span class="o">/</span>
+                <span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">TOTAL</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span>
+                <span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">+</span> <span class="n">_SMALL</span><span class="p">)</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">))</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.chi_sq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.chi_sq">[docs]</a>    <span class="k">def</span> <span class="nf">chi_sq</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using Pearson&#39;s chi-square as in Manning and Schutze</span>
+<span class="sd">        5.3.3.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cont</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">)</span>
+        <span class="n">exps</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_expected_values</span><span class="p">(</span><span class="n">cont</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">((</span><span class="n">obs</span> <span class="o">-</span> <span class="n">exp</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="n">exp</span> <span class="o">+</span> <span class="n">_SMALL</span><span class="p">)</span>
+                   <span class="k">for</span> <span class="n">obs</span><span class="p">,</span> <span class="n">exp</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">cont</span><span class="p">,</span> <span class="n">exps</span><span class="p">))</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.mi_like"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.mi_like">[docs]</a>    <span class="k">def</span> <span class="nf">mi_like</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using a variant of mutual information. The keyword</span>
+<span class="sd">        argument power sets an exponent (default 3) for the numerator. No</span>
+<span class="sd">        logarithm of the result is calculated.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">**</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;power&#39;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">_product</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">UNIGRAMS</span><span class="p">])))</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.pmi"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.pmi">[docs]</a>    <span class="k">def</span> <span class="nf">pmi</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams by pointwise mutual information, as in Manning and</span>
+<span class="sd">        Schutze 5.4.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">_log2</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">*</span> <span class="n">marginals</span><span class="p">[</span><span class="n">TOTAL</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span>
+                <span class="n">_log2</span><span class="p">(</span><span class="n">_product</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">UNIGRAMS</span><span class="p">])))</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.likelihood_ratio"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.likelihood_ratio">[docs]</a>    <span class="k">def</span> <span class="nf">likelihood_ratio</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using likelihood ratios as in Manning and Schutze 5.3.4.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cont</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">_n</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span>
+                <span class="nb">sum</span><span class="p">(</span><span class="n">obs</span> <span class="o">*</span> <span class="n">_ln</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">obs</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">exp</span> <span class="o">+</span> <span class="n">_SMALL</span><span class="p">)</span> <span class="o">+</span> <span class="n">_SMALL</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">obs</span><span class="p">,</span> <span class="n">exp</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">cont</span><span class="p">,</span> <span class="n">cls</span><span class="o">.</span><span class="n">_expected_values</span><span class="p">(</span><span class="n">cont</span><span class="p">))))</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.poisson_stirling"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.poisson_stirling">[docs]</a>    <span class="k">def</span> <span class="nf">poisson_stirling</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using the Poisson-Stirling measure.&quot;&quot;&quot;</span>
+        <span class="n">exp</span> <span class="o">=</span> <span class="p">(</span><span class="n">_product</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">UNIGRAMS</span><span class="p">])</span> <span class="o">/</span>
+              <span class="nb">float</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">TOTAL</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">cls</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">_log2</span><span class="p">(</span><span class="n">marginals</span><span class="p">[</span><span class="n">NGRAM</span><span class="p">]</span> <span class="o">/</span> <span class="n">exp</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="NgramAssocMeasures.jaccard"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.NgramAssocMeasures.jaccard">[docs]</a>    <span class="k">def</span> <span class="nf">jaccard</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores ngrams using the Jaccard index.&quot;&quot;&quot;</span>
+        <span class="n">cont</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">cont</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">sum</span><span class="p">(</span><span class="n">cont</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+</div></div>
+<div class="viewcode-block" id="BigramAssocMeasures"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures">[docs]</a><span class="k">class</span> <span class="nc">BigramAssocMeasures</span><span class="p">(</span><span class="n">NgramAssocMeasures</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A collection of trigram association measures. Each association measure</span>
+<span class="sd">    is provided as a function with three arguments:</span>
+<span class="sd">        bigram_score_fn(n_ii, (n_ix, n_xi), n_xx)</span>
+<span class="sd">    The arguments constitute the marginals of a contingency table, counting</span>
+<span class="sd">    the occurrences of particular events in a corpus. The letter i in the</span>
+<span class="sd">    suffix refers to the appearance of the word in question, while x indicates</span>
+<span class="sd">    the appearance of any word. Thus, for example:</span>
+<span class="sd">    n_ii counts (w1, w2), i.e. the bigram being scored</span>
+<span class="sd">    n_ix counts (w1, *)</span>
+<span class="sd">    n_xi counts (*, w2)</span>
+<span class="sd">    n_xx counts (*, *), i.e. any bigram</span>
+
+<span class="sd">    This may be shown with respect to a contingency table:</span>
+<span class="sd">                w1    ~w1</span>
+<span class="sd">             ------ ------</span>
+<span class="sd">         w2 | n_ii | n_oi | = n_xi</span>
+<span class="sd">             ------ ------</span>
+<span class="sd">        ~w2 | n_io | n_oo |</span>
+<span class="sd">             ------ ------</span>
+<span class="sd">             = n_ix        TOTAL = n_xx</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_n</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of a bigram contingency table from marginal values.&quot;&quot;&quot;</span>
+        <span class="n">n_oi</span> <span class="o">=</span> <span class="n">n_xi</span> <span class="o">-</span> <span class="n">n_ii</span>
+        <span class="n">n_io</span> <span class="o">=</span> <span class="n">n_ix</span> <span class="o">-</span> <span class="n">n_ii</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_oi</span><span class="p">,</span> <span class="n">n_io</span><span class="p">,</span> <span class="n">n_xx</span> <span class="o">-</span> <span class="n">n_ii</span> <span class="o">-</span> <span class="n">n_oi</span> <span class="o">-</span> <span class="n">n_io</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_marginals</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_oi</span><span class="p">,</span> <span class="n">n_io</span><span class="p">,</span> <span class="n">n_oo</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of contingency table marginals from its values.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_oi</span> <span class="o">+</span> <span class="n">n_ii</span><span class="p">,</span> <span class="n">n_io</span> <span class="o">+</span> <span class="n">n_ii</span><span class="p">),</span> <span class="n">n_oo</span> <span class="o">+</span> <span class="n">n_oi</span> <span class="o">+</span> <span class="n">n_io</span> <span class="o">+</span> <span class="n">n_ii</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_expected_values</span><span class="p">(</span><span class="n">cont</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates expected values for a contingency table.&quot;&quot;&quot;</span>
+        <span class="n">n_xx</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">cont</span><span class="p">)</span>
+        <span class="c"># For each contingency table cell</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">cont</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">cont</span><span class="p">[</span><span class="n">i</span> <span class="o">^</span> <span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">cont</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">cont</span><span class="p">[</span><span class="n">i</span> <span class="o">^</span> <span class="mi">2</span><span class="p">])</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_xx</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BigramAssocMeasures.phi_sq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.phi_sq">[docs]</a>    <span class="k">def</span> <span class="nf">phi_sq</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores bigrams using phi-square, the square of the Pearson correlation</span>
+<span class="sd">        coefficient.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_ii</span><span class="p">,</span> <span class="n">n_io</span><span class="p">,</span> <span class="n">n_oi</span><span class="p">,</span> <span class="n">n_oo</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="nb">float</span><span class="p">((</span><span class="n">n_ii</span><span class="o">*</span><span class="n">n_oo</span> <span class="o">-</span> <span class="n">n_io</span><span class="o">*</span><span class="n">n_oi</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span>
+                <span class="p">((</span><span class="n">n_ii</span> <span class="o">+</span> <span class="n">n_io</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_ii</span> <span class="o">+</span> <span class="n">n_oi</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_io</span> <span class="o">+</span> <span class="n">n_oo</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_oi</span> <span class="o">+</span> <span class="n">n_oo</span><span class="p">)))</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BigramAssocMeasures.chi_sq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.chi_sq">[docs]</a>    <span class="k">def</span> <span class="nf">chi_sq</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores bigrams using chi-square, i.e. phi-sq multiplied by the number</span>
+<span class="sd">        of bigrams, as in Manning and Schutze 5.3.3.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">n_xx</span> <span class="o">*</span> <span class="n">cls</span><span class="o">.</span><span class="n">phi_sq</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">)</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="BigramAssocMeasures.dice"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.dice">[docs]</a>    <span class="k">def</span> <span class="nf">dice</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores bigrams using Dice&#39;s coefficient.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_ii</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_ix</span> <span class="o">+</span> <span class="n">n_xi</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="TrigramAssocMeasures"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.TrigramAssocMeasures">[docs]</a><span class="k">class</span> <span class="nc">TrigramAssocMeasures</span><span class="p">(</span><span class="n">NgramAssocMeasures</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A collection of trigram association measures. Each association measure</span>
+<span class="sd">    is provided as a function with four arguments:</span>
+<span class="sd">        trigram_score_fn(n_iii,</span>
+<span class="sd">                         (n_iix, n_ixi, n_xii),</span>
+<span class="sd">                         (n_ixx, n_xix, n_xxi),</span>
+<span class="sd">                         n_xxx)</span>
+<span class="sd">    The arguments constitute the marginals of a contingency table, counting</span>
+<span class="sd">    the occurrences of particular events in a corpus. The letter i in the</span>
+<span class="sd">    suffix refers to the appearance of the word in question, while x indicates</span>
+<span class="sd">    the appearance of any word. Thus, for example:</span>
+<span class="sd">    n_iii counts (w1, w2, w3), i.e. the trigram being scored</span>
+<span class="sd">    n_ixx counts (w1, *, *)</span>
+<span class="sd">    n_xxx counts (*, *, *), i.e. any trigram</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_n</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_iii</span><span class="p">,</span>
+                 <span class="p">(</span><span class="n">n_iix</span><span class="p">,</span> <span class="n">n_ixi</span><span class="p">,</span> <span class="n">n_xii</span><span class="p">),</span>
+                 <span class="p">(</span><span class="n">n_ixx</span><span class="p">,</span> <span class="n">n_xix</span><span class="p">,</span> <span class="n">n_xxi</span><span class="p">),</span>
+                 <span class="n">n_xxx</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of a trigram contingency table (or cube) from marginal</span>
+<span class="sd">        values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_oii</span> <span class="o">=</span> <span class="n">n_xii</span> <span class="o">-</span> <span class="n">n_iii</span>
+        <span class="n">n_ioi</span> <span class="o">=</span> <span class="n">n_ixi</span> <span class="o">-</span> <span class="n">n_iii</span>
+        <span class="n">n_iio</span> <span class="o">=</span> <span class="n">n_iix</span> <span class="o">-</span> <span class="n">n_iii</span>
+        <span class="n">n_ooi</span> <span class="o">=</span> <span class="n">n_xxi</span> <span class="o">-</span> <span class="n">n_iii</span> <span class="o">-</span> <span class="n">n_oii</span> <span class="o">-</span> <span class="n">n_ioi</span>
+        <span class="n">n_oio</span> <span class="o">=</span> <span class="n">n_xix</span> <span class="o">-</span> <span class="n">n_iii</span> <span class="o">-</span> <span class="n">n_oii</span> <span class="o">-</span> <span class="n">n_iio</span>
+        <span class="n">n_ioo</span> <span class="o">=</span> <span class="n">n_ixx</span> <span class="o">-</span> <span class="n">n_iii</span> <span class="o">-</span> <span class="n">n_ioi</span> <span class="o">-</span> <span class="n">n_iio</span>
+        <span class="n">n_ooo</span> <span class="o">=</span> <span class="n">n_xxx</span> <span class="o">-</span> <span class="n">n_iii</span> <span class="o">-</span> <span class="n">n_oii</span> <span class="o">-</span> <span class="n">n_ioi</span> <span class="o">-</span> <span class="n">n_iio</span> <span class="o">-</span> <span class="n">n_ooi</span> <span class="o">-</span> <span class="n">n_oio</span> <span class="o">-</span> <span class="n">n_ioo</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">n_iii</span><span class="p">,</span> <span class="n">n_oii</span><span class="p">,</span> <span class="n">n_ioi</span><span class="p">,</span> <span class="n">n_ooi</span><span class="p">,</span>
+                <span class="n">n_iio</span><span class="p">,</span> <span class="n">n_oio</span><span class="p">,</span> <span class="n">n_ioo</span><span class="p">,</span> <span class="n">n_ooo</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_marginals</span><span class="p">(</span><span class="o">*</span><span class="n">contingency</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates values of contingency table marginals from its values.&quot;&quot;&quot;</span>
+        <span class="n">n_iii</span><span class="p">,</span> <span class="n">n_oii</span><span class="p">,</span> <span class="n">n_ioi</span><span class="p">,</span> <span class="n">n_ooi</span><span class="p">,</span> <span class="n">n_iio</span><span class="p">,</span> <span class="n">n_oio</span><span class="p">,</span> <span class="n">n_ioo</span><span class="p">,</span> <span class="n">n_ooo</span> <span class="o">=</span> <span class="n">contingency</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">n_iii</span><span class="p">,</span>
+                <span class="p">(</span><span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_iio</span><span class="p">,</span> <span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_ioi</span><span class="p">,</span> <span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_oii</span><span class="p">),</span>
+                <span class="p">(</span><span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_ioi</span> <span class="o">+</span> <span class="n">n_iio</span> <span class="o">+</span> <span class="n">n_ioo</span><span class="p">,</span>
+                 <span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_oii</span> <span class="o">+</span> <span class="n">n_iio</span> <span class="o">+</span> <span class="n">n_oio</span><span class="p">,</span>
+                 <span class="n">n_iii</span> <span class="o">+</span> <span class="n">n_oii</span> <span class="o">+</span> <span class="n">n_ioi</span> <span class="o">+</span> <span class="n">n_ooi</span><span class="p">),</span>
+                <span class="nb">sum</span><span class="p">(</span><span class="n">contingency</span><span class="p">))</span>
+
+</div>
+<div class="viewcode-block" id="ContingencyMeasures"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.ContingencyMeasures">[docs]</a><span class="k">class</span> <span class="nc">ContingencyMeasures</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Wraps NgramAssocMeasures classes such that the arguments of association</span>
+<span class="sd">    measures are contingency table values rather than marginals.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">measures</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Constructs a ContingencyMeasures given a NgramAssocMeasures class&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;Contingency&#39;</span> <span class="o">+</span> <span class="n">measures</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">dir</span><span class="p">(</span><span class="n">measures</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;__&#39;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">measures</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;_&#39;</span><span class="p">):</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_contingency_fn</span><span class="p">(</span><span class="n">measures</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_make_contingency_fn</span><span class="p">(</span><span class="n">measures</span><span class="p">,</span> <span class="n">old_fn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;From an association measure function, produces a new function which</span>
+<span class="sd">        accepts contingency table values as its arguments.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">res</span><span class="p">(</span><span class="o">*</span><span class="n">contingency</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">old_fn</span><span class="p">(</span><span class="o">*</span><span class="n">measures</span><span class="o">.</span><span class="n">_marginals</span><span class="p">(</span><span class="o">*</span><span class="n">contingency</span><span class="p">))</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">old_fn</span><span class="o">.</span><span class="n">__doc__</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="n">old_fn</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">return</span> <span class="n">res</span>
+</pre></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../metrics.html" >nltk.metrics</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

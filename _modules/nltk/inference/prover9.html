@@ -1,0 +1,523 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.inference.prover9 &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.inference" href="../inference.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../inference.html" accesskey="U">nltk.inference</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.inference.prover9</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Interface to the Prover9 Theorem Prover </span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Dan Garrette &lt;dhgarrette@gmail.com&gt;</span>
+<span class="c">#         Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
+<span class="c">#</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+
+<span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">nltk.sem.logic</span> <span class="kn">import</span> <span class="n">LogicParser</span><span class="p">,</span> <span class="n">ExistsExpression</span><span class="p">,</span> <span class="n">AllExpression</span><span class="p">,</span> \
+    <span class="n">NegatedExpression</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">,</span> <span class="n">IffExpression</span><span class="p">,</span> <span class="n">OrExpression</span><span class="p">,</span> \
+    <span class="n">EqualityExpression</span><span class="p">,</span> <span class="n">ImpExpression</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="n">BaseProverCommand</span><span class="p">,</span> <span class="n">Prover</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A theorem prover that makes use of the external &#39;Prover9&#39; package.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c">#</span>
+<span class="c"># Following is not yet used. Return code for 2 actually realized as 512. </span>
+<span class="c">#</span>
+<span class="n">p9_return_codes</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="mi">0</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+    <span class="mi">1</span><span class="p">:</span>  <span class="s">&quot;(FATAL)&quot;</span><span class="p">,</span>      <span class="c">#A fatal error occurred (user&#39;s syntax error).</span>
+    <span class="mi">2</span><span class="p">:</span> <span class="bp">False</span><span class="p">,</span>           <span class="c"># (SOS_EMPTY) Prover9 ran out of things to do</span>
+                        <span class="c">#   (sos list exhausted).</span>
+    <span class="mi">3</span><span class="p">:</span> <span class="s">&quot;(MAX_MEGS)&quot;</span><span class="p">,</span>    <span class="c"># The max_megs (memory limit) parameter was exceeded.</span>
+    <span class="mi">4</span><span class="p">:</span> <span class="s">&quot;(MAX_SECONDS)&quot;</span><span class="p">,</span> <span class="c"># The max_seconds parameter was exceeded.</span>
+    <span class="mi">5</span><span class="p">:</span> <span class="s">&quot;(MAX_GIVEN)&quot;</span><span class="p">,</span>   <span class="c"># The max_given parameter was exceeded.</span>
+    <span class="mi">6</span><span class="p">:</span> <span class="s">&quot;(MAX_KEPT)&quot;</span><span class="p">,</span>    <span class="c"># The max_kept parameter was exceeded.</span>
+    <span class="mi">7</span><span class="p">:</span> <span class="s">&quot;(ACTION)&quot;</span><span class="p">,</span>      <span class="c"># A Prover9 action terminated the search.</span>
+    <span class="mi">101</span><span class="p">:</span> <span class="s">&quot;(SIGSEGV)&quot;</span><span class="p">,</span>   <span class="c"># Prover9 crashed, most probably due to a bug.   </span>
+ <span class="p">}</span>
+
+ 
+<div class="viewcode-block" id="Prover9CommandParent"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9CommandParent">[docs]</a><span class="k">class</span> <span class="nc">Prover9CommandParent</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A common base class used by both L{Prover9Command} and L{MaceCommand</span>
+<span class="sd">    &lt;mace.MaceCommand&gt;}, which is responsible for maintaining a goal and a</span>
+<span class="sd">    set of assumptions, and generating prover9-style input files from</span>
+<span class="sd">    them.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="Prover9CommandParent.print_assumptions"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9CommandParent.print_assumptions">[docs]</a>    <span class="k">def</span> <span class="nf">print_assumptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_format</span><span class="o">=</span><span class="s">&#39;nltk&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Print the list of the current assumptions.       </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">output_format</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;nltk&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">assumptions</span><span class="p">():</span>
+                <span class="k">print</span> <span class="n">a</span>
+        <span class="k">elif</span> <span class="n">output_format</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;prover9&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">convert_to_prover9</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">assumptions</span><span class="p">()):</span>
+                <span class="k">print</span> <span class="n">a</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NameError</span><span class="p">(</span><span class="s">&quot;Unrecognized value for &#39;output_format&#39;: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                            <span class="n">output_format</span><span class="p">)</span>
+</div></div>
+<div class="viewcode-block" id="Prover9Command"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Command">[docs]</a><span class="k">class</span> <span class="nc">Prover9Command</span><span class="p">(</span><span class="n">Prover9CommandParent</span><span class="p">,</span> <span class="n">BaseProverCommand</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A L{ProverCommand} specific to the L{Prover9} prover.  It contains</span>
+<span class="sd">    the a print_assumptions() method that is used to print the list</span>
+<span class="sd">    of assumptions in multiple formats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span> <span class="n">prover</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param goal: Input expression to prove</span>
+<span class="sd">        @type goal: L{logic.Expression}</span>
+<span class="sd">        @param assumptions: Input expressions to use as assumptions in</span>
+<span class="sd">            the proof.</span>
+<span class="sd">        @type assumptions: C{list} of L{logic.Expression}</span>
+<span class="sd">        @param timeout: number of seconds before timeout; set to 0 for</span>
+<span class="sd">            no timeout.</span>
+<span class="sd">        @type timeout: C{int}</span>
+<span class="sd">        @param prover: a prover.  If not set, one will be created.</span>
+<span class="sd">        @type prover: C{Prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">assumptions</span><span class="p">:</span>
+            <span class="n">assumptions</span> <span class="o">=</span> <span class="p">[]</span>
+        
+        <span class="k">if</span> <span class="n">prover</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">prover</span><span class="p">,</span> <span class="n">Prover9</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">prover</span> <span class="o">=</span> <span class="n">Prover9</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span>
+         
+        <span class="n">BaseProverCommand</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prover</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">)</span>
+        
+<div class="viewcode-block" id="Prover9Command.decorate_proof"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Command.decorate_proof">[docs]</a>    <span class="k">def</span> <span class="nf">decorate_proof</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">proof_string</span><span class="p">,</span> <span class="n">simplify</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @see BaseProverCommand.decorate_proof()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">simplify</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prover</span><span class="o">.</span><span class="n">_call_prooftrans</span><span class="p">(</span><span class="n">proof_string</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;striplabels&#39;</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">proof_string</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+</div></div>
+<div class="viewcode-block" id="Prover9Parent"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Parent">[docs]</a><span class="k">class</span> <span class="nc">Prover9Parent</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A common class extended by both L{Prover9} and L{Mace &lt;mace.Mace&gt;}.</span>
+<span class="sd">    It contains the functionality required to convert NLTK-style</span>
+<span class="sd">    expressions into Prover9-style expressions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_binary_location</span> <span class="o">=</span> <span class="bp">None</span>
+    
+<div class="viewcode-block" id="Prover9Parent.config_prover9"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Parent.config_prover9">[docs]</a>    <span class="k">def</span> <span class="nf">config_prover9</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">binary_location</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">binary_location</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_binary_location</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;prover9&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="n">find_binary</span><span class="p">(</span>
+                                  <span class="n">name</span><span class="p">,</span> 
+                                  <span class="n">path_to_bin</span><span class="o">=</span><span class="n">binary_location</span><span class="p">,</span> 
+                                  <span class="n">env_vars</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;PROVER9HOME&#39;</span><span class="p">],</span>
+                                  <span class="n">url</span><span class="o">=</span><span class="s">&#39;http://www.cs.unm.edu/~mccune/prover9/&#39;</span><span class="p">,</span>
+                                  <span class="n">binary_names</span><span class="o">=</span><span class="p">[</span><span class="n">name</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.exe&#39;</span><span class="p">],</span>
+                                  <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_binary_location</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="Prover9Parent.prover9_input"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Parent.prover9_input">[docs]</a>    <span class="k">def</span> <span class="nf">prover9_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The input string that should be provided to the</span>
+<span class="sd">        prover9 binary.  This string is formed based on the goal,</span>
+<span class="sd">        assumptions, and timeout value of this object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        
+        <span class="k">if</span> <span class="n">assumptions</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;formulas(assumptions).</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="k">for</span> <span class="n">p9_assumption</span> <span class="ow">in</span> <span class="n">convert_to_prover9</span><span class="p">(</span><span class="n">assumptions</span><span class="p">):</span>
+                <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;    </span><span class="si">%s</span><span class="s">.</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p9_assumption</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;end_of_list.</span><span class="se">\n\n</span><span class="s">&#39;</span>
+    
+        <span class="k">if</span> <span class="n">goal</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;formulas(goals).</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;    </span><span class="si">%s</span><span class="s">.</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">convert_to_prover9</span><span class="p">(</span><span class="n">goal</span><span class="p">)</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;end_of_list.</span><span class="se">\n\n</span><span class="s">&#39;</span>
+
+        <span class="k">return</span> <span class="n">s</span>
+    </div>
+<div class="viewcode-block" id="Prover9Parent.binary_locations"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Parent.binary_locations">[docs]</a>    <span class="k">def</span> <span class="nf">binary_locations</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A list of directories that should be searched for the prover9</span>
+<span class="sd">        executables.  This list is used by L{config_prover9} when searching</span>
+<span class="sd">        for the prover9 executables.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s">&#39;/usr/local/bin/prover9&#39;</span><span class="p">,</span>
+                <span class="s">&#39;/usr/local/bin/prover9/bin&#39;</span><span class="p">,</span>
+                <span class="s">&#39;/usr/local/bin&#39;</span><span class="p">,</span>
+                <span class="s">&#39;/usr/bin&#39;</span><span class="p">,</span>
+                <span class="s">&#39;/usr/local/prover9&#39;</span><span class="p">,</span>
+                <span class="s">&#39;/usr/local/share/prover9&#39;</span><span class="p">]</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_find_binary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">binary_locations</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">binary_locations</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_binary_location</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">binary_locations</span> <span class="o">+=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_binary_location</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">nltk</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="n">find_binary</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> 
+            <span class="n">searchpath</span><span class="o">=</span><span class="n">binary_locations</span><span class="p">,</span> 
+            <span class="n">env_vars</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;PROVER9HOME&#39;</span><span class="p">],</span>
+            <span class="n">url</span><span class="o">=</span><span class="s">&#39;http://www.cs.unm.edu/~mccune/prover9/&#39;</span><span class="p">,</span>
+            <span class="n">binary_names</span><span class="o">=</span><span class="p">[</span><span class="n">name</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.exe&#39;</span><span class="p">],</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="n">binary</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[],</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the binary with the given input.</span>
+<span class="sd">    </span>
+<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        @param binary: The location of the binary to call</span>
+<span class="sd">        @param args: A list of command-line arguments.</span>
+<span class="sd">        @return: A tuple (stdout, returncode)</span>
+<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Calling:&#39;</span><span class="p">,</span> <span class="n">binary</span>
+            <span class="k">print</span> <span class="s">&#39;Args:&#39;</span><span class="p">,</span> <span class="n">args</span>
+            <span class="k">print</span> <span class="s">&#39;Input:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+        
+        <span class="c"># Call prover9 via a subprocess</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">binary</span><span class="p">]</span> <span class="o">+</span> <span class="n">args</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span>
+                             <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">STDOUT</span><span class="p">,</span>
+                             <span class="n">stdin</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">communicate</span><span class="p">(</span><span class="n">input_str</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Return code:&#39;</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span>
+            <span class="k">if</span> <span class="n">stdout</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;stdout:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">stdout</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;stderr:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+            
+        <span class="k">return</span> <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span><span class="p">)</span>
+    
+</div>
+<div class="viewcode-block" id="convert_to_prover9"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.convert_to_prover9">[docs]</a><span class="k">def</span> <span class="nf">convert_to_prover9</span><span class="p">(</span><span class="nb">input</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert C{logic.Expression}s to Prover9 format.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">input</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">simplify</span><span class="p">()))</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&#39;input </span><span class="si">%s</span><span class="s"> cannot be converted to Prover9 input syntax&#39;</span> <span class="o">%</span> <span class="nb">input</span>
+                <span class="k">raise</span>
+        <span class="k">return</span> <span class="n">result</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="nb">input</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;input </span><span class="si">%s</span><span class="s"> cannot be converted to Prover9 input syntax&#39;</span> <span class="o">%</span> <span class="nb">input</span>
+            <span class="k">raise</span>
+</div>
+<span class="k">def</span> <span class="nf">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert C{logic.Expression} to Prover9 formatted string.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ExistsExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;exists &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; &#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">term</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">AllExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;all &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; &#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">term</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">NegatedExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;-(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">term</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; &amp; &#39;</span> <span class="o">+</span> \
+                     <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">OrExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; | &#39;</span> <span class="o">+</span> \
+                     <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ImpExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; -&gt; &#39;</span> <span class="o">+</span> \
+                     <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">IffExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; &lt;-&gt; &#39;</span> <span class="o">+</span> \
+                     <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">EqualityExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;(&#39;</span> <span class="o">+</span> <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; = &#39;</span> <span class="o">+</span> \
+                     <span class="n">_convert_to_prover9</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Prover9"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9">[docs]</a><span class="k">class</span> <span class="nc">Prover9</span><span class="p">(</span><span class="n">Prover9Parent</span><span class="p">,</span> <span class="n">Prover</span><span class="p">):</span>
+    <span class="n">_prover9_bin</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">_prooftrans_bin</span> <span class="o">=</span> <span class="bp">None</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+        <span class="sd">&quot;&quot;&quot;The timeout value for prover9.  If a proof can not be found</span>
+<span class="sd">           in this amount of time, then prover9 will return false.</span>
+<span class="sd">           (Use 0 for no timeout.)&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_prove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use Prover9 to prove a theorem.</span>
+<span class="sd">        @return: A pair whose first element is a boolean indicating if the </span>
+<span class="sd">        proof was successful (i.e. returns value of 0) and whose second element</span>
+<span class="sd">        is the output of the prover.        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">assumptions</span><span class="p">:</span>
+            <span class="n">assumptions</span> <span class="o">=</span> <span class="p">[]</span>
+            
+        <span class="n">stdout</span><span class="p">,</span> <span class="n">returncode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call_prover9</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prover9_input</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">),</span>
+                                                <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">returncode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">stdout</span><span class="p">)</span>
+    
+<div class="viewcode-block" id="Prover9.prover9_input"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9.prover9_input">[docs]</a>    <span class="k">def</span> <span class="nf">prover9_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @see: Prover9Parent.prover9_input</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;clear(auto_denials).</span><span class="se">\n</span><span class="s">&#39;</span> <span class="c">#only one proof required</span>
+        <span class="k">return</span> <span class="n">s</span> <span class="o">+</span> <span class="n">Prover9Parent</span><span class="o">.</span><span class="n">prover9_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">)</span>
+        </div>
+    <span class="k">def</span> <span class="nf">_call_prover9</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[],</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the C{prover9} binary with the given input.</span>
+<span class="sd">    </span>
+<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        @param args: A list of command-line arguments.</span>
+<span class="sd">        @return: A tuple (stdout, returncode)</span>
+<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span><span class="s">&#39;prover9&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+      
+        <span class="n">updated_input_str</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> 
+            <span class="n">updated_input_str</span> <span class="o">+=</span> <span class="s">&#39;assign(max_seconds, </span><span class="si">%d</span><span class="s">).</span><span class="se">\n\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_timeout</span>
+        <span class="n">updated_input_str</span> <span class="o">+=</span> <span class="n">input_str</span>
+        
+        <span class="n">stdout</span><span class="p">,</span> <span class="n">returncode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">updated_input_str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prover9_bin</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">returncode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">]:</span>
+            <span class="n">errormsgprefix</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%%</span><span class="s">ERROR:&#39;</span>
+            <span class="k">if</span> <span class="n">errormsgprefix</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">:</span>
+                <span class="n">msgstart</span> <span class="o">=</span> <span class="n">stdout</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">errormsgprefix</span><span class="p">)</span>
+                <span class="n">errormsg</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="n">msgstart</span><span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">errormsg</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">if</span> <span class="n">returncode</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">6</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="n">Prover9LimitExceededException</span><span class="p">(</span><span class="n">returncode</span><span class="p">,</span> <span class="n">errormsg</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">Prover9FatalException</span><span class="p">(</span><span class="n">returncode</span><span class="p">,</span> <span class="n">errormsg</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">returncode</span>
+    
+    <span class="k">def</span> <span class="nf">_call_prooftrans</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_str</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[],</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the C{prooftrans} binary with the given input.</span>
+<span class="sd">    </span>
+<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        @param args: A list of command-line arguments.</span>
+<span class="sd">        @return: A tuple (stdout, returncode)</span>
+<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prooftrans_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prooftrans_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span><span class="s">&#39;prooftrans&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_call</span><span class="p">(</span><span class="n">input_str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prooftrans_bin</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="Prover9Exception"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9Exception">[docs]</a><span class="k">class</span> <span class="nc">Prover9Exception</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">returncode</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">p9_return_codes</span><span class="p">[</span><span class="n">returncode</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">message</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">message</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Prover9FatalException"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9FatalException">[docs]</a><span class="k">class</span> <span class="nc">Prover9FatalException</span><span class="p">(</span><span class="n">Prover9Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="Prover9LimitExceededException"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.Prover9LimitExceededException">[docs]</a><span class="k">class</span> <span class="nc">Prover9LimitExceededException</span><span class="p">(</span><span class="n">Prover9Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Tests and Demos</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="test_config"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.test_config">[docs]</a><span class="k">def</span> <span class="nf">test_config</span><span class="p">():</span>
+    
+    <span class="n">a</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s">&#39;(walk(j) &amp; sing(j))&#39;</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s">&#39;walk(j)&#39;</span><span class="p">)</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Prover9Command</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="p">[</span><span class="n">a</span><span class="p">])</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">_executable_path</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">prover9_search</span><span class="o">=</span><span class="p">[]</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">prove</span><span class="p">()</span>
+    <span class="c">#config_prover9(&#39;/usr/local/bin&#39;)</span>
+    <span class="k">print</span> <span class="n">p</span><span class="o">.</span><span class="n">prove</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">p</span><span class="o">.</span><span class="n">proof</span><span class="p">()</span>
+    </div>
+<div class="viewcode-block" id="test_convert_to_prover9"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.test_convert_to_prover9">[docs]</a><span class="k">def</span> <span class="nf">test_convert_to_prover9</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test that parsing works OK.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">expr</span><span class="p">:</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">print</span> <span class="n">convert_to_prover9</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        </div>
+<div class="viewcode-block" id="test_prove"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.test_prove">[docs]</a><span class="k">def</span> <span class="nf">test_prove</span><span class="p">(</span><span class="n">arguments</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Try some proofs and exhibit the results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">assumptions</span><span class="p">)</span> <span class="ow">in</span> <span class="n">arguments</span><span class="p">:</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">goal</span><span class="p">)</span>
+        <span class="n">alist</span> <span class="o">=</span> <span class="p">[</span><span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">assumptions</span><span class="p">]</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">Prover9Command</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="n">alist</span><span class="p">)</span><span class="o">.</span><span class="n">prove</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">alist</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;   </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">a</span>
+        <span class="k">print</span> <span class="s">&#39;|- </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
+    </div>
+<span class="n">arguments</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) &lt;-&gt; (not (not man(x))))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(not (man(x) &amp; (not man(x))))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) | (not man(x)))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) &amp; (not man(x)))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) -&gt; man(x))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(not (man(x) &amp; (not man(x))))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) | (not man(x)))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) -&gt; man(x))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(man(x) &lt;-&gt; man(x))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(not (man(x) &lt;-&gt; (not man(x))))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;mortal(Socrates)&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;all x.(man(x) -&gt; mortal(x))&#39;</span><span class="p">,</span> <span class="s">&#39;man(Socrates)&#39;</span><span class="p">]),</span>
+    <span class="p">(</span><span class="s">&#39;((all x.(man(x) -&gt; walks(x)) &amp; man(Socrates)) -&gt; some y.walks(y))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;(all x.man(x) -&gt; all x.man(x))&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;some x.all y.sees(x,y)&#39;</span><span class="p">,</span> <span class="p">[]),</span>
+    <span class="p">(</span><span class="s">&#39;some e3.(walk(e3) &amp; subj(e3, mary))&#39;</span><span class="p">,</span> 
+        <span class="p">[</span><span class="s">&#39;some e1.(see(e1) &amp; subj(e1, john) &amp; some e2.(pred(e1, e2) &amp; walk(e2) &amp; subj(e2, mary)))&#39;</span><span class="p">]),</span>
+    <span class="p">(</span><span class="s">&#39;some x e1.(see(e1) &amp; subj(e1, x) &amp; some e2.(pred(e1, e2) &amp; walk(e2) &amp; subj(e2, mary)))&#39;</span><span class="p">,</span> 
+       <span class="p">[</span><span class="s">&#39;some e1.(see(e1) &amp; subj(e1, john) &amp; some e2.(pred(e1, e2) &amp; walk(e2) &amp; subj(e2, mary)))&#39;</span><span class="p">])</span>
+<span class="p">]</span>
+
+<span class="n">expressions</span> <span class="o">=</span> <span class="p">[</span><span class="s">r&#39;some x y.sees(x,y)&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;some x.(man(x) &amp; walks(x))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;\x.(man(x) &amp; walks(x))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;\x y.sees(x,y)&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;walks(john)&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;\x.big(x, \y.mouse(y))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;(walks(x) &amp; (runs(x) &amp; (threes(x) &amp; fours(x))))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;(walks(x) -&gt; runs(x))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;some x.(PRO(x) &amp; sees(John, x))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;some x.(man(x) &amp; (not walks(x)))&#39;</span><span class="p">,</span>
+               <span class="s">r&#39;all x.(man(x) -&gt; walks(x))&#39;</span><span class="p">]</span>
+
+<div class="viewcode-block" id="spacer"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.spacer">[docs]</a><span class="k">def</span> <span class="nf">spacer</span><span class="p">(</span><span class="n">num</span><span class="o">=</span><span class="mi">45</span><span class="p">):</span>
+    <span class="k">print</span> <span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="n">num</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.inference.html#nltk.inference.prover9.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="k">print</span> <span class="s">&quot;Testing configuration&quot;</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="n">test_config</span><span class="p">()</span>
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Testing conversion to Prover9 format&quot;</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="n">test_convert_to_prover9</span><span class="p">(</span><span class="n">expressions</span><span class="p">)</span>
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Testing proofs&quot;</span>
+    <span class="n">spacer</span><span class="p">()</span>
+    <span class="n">test_prove</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../inference.html" >nltk.inference</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

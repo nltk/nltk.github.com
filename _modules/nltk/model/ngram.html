@@ -1,0 +1,254 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.model.ngram &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.model" href="../model.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../model.html" accesskey="U">nltk.model</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.model.ngram</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Language Models</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">log</span>
+
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="p">(</span><span class="n">ConditionalProbDist</span><span class="p">,</span> <span class="n">ConditionalFreqDist</span><span class="p">,</span>
+                              <span class="n">MLEProbDist</span><span class="p">,</span> <span class="n">SimpleGoodTuringProbDist</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ingrams</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="k">def</span> <span class="nf">_estimator</span><span class="p">(</span><span class="n">fdist</span><span class="p">,</span> <span class="n">bins</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Default estimator function using a SimpleGoodTuringProbDist.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># can&#39;t be an instance method of NgramModel as they </span>
+    <span class="c"># can&#39;t be pickled either.</span>
+    <span class="k">return</span> <span class="n">SimpleGoodTuringProbDist</span><span class="p">(</span><span class="n">fdist</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NgramModel"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel">[docs]</a><span class="k">class</span> <span class="nc">NgramModel</span><span class="p">(</span><span class="n">ModelI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A processing interface for assigning a probability to the next word.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># add cutoff</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span> <span class="n">estimator</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates an ngram language model to capture patterns in n consecutive</span>
+<span class="sd">        words of training text.  An estimator smooths the probabilities derived</span>
+<span class="sd">        from the text and may allow generation of ngrams not seen during</span>
+<span class="sd">        training.</span>
+
+<span class="sd">        @param n: the order of the language model (ngram size)</span>
+<span class="sd">        @type n: C{int}</span>
+<span class="sd">        @param train: the training text</span>
+<span class="sd">        @type train: C{list} of C{string}</span>
+<span class="sd">        @param estimator: a function for generating a probability distribution</span>
+<span class="sd">        @type estimator: a function that takes a C{ConditionalFreqDist} and</span>
+<span class="sd">              returns a C{ConditionalProbDist}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">=</span> <span class="n">n</span>
+
+        <span class="k">if</span> <span class="n">estimator</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">estimator</span> <span class="o">=</span> <span class="n">_estimator</span>
+        
+        <span class="n">cfd</span> <span class="o">=</span> <span class="n">ConditionalFreqDist</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">ngram</span> <span class="ow">in</span> <span class="n">ingrams</span><span class="p">(</span><span class="n">chain</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span><span class="p">,</span> <span class="n">train</span><span class="p">),</span> <span class="n">n</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ngram</span><span class="p">)</span>
+            <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ngram</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">token</span> <span class="o">=</span> <span class="n">ngram</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">cfd</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">ConditionalProbDist</span><span class="p">(</span><span class="n">cfd</span><span class="p">,</span> <span class="n">estimator</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">cfd</span><span class="p">))</span>
+
+        <span class="c"># recursively construct the lower-order models</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span> <span class="o">=</span> <span class="n">NgramModel</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span> <span class="n">estimator</span><span class="p">)</span>
+
+    <span class="c"># Katz Backoff probability</span>
+<div class="viewcode-block" id="NgramModel.prob"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.prob">[docs]</a>    <span class="k">def</span> <span class="nf">prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the probability of this word in this context.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">context</span> <span class="o">+</span> <span class="p">(</span><span class="n">word</span><span class="p">,)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_alpha</span><span class="p">(</span><span class="n">context</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;No probability mass assigned to word </span><span class="si">%s</span><span class="s"> in &quot;</span>
+                               <span class="s">&quot;context </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">context</span><span class="p">)))</span>
+</div>
+    <span class="k">def</span> <span class="nf">_alpha</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_beta</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">_beta</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+
+    <span class="k">def</span> <span class="nf">_beta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tokens</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">tokens</span><span class="p">]</span><span class="o">.</span><span class="n">discount</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">1</span>
+
+<div class="viewcode-block" id="NgramModel.logprob"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.logprob">[docs]</a>    <span class="k">def</span> <span class="nf">logprob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the (negative) log probability of this word in this context.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="o">-</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="NgramModel.choose_random_word"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.choose_random_word">[docs]</a>    <span class="k">def</span> <span class="nf">choose_random_word</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Randomly select a word that is likely to appear in this context.&#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">context</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c"># NB, this will always start with same word since model</span>
+    <span class="c"># is trained on a single text</span></div>
+<div class="viewcode-block" id="NgramModel.generate"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.generate">[docs]</a>    <span class="k">def</span> <span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_words</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="p">()):</span>
+        <span class="sd">&#39;&#39;&#39;Generate random text based on the language model.&#39;&#39;&#39;</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_words</span><span class="p">):</span>
+            <span class="n">text</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_generate_one</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">text</span>
+</div>
+    <span class="k">def</span> <span class="nf">_generate_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_prefix</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">))[</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="c"># print &quot;Context (%d): &lt;%s&gt;&quot; % (self._n, &#39;,&#39;.join(context))</span>
+        <span class="k">if</span> <span class="n">context</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">generate</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">_generate_one</span><span class="p">(</span><span class="n">context</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;.&#39;</span>
+
+<div class="viewcode-block" id="NgramModel.entropy"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.entropy">[docs]</a>    <span class="k">def</span> <span class="nf">entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the total entropy of a text with respect to the model.</span>
+<span class="sd">        This is the sum of the log probability of each word in the message.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">e</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)):</span>
+            <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">token</span> <span class="o">=</span> <span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">e</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">e</span>
+</div>
+    <span class="k">def</span> <span class="nf">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)]</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;NgramModel with </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s">-grams&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">brown</span>
+    <span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">LidstoneProbDist</span><span class="p">,</span> <span class="n">WittenBellProbDist</span>
+    <span class="n">estimator</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">fdist</span><span class="p">,</span> <span class="n">bins</span><span class="p">:</span> <span class="n">LidstoneProbDist</span><span class="p">(</span><span class="n">fdist</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+<span class="c">#    estimator = lambda fdist, bins: WittenBellProbDist(fdist, 0.2)</span>
+    <span class="n">lm</span> <span class="o">=</span> <span class="n">NgramModel</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">brown</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">categories</span><span class="o">=</span><span class="s">&#39;news&#39;</span><span class="p">),</span> <span class="n">estimator</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">lm</span>
+<span class="c">#    print lm.entropy(sent)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+    <span class="kn">import</span> <span class="nn">textwrap</span>
+    <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">text</span><span class="p">)))</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../model.html" >nltk.model</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

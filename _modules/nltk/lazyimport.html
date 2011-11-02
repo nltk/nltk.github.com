@@ -1,0 +1,235 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.lazyimport &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.lazyimport</h1><div class="highlight"><pre>
+<span class="c"># This module is from mx/DateTime/LazyModule.py and is</span>
+<span class="c"># distributed under the terms of the eGenix.com Public License Agreement</span>
+<span class="c"># http://www.egenix.com/products/eGenix.com-Public-License-1.1.0.pdf</span>
+
+<span class="sd">&quot;&quot;&quot; Helper to enable simple lazy module import. </span>
+
+<span class="sd">    &#39;Lazy&#39; means the actual import is deferred until an attribute is</span>
+<span class="sd">    requested from the module&#39;s namespace. This has the advantage of</span>
+<span class="sd">    allowing all imports to be done at the top of a script (in a</span>
+<span class="sd">    prominent and visible place) without having a great impact</span>
+<span class="sd">    on startup time.</span>
+
+<span class="sd">    Copyright (c) 1999-2005, Marc-Andre Lemburg; mailto:mal@lemburg.com</span>
+<span class="sd">    See the documentation for further information on copyrights,</span>
+<span class="sd">    or contact the author. All Rights Reserved.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c">### Constants</span>
+
+<span class="n">_debug</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="c">###</span>
+
+<div class="viewcode-block" id="LazyModule"><a class="viewcode-back" href="../../api/nltk.html#nltk.lazyimport.LazyModule">[docs]</a><span class="k">class</span> <span class="nc">LazyModule</span><span class="p">:</span>
+
+    <span class="sd">&quot;&quot;&quot; Lazy module class.</span>
+
+<span class="sd">        Lazy modules are imported into the given namespaces whenever a</span>
+<span class="sd">        non-special attribute (there are some attributes like __doc__</span>
+<span class="sd">        that class instances handle without calling __getattr__) is</span>
+<span class="sd">        requested. The module is then registered under the given name</span>
+<span class="sd">        in locals usually replacing the import wrapper instance. The</span>
+<span class="sd">        import itself is done using globals as global namespace.</span>
+
+<span class="sd">        Example of creating a lazy load module:</span>
+
+<span class="sd">        ISO = LazyModule(&#39;ISO&#39;,locals(),globals())</span>
+
+<span class="sd">        Later, requesting an attribute from ISO will load the module</span>
+<span class="sd">        automatically into the locals() namespace, overriding the</span>
+<span class="sd">        LazyModule instance:</span>
+
+<span class="sd">        t = ISO.Week(1998,1,1)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Flag which inidicates whether the LazyModule is initialized or not</span>
+    <span class="n">__lazymodule_init</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c"># Name of the module to load</span>
+    <span class="n">__lazymodule_name</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+    <span class="c"># Flag which indicates whether the module was loaded or not</span>
+    <span class="n">__lazymodule_loaded</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c"># Locals dictionary where to register the module</span>
+    <span class="n">__lazymodule_locals</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="c"># Globals dictionary to use for the module import</span>
+    <span class="n">__lazymodule_globals</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="nb">locals</span><span class="p">,</span> <span class="nb">globals</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot; Create a LazyModule instance wrapping module name.</span>
+
+<span class="sd">            The module will later on be registered in locals under the</span>
+<span class="sd">            given module name.</span>
+
+<span class="sd">            globals is optional and defaults to locals.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_locals</span> <span class="o">=</span> <span class="nb">locals</span>
+        <span class="k">if</span> <span class="nb">globals</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="nb">globals</span> <span class="o">=</span> <span class="nb">locals</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_globals</span> <span class="o">=</span> <span class="nb">globals</span>
+        <span class="n">mainname</span> <span class="o">=</span> <span class="nb">globals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;__name__&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mainname</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="n">mainname</span> <span class="o">+</span> <span class="s">&#39;.&#39;</span> <span class="o">+</span> <span class="n">name</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_init</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__lazymodule_import</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot; Import the module now.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Load and register module</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_name</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_loaded</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_locals</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;LazyModule: Loading module </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_locals</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> \
+             <span class="o">=</span> <span class="n">module</span> \
+             <span class="o">=</span> <span class="nb">__import__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
+                          <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_locals</span><span class="p">,</span>
+                          <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_globals</span><span class="p">,</span>
+                          <span class="s">&#39;*&#39;</span><span class="p">)</span>
+
+        <span class="c"># Fill namespace with all symbols from original module to</span>
+        <span class="c"># provide faster access.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">__dict__</span><span class="p">)</span>
+
+        <span class="c"># Set import flag</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="s">&#39;__lazymodule_loaded&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;LazyModule: Module </span><span class="si">%r</span><span class="s"> loaded&#39;</span> <span class="o">%</span> <span class="n">name</span>
+        <span class="k">return</span> <span class="n">module</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot; Import the module on demand and get the attribute.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_loaded</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">,</span> <span class="n">name</span>
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;LazyModule: &#39;</span> \
+                  <span class="s">&#39;Module load triggered by attribute </span><span class="si">%r</span><span class="s"> read access&#39;</span> <span class="o">%</span> <span class="n">name</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_import</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot; Import the module on demand and set the attribute.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_init</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_loaded</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_locals</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;LazyModule: &#39;</span> \
+                  <span class="s">&#39;Module load triggered by attribute </span><span class="si">%r</span><span class="s"> write access&#39;</span> <span class="o">%</span> <span class="n">name</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__lazymodule_import</span><span class="p">()</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;LazyModule &#39;</span><span class="si">%s</span><span class="s">&#39;&gt;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name__</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1461 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.chunk.regexp &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.chunk" href="../chunk.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../chunk.html" accesskey="U">nltk.chunk</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.chunk.regexp</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Regular Expression Chunkers</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt; (minor additions)</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">types</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+
+<span class="kn">from</span> <span class="nn">nltk.chunk.api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.chunk.util</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  ChunkString</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+
+<div class="viewcode-block" id="ChunkString"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChunkString">[docs]</a><span class="k">class</span> <span class="nc">ChunkString</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A string-based encoding of a particular chunking of a text.</span>
+<span class="sd">    Internally, the C{ChunkString} class uses a single string to</span>
+<span class="sd">    encode the chunking of the input text.  This string contains a</span>
+<span class="sd">    sequence of angle-bracket delimited tags, with chunking indicated</span>
+<span class="sd">    by braces.  An example of this encoding is::</span>
+
+<span class="sd">        {&lt;DT&gt;&lt;JJ&gt;&lt;NN&gt;}&lt;VBN&gt;&lt;IN&gt;{&lt;DT&gt;&lt;NN&gt;}&lt;.&gt;{&lt;DT&gt;&lt;NN&gt;}&lt;VBD&gt;&lt;.&gt;</span>
+
+<span class="sd">    C{ChunkString} are created from tagged texts (i.e., C{list}s of</span>
+<span class="sd">    C{tokens} whose type is C{TaggedType}).  Initially, nothing is</span>
+<span class="sd">    chunked.</span>
+<span class="sd">    </span>
+<span class="sd">    The chunking of a C{ChunkString} can be modified with the C{xform}</span>
+<span class="sd">    method, which uses a regular expression to transform the string</span>
+<span class="sd">    representation.  These transformations should only add and remove</span>
+<span class="sd">    braces; they should I{not} modify the sequence of angle-bracket</span>
+<span class="sd">    delimited tags.</span>
+
+<span class="sd">    @type _str: C{string}</span>
+<span class="sd">    @ivar _str: The internal string representation of the text&#39;s</span>
+<span class="sd">        encoding.  This string representation contains a sequence of</span>
+<span class="sd">        angle-bracket delimited tags, with chunking indicated by</span>
+<span class="sd">        braces.  An example of this encoding is::</span>
+
+<span class="sd">            {&lt;DT&gt;&lt;JJ&gt;&lt;NN&gt;}&lt;VBN&gt;&lt;IN&gt;{&lt;DT&gt;&lt;NN&gt;}&lt;.&gt;{&lt;DT&gt;&lt;NN&gt;}&lt;VBD&gt;&lt;.&gt;</span>
+
+<span class="sd">    @type _pieces: C{list} of pieces (tagged tokens and chunks)</span>
+<span class="sd">    @ivar _pieces: The tagged tokens and chunks encoded by this C{ChunkString}.</span>
+<span class="sd">    @ivar _debug: The debug level.  See the constructor docs.</span>
+<span class="sd">               </span>
+<span class="sd">    @cvar IN_CHUNK_PATTERN: A zero-width regexp pattern string that</span>
+<span class="sd">        will only match positions that are in chunks.</span>
+<span class="sd">    @cvar IN_CHINK_PATTERN: A zero-width regexp pattern string that</span>
+<span class="sd">        will only match positions that are in chinks.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">CHUNK_TAG_CHAR</span> <span class="o">=</span> <span class="s">r&#39;[^\{\}&lt;&gt;]&#39;</span>
+    <span class="n">CHUNK_TAG</span> <span class="o">=</span> <span class="s">r&#39;(&lt;</span><span class="si">%s</span><span class="s">+?&gt;)&#39;</span> <span class="o">%</span> <span class="n">CHUNK_TAG_CHAR</span>
+    
+    <span class="n">IN_CHUNK_PATTERN</span> <span class="o">=</span> <span class="s">r&#39;(?=[^\{]*\})&#39;</span>
+    <span class="n">IN_CHINK_PATTERN</span> <span class="o">=</span> <span class="s">r&#39;(?=[^\}]*(\{|$))&#39;</span>
+
+    <span class="c"># These are used by _verify</span>
+    <span class="n">_CHUNK</span> <span class="o">=</span> <span class="s">r&#39;(\{</span><span class="si">%s</span><span class="s">+?\})+?&#39;</span> <span class="o">%</span> <span class="n">CHUNK_TAG</span>
+    <span class="n">_CHINK</span> <span class="o">=</span> <span class="s">r&#39;(</span><span class="si">%s</span><span class="s">+?)+?&#39;</span> <span class="o">%</span> <span class="n">CHUNK_TAG</span>
+    <span class="n">_VALID</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;^(\{?</span><span class="si">%s</span><span class="s">\}?)*?$&#39;</span> <span class="o">%</span> <span class="n">CHUNK_TAG</span><span class="p">)</span>
+    <span class="n">_BRACKETS</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;[^\{\}]+&#39;</span><span class="p">)</span>
+    <span class="n">_BALANCED_BRACKETS</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;(\{\})*$&#39;</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk_struct</span><span class="p">,</span> <span class="n">debug_level</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ChunkString} that encodes the chunking of</span>
+<span class="sd">        the text C{tagged_tokens}.</span>
+
+<span class="sd">        @type chunk_struct: C{Tree}</span>
+<span class="sd">        @param chunk_struct: The chunk structure to be further chunked.</span>
+<span class="sd">        @type debug_level: int</span>
+<span class="sd">        @param debug_level: The level of debugging which should be</span>
+<span class="sd">            applied to transformations on the C{ChunkString}.  The</span>
+<span class="sd">            valid levels are:</span>
+<span class="sd">                - 0: no checks</span>
+<span class="sd">                - 1: full check on to_chunkstruct</span>
+<span class="sd">                - 2: full check on to_chunkstruct and cursory check after</span>
+<span class="sd">                   each transformation. </span>
+<span class="sd">                - 3: full check on to_chunkstruct and full check after</span>
+<span class="sd">                   each transformation.</span>
+<span class="sd">            We recommend you use at least level 1.  You should</span>
+<span class="sd">            probably use level 3 if you use any non-standard</span>
+<span class="sd">            subclasses of C{RegexpChunkRule}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_top_node</span> <span class="o">=</span> <span class="n">chunk_struct</span><span class="o">.</span><span class="n">node</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pieces</span> <span class="o">=</span> <span class="n">chunk_struct</span><span class="p">[:]</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tag</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span> <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pieces</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_str</span> <span class="o">=</span> <span class="s">&#39;&lt;&#39;</span> <span class="o">+</span> <span class="s">&#39;&gt;&lt;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;&gt;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span> <span class="o">=</span> <span class="n">debug_level</span>
+
+    <span class="k">def</span> <span class="nf">_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span> <span class="o">==</span> <span class="n">types</span><span class="o">.</span><span class="n">TupleType</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">tok</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">tok</span><span class="o">.</span><span class="n">node</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;chunk structures must contain tagged &#39;</span>
+                             <span class="s">&#39;tokens or trees&#39;</span><span class="p">)</span>
+                      
+    <span class="k">def</span> <span class="nf">_verify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">verify_tags</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check to make sure that C{s} still corresponds to some chunked</span>
+<span class="sd">        version of C{_pieces}.</span>
+
+<span class="sd">        @type verify_tags: C{boolean}</span>
+<span class="sd">        @param verify_tags: Whether the individual tags should be</span>
+<span class="sd">            checked.  If this is false, C{_verify} will check to make</span>
+<span class="sd">            sure that C{_str} encodes a chunked version of I{some}</span>
+<span class="sd">            list of tokens.  If this is true, then C{_verify} will</span>
+<span class="sd">            check to make sure that the tags in C{_str} match those in</span>
+<span class="sd">            C{_pieces}.</span>
+<span class="sd">        </span>
+<span class="sd">        @raise ValueError: if this C{ChunkString}&#39;s internal string</span>
+<span class="sd">            representation is invalid or not consistent with _pieces.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Check overall form</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ChunkString</span><span class="o">.</span><span class="n">_VALID</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Transformation generated invalid &#39;</span>
+                             <span class="s">&#39;chunkstring:</span><span class="se">\n</span><span class="s">  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="c"># Check that parens are balanced.  If the string is long, we</span>
+        <span class="c"># have to do this in pieces, to avoid a maximum recursion</span>
+        <span class="c"># depth limit for regular expressions.</span>
+        <span class="n">brackets</span> <span class="o">=</span> <span class="n">ChunkString</span><span class="o">.</span><span class="n">_BRACKETS</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">brackets</span><span class="p">)</span><span class="o">/</span><span class="mi">5000</span><span class="p">):</span>
+            <span class="n">substr</span> <span class="o">=</span> <span class="n">brackets</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="mi">5000</span><span class="p">:</span><span class="n">i</span><span class="o">*</span><span class="mi">5000</span><span class="o">+</span><span class="mi">5000</span><span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ChunkString</span><span class="o">.</span><span class="n">_BALANCED_BRACKETS</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">substr</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Transformation generated invalid &#39;</span>
+                                 <span class="s">&#39;chunkstring:</span><span class="se">\n</span><span class="s">  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">verify_tags</span><span class="o">&lt;=</span><span class="mi">0</span><span class="p">:</span> <span class="k">return</span>
+        
+        <span class="n">tags1</span> <span class="o">=</span> <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">r&#39;[\{\}&lt;&gt;]+&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">))[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">tags2</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tag</span><span class="p">(</span><span class="n">piece</span><span class="p">)</span> <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pieces</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">tags1</span> <span class="o">!=</span> <span class="n">tags2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Transformation generated invalid &#39;</span>
+                             <span class="s">&#39;chunkstring: tag changed&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ChunkString.to_chunkstruct"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChunkString.to_chunkstruct">[docs]</a>    <span class="k">def</span> <span class="nf">to_chunkstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk_node</span><span class="o">=</span><span class="s">&#39;CHUNK&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the chunk structure encoded by this C{ChunkString}.</span>
+<span class="sd">        @rtype: C{Tree}</span>
+<span class="sd">        @raise ValueError: If a transformation has generated an</span>
+<span class="sd">            invalid chunkstring.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verify</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_str</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            
+        <span class="c"># Use this alternating list to create the chunkstruct.</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">piece_in_chunk</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;[{}]&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_str</span><span class="p">):</span>
+
+            <span class="c"># Find the list of tokens contained in this piece.</span>
+            <span class="n">length</span> <span class="o">=</span> <span class="n">piece</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">)</span>
+            <span class="n">subsequence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pieces</span><span class="p">[</span><span class="n">index</span><span class="p">:</span><span class="n">index</span><span class="o">+</span><span class="n">length</span><span class="p">]</span>
+
+            <span class="c"># Add this list of tokens to our pieces.</span>
+            <span class="k">if</span> <span class="n">piece_in_chunk</span><span class="p">:</span>
+                <span class="n">pieces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="n">chunk_node</span><span class="p">,</span> <span class="n">subsequence</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">pieces</span> <span class="o">+=</span> <span class="n">subsequence</span>
+
+            <span class="c"># Update index, piece_in_chunk</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="n">length</span>
+            <span class="n">piece_in_chunk</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">piece_in_chunk</span>
+
+        <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_top_node</span><span class="p">,</span> <span class="n">pieces</span><span class="p">)</span>
+                </div>
+<div class="viewcode-block" id="ChunkString.xform"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChunkString.xform">[docs]</a>    <span class="k">def</span> <span class="nf">xform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">repl</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply the given transformation to this C{ChunkString}&#39;s string</span>
+<span class="sd">        encoding.  In particular, find all occurrences that match</span>
+<span class="sd">        C{regexp}, and replace them using C{repl} (as done by</span>
+<span class="sd">        C{re.sub}).</span>
+
+<span class="sd">        This transformation should only add and remove braces; it</span>
+<span class="sd">        should I{not} modify the sequence of angle-bracket delimited</span>
+<span class="sd">        tags.  Furthermore, this transformation may not result in</span>
+<span class="sd">        improper bracketing.  Note, in particular, that bracketing may</span>
+<span class="sd">        not be nested.</span>
+
+<span class="sd">        @type regexp: C{string} or C{regexp}</span>
+<span class="sd">        @param regexp: A regular expression matching the substring</span>
+<span class="sd">            that should be replaced.  This will typically include a</span>
+<span class="sd">            named group, which can be used by C{repl}.</span>
+<span class="sd">        @type repl: C{string}</span>
+<span class="sd">        @param repl: An expression specifying what should replace the</span>
+<span class="sd">            matched substring.  Typically, this will include a named</span>
+<span class="sd">            replacement group, specified by C{regexp}.</span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        @raise ValueError: If this transformation generated an</span>
+<span class="sd">            invalid chunkstring.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Do the actual substitution</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">repl</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_str</span><span class="p">)</span>
+
+        <span class="c"># The substitution might have generated &quot;empty chunks&quot;</span>
+        <span class="c"># (substrings of the form &quot;{}&quot;).  Remove them, so they don&#39;t</span>
+        <span class="c"># interfere with other transformations.</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;\{\}&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="c"># Make sure that the transformation was legal.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verify</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="c"># Commit the transformation.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_str</span> <span class="o">=</span> <span class="n">s</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this C{ChunkString}.  This</span>
+<span class="sd">            string representation has the form::</span>
+<span class="sd">            </span>
+<span class="sd">                &lt;ChunkString: &#39;{&lt;DT&gt;&lt;JJ&gt;&lt;NN&gt;}&lt;VBN&gt;&lt;IN&gt;{&lt;DT&gt;&lt;NN&gt;}&#39;&gt;</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;ChunkString: </span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="sb">`self._str`</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A formatted representation of this C{ChunkString}&#39;s</span>
+<span class="sd">            string encoding.  This representation will include extra</span>
+<span class="sd">            spaces to ensure that tags will line up with the</span>
+<span class="sd">            representation of other C{ChunkStrings} for the same text,</span>
+<span class="sd">            regardless of the chunking.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Add spaces to make everything line up.</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;&gt;(?!\})&#39;</span><span class="p">,</span> <span class="s">r&#39;&gt; &#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_str</span><span class="p">)</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;([^\{])&lt;&#39;</span><span class="p">,</span> <span class="s">r&#39;\1 &lt;&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;&lt;&#39;</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39; &#39;</span> <span class="o">+</span> <span class="nb">str</span>
+        <span class="k">return</span> <span class="nb">str</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Chunking Rules</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="RegexpChunkRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkRule">[docs]</a><span class="k">class</span> <span class="nc">RegexpChunkRule</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to modify the chunking in a C{ChunkString},</span>
+<span class="sd">    using a transformational regular expression.  The</span>
+<span class="sd">    C{RegexpChunkRule} class itself can be used to implement any</span>
+<span class="sd">    transformational rule based on regular expressions.  There are</span>
+<span class="sd">    also a number of subclasses, which can be used to implement</span>
+<span class="sd">    simpler types of rules, based on matching regular expressions.</span>
+
+<span class="sd">    Each C{RegexpChunkRule} has a regular expression and a</span>
+<span class="sd">    replacement expression.  When a C{RegexpChunkRule} is X{applied}</span>
+<span class="sd">    to a C{ChunkString}, it searches the C{ChunkString} for any</span>
+<span class="sd">    substring that matches the regular expression, and replaces it</span>
+<span class="sd">    using the replacement expression.  This search/replace operation</span>
+<span class="sd">    has the same semantics as C{re.sub}.</span>
+
+<span class="sd">    Each C{RegexpChunkRule} also has a description string, which</span>
+<span class="sd">    gives a short (typically less than 75 characters) description of</span>
+<span class="sd">    the purpose of the rule.</span>
+<span class="sd">    </span>
+<span class="sd">    This transformation defined by this C{RegexpChunkRule} should</span>
+<span class="sd">    only add and remove braces; it should I{not} modify the sequence</span>
+<span class="sd">    of angle-bracket delimited tags.  Furthermore, this transformation</span>
+<span class="sd">    may not result in nested or mismatched bracketing.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">repl</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new RegexpChunkRule.</span>
+<span class="sd">        </span>
+<span class="sd">        @type regexp: C{regexp} or C{string}</span>
+<span class="sd">        @param regexp: This C{RegexpChunkRule}&#39;s regular expression.</span>
+<span class="sd">            When this rule is applied to a C{ChunkString}, any</span>
+<span class="sd">            substring that matches C{regexp} will be replaced using</span>
+<span class="sd">            the replacement string C{repl}.  Note that this must be a</span>
+<span class="sd">            normal regular expression, not a tag pattern.</span>
+<span class="sd">        @type repl: C{string}</span>
+<span class="sd">        @param repl: This C{RegexpChunkRule}&#39;s replacement</span>
+<span class="sd">            expression.  When this rule is applied to a</span>
+<span class="sd">            C{ChunkString}, any substring that matches C{regexp} will</span>
+<span class="sd">            be replaced using C{repl}.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">regexp</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_repl</span> <span class="o">=</span> <span class="n">repl</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_descr</span> <span class="o">=</span> <span class="n">descr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_regexp</span> <span class="o">=</span> <span class="n">regexp</span>
+
+<div class="viewcode-block" id="RegexpChunkRule.apply"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkRule.apply">[docs]</a>    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunkstr</span><span class="p">):</span>
+        <span class="c"># Keep docstring generic so we can inherit it.</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply this rule to the given C{ChunkString}.  See the</span>
+<span class="sd">        class reference documentation for a description of what it</span>
+<span class="sd">        means to apply a rule.</span>
+<span class="sd">        </span>
+<span class="sd">        @type chunkstr: C{ChunkString}</span>
+<span class="sd">        @param chunkstr: The chunkstring to which this rule is</span>
+<span class="sd">            applied. </span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        @raise ValueError: If this transformation generated an</span>
+<span class="sd">            invalid chunkstring.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">chunkstr</span><span class="o">.</span><span class="n">xform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_regexp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repl</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="RegexpChunkRule.descr"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkRule.descr">[docs]</a>    <span class="k">def</span> <span class="nf">descr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: a short description of the purpose and/or effect of</span>
+<span class="sd">            this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_descr</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;RegexpChunkRule: &#39;{&lt;IN|VB.*&gt;}&#39;-&gt;&#39;&lt;IN&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;RegexpChunkRule: &#39;</span><span class="o">+</span><span class="sb">`self._regexp.pattern`</span><span class="o">+</span>
+                <span class="s">&#39;-&gt;&#39;</span><span class="o">+</span><span class="sb">`self._repl`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="RegexpChunkRule.parse"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkRule.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a RegexpChunkRule from a string description.</span>
+<span class="sd">        Currently, the following formats are supported::</span>
+
+<span class="sd">          {regexp}         # chunk rule</span>
+<span class="sd">          }regexp{         # chink rule</span>
+<span class="sd">          regexp}{regexp   # split rule</span>
+<span class="sd">          regexp{}regexp   # merge rule</span>
+
+<span class="sd">        Where C{regexp} is a regular expression for the rule.  Any</span>
+<span class="sd">        text following the comment marker (C{#}) will be used as</span>
+<span class="sd">        the rule&#39;s description:</span>
+<span class="sd">        </span>
+<span class="sd">        &gt;&gt;&gt; RegexpChunkRule.parse(&#39;{&lt;DT&gt;?&lt;NN.*&gt;+}&#39;)</span>
+<span class="sd">        &lt;ChunkRule: &#39;&lt;DT&gt;?&lt;NN.*&gt;+&#39;&gt;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Split off the comment (but don&#39;t split on &#39;\#&#39;)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&#39;(?P&lt;rule&gt;(</span><span class="se">\\</span><span class="s">.|[^#])*)(?P&lt;comment&gt;#.*)?&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="n">rule</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;rule&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">comment</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;comment&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="s">&#39;&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        
+        <span class="c"># Pattern bodies: chunk, chink, split, merge</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">rule</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Empty chunk pattern&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;{&#39;</span> <span class="ow">and</span> <span class="n">rule</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;}&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">ChunkRule</span><span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">comment</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">rule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;}&#39;</span> <span class="ow">and</span> <span class="n">rule</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;{&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">ChinkRule</span><span class="p">(</span><span class="n">rule</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">comment</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="s">&#39;}{&#39;</span> <span class="ow">in</span> <span class="n">rule</span><span class="p">:</span>
+                <span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;}{&#39;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">SplitRule</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">,</span> <span class="n">comment</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="s">&#39;{}&#39;</span> <span class="ow">in</span> <span class="n">rule</span><span class="p">:</span>
+                <span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;{}&#39;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">MergeRule</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">,</span> <span class="n">comment</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">&#39;[^{}]*{[^{}]*}[^{}]*&#39;</span><span class="p">,</span> <span class="n">rule</span><span class="p">):</span>
+                <span class="n">left</span><span class="p">,</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;[{}]&#39;</span><span class="p">,</span> <span class="n">rule</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ChunkRuleWithContext</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">right</span><span class="p">,</span> <span class="n">comment</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Illegal chunk pattern: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">rule</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">error</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Illegal chunk pattern: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">rule</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="ChunkRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChunkRule">[docs]</a><span class="k">class</span> <span class="nc">ChunkRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to add chunks to a C{ChunkString}, using a</span>
+<span class="sd">    matching tag pattern.  When applied to a C{ChunkString}, it will</span>
+<span class="sd">    find any substring that matches this tag pattern and that is not</span>
+<span class="sd">    already part of a chunk, and create a new chunk containing that</span>
+<span class="sd">    substring.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ChunkRule}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type tag_pattern: C{string}</span>
+<span class="sd">        @param tag_pattern: This rule&#39;s tag pattern.  When</span>
+<span class="sd">            applied to a C{ChunkString}, this rule will</span>
+<span class="sd">            chunk any substring that matches this tag pattern and that</span>
+<span class="sd">            is not already part of a chunk.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pattern</span> <span class="o">=</span> <span class="n">tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;chunk&gt;</span><span class="si">%s</span><span class="s">)</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">),</span>
+                             <span class="n">ChunkString</span><span class="o">.</span><span class="n">IN_CHINK_PATTERN</span><span class="p">))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;{\g&lt;chunk&gt;}&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;ChunkRule: &#39;&lt;IN|VB.*&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;ChunkRule: &#39;</span><span class="o">+</span><span class="sb">`self._pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span>
+</div>
+<div class="viewcode-block" id="ChinkRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChinkRule">[docs]</a><span class="k">class</span> <span class="nc">ChinkRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to remove chinks to a C{ChunkString},</span>
+<span class="sd">    using a matching tag pattern.  When applied to a</span>
+<span class="sd">    C{ChunkString}, it will find any substring that matches this</span>
+<span class="sd">    tag pattern and that is contained in a chunk, and remove it</span>
+<span class="sd">    from that chunk, thus creating two new chunks.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ChinkRule}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type tag_pattern: C{string}</span>
+<span class="sd">        @param tag_pattern: This rule&#39;s tag pattern.  When</span>
+<span class="sd">            applied to a C{ChunkString}, this rule will</span>
+<span class="sd">            find any substring that matches this tag pattern and that</span>
+<span class="sd">            is contained in a chunk, and remove it from that chunk,</span>
+<span class="sd">            thus creating two new chunks.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pattern</span> <span class="o">=</span> <span class="n">tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;chink&gt;</span><span class="si">%s</span><span class="s">)</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">),</span>
+                             <span class="n">ChunkString</span><span class="o">.</span><span class="n">IN_CHUNK_PATTERN</span><span class="p">))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;}\g&lt;chink&gt;{&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;ChinkRule: &#39;&lt;IN|VB.*&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;ChinkRule: &#39;</span><span class="o">+</span><span class="sb">`self._pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span>
+</div>
+<div class="viewcode-block" id="UnChunkRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.UnChunkRule">[docs]</a><span class="k">class</span> <span class="nc">UnChunkRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to remove chunks to a C{ChunkString},</span>
+<span class="sd">    using a matching tag pattern.  When applied to a</span>
+<span class="sd">    C{ChunkString}, it will find any complete chunk that matches this</span>
+<span class="sd">    tag pattern, and un-chunk it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{UnChunkRule}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type tag_pattern: C{string}</span>
+<span class="sd">        @param tag_pattern: This rule&#39;s tag pattern.  When</span>
+<span class="sd">            applied to a C{ChunkString}, this rule will</span>
+<span class="sd">            find any complete chunk that matches this tag pattern,</span>
+<span class="sd">            and un-chunk it.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pattern</span> <span class="o">=</span> <span class="n">tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;\{(?P&lt;chunk&gt;</span><span class="si">%s</span><span class="s">)\}&#39;</span> <span class="o">%</span>
+                            <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;\g&lt;chunk&gt;&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;UnChunkRule: &#39;&lt;IN|VB.*&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;UnChunkRule: &#39;</span><span class="o">+</span><span class="sb">`self._pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span>
+</div>
+<div class="viewcode-block" id="MergeRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.MergeRule">[docs]</a><span class="k">class</span> <span class="nc">MergeRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to merge chunks in a C{ChunkString}, using</span>
+<span class="sd">    two matching tag patterns: a left pattern, and a right pattern.</span>
+<span class="sd">    When applied to a C{ChunkString}, it will find any chunk whose end</span>
+<span class="sd">    matches left pattern, and immediately followed by a chunk whose</span>
+<span class="sd">    beginning matches right pattern.  It will then merge those two</span>
+<span class="sd">    chunks into a single chunk.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_tag_pattern</span><span class="p">,</span> <span class="n">right_tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{MergeRule}.</span>
+
+<span class="sd">        @type right_tag_pattern: C{string}</span>
+<span class="sd">        @param right_tag_pattern: This rule&#39;s right tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose end matches</span>
+<span class="sd">            C{left_tag_pattern}, and immediately followed by a chunk</span>
+<span class="sd">            whose beginning matches this pattern.  It will</span>
+<span class="sd">            then merge those two chunks into a single chunk.</span>
+<span class="sd">        @type left_tag_pattern: C{string}</span>
+<span class="sd">        @param left_tag_pattern: This rule&#39;s left tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose end matches</span>
+<span class="sd">            this pattern, and immediately followed by a chunk</span>
+<span class="sd">            whose beginning matches C{right_tag_pattern}.  It will</span>
+<span class="sd">            then merge those two chunks into a single chunk.</span>
+<span class="sd">            </span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Ensure that the individual patterns are coherent.  E.g., if</span>
+        <span class="c"># left=&#39;(&#39; and right=&#39;)&#39;, then this will raise an exception:</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left_tag_pattern</span> <span class="o">=</span> <span class="n">left_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right_tag_pattern</span> <span class="o">=</span> <span class="n">right_tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;left&gt;</span><span class="si">%s</span><span class="s">)}{(?=</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">)))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;\g&lt;left&gt;&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;MergeRule: &#39;&lt;NN|DT|JJ&gt;&#39;, &#39;&lt;NN|JJ&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;MergeRule: &#39;</span><span class="o">+</span><span class="sb">`self._left_tag_pattern`</span><span class="o">+</span><span class="s">&#39;, &#39;</span><span class="o">+</span>
+                <span class="sb">`self._right_tag_pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SplitRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.SplitRule">[docs]</a><span class="k">class</span> <span class="nc">SplitRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to split chunks in a C{ChunkString}, using</span>
+<span class="sd">    two matching tag patterns: a left pattern, and a right pattern.</span>
+<span class="sd">    When applied to a C{ChunkString}, it will find any chunk that</span>
+<span class="sd">    matches the left pattern followed by the right pattern.  It will</span>
+<span class="sd">    then split the chunk into two new chunks, at the point between the</span>
+<span class="sd">    two pattern matches.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_tag_pattern</span><span class="p">,</span> <span class="n">right_tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{SplitRule}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type right_tag_pattern: C{string}</span>
+<span class="sd">        @param right_tag_pattern: This rule&#39;s right tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this rule will</span>
+<span class="sd">            find any chunk containing a substring that matches</span>
+<span class="sd">            C{left_tag_pattern} followed by this pattern.  It will</span>
+<span class="sd">            then split the chunk into two new chunks at the point</span>
+<span class="sd">            between these two matching patterns.</span>
+<span class="sd">        @type left_tag_pattern: C{string}</span>
+<span class="sd">        @param left_tag_pattern: This rule&#39;s left tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this rule will</span>
+<span class="sd">            find any chunk containing a substring that matches this</span>
+<span class="sd">            pattern followed by C{right_tag_pattern}.  It will then</span>
+<span class="sd">            split the chunk into two new chunks at the point between</span>
+<span class="sd">            these two matching patterns.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Ensure that the individual patterns are coherent.  E.g., if</span>
+        <span class="c"># left=&#39;(&#39; and right=&#39;)&#39;, then this will raise an exception:</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left_tag_pattern</span> <span class="o">=</span> <span class="n">left_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right_tag_pattern</span> <span class="o">=</span> <span class="n">right_tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;left&gt;</span><span class="si">%s</span><span class="s">)(?=</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> 
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">)))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">r&#39;\g&lt;left&gt;}{&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;SplitRule: &#39;&lt;NN&gt;&#39;, &#39;&lt;DT&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;SplitRule: &#39;</span><span class="o">+</span><span class="sb">`self._left_tag_pattern`</span><span class="o">+</span><span class="s">&#39;, &#39;</span><span class="o">+</span>
+                <span class="sb">`self._right_tag_pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ExpandLeftRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ExpandLeftRule">[docs]</a><span class="k">class</span> <span class="nc">ExpandLeftRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to expand chunks in a C{ChunkString} to the left,</span>
+<span class="sd">    using two matching tag patterns: a left pattern, and a right pattern.</span>
+<span class="sd">    When applied to a C{ChunkString}, it will find any chunk whose beginning</span>
+<span class="sd">    matches right pattern, and immediately preceded by a chink whose</span>
+<span class="sd">    end matches left pattern.  It will then expand the chunk to incorporate</span>
+<span class="sd">    the new material on the left.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_tag_pattern</span><span class="p">,</span> <span class="n">right_tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ExpandRightRule}.</span>
+
+<span class="sd">        @type right_tag_pattern: C{string}</span>
+<span class="sd">        @param right_tag_pattern: This rule&#39;s right tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose beginning matches</span>
+<span class="sd">            C{right_tag_pattern}, and immediately preceded by a chink</span>
+<span class="sd">            whose end matches this pattern.  It will</span>
+<span class="sd">            then merge those two chunks into a single chunk.</span>
+<span class="sd">        @type left_tag_pattern: C{string}</span>
+<span class="sd">        @param left_tag_pattern: This rule&#39;s left tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose beginning matches</span>
+<span class="sd">            this pattern, and immediately preceded by a chink</span>
+<span class="sd">            whose end matches C{left_tag_pattern}.  It will</span>
+<span class="sd">            then expand the chunk to incorporate the new material on the left.</span>
+<span class="sd">            </span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Ensure that the individual patterns are coherent.  E.g., if</span>
+        <span class="c"># left=&#39;(&#39; and right=&#39;)&#39;, then this will raise an exception:</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left_tag_pattern</span> <span class="o">=</span> <span class="n">left_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right_tag_pattern</span> <span class="o">=</span> <span class="n">right_tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;left&gt;</span><span class="si">%s</span><span class="s">)\{(?P&lt;right&gt;</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">)))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;{\g&lt;left&gt;\g&lt;right&gt;&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;ExpandLeftRule: &#39;&lt;NN|DT|JJ&gt;&#39;, &#39;&lt;NN|JJ&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;ExpandLeftRule: &#39;</span><span class="o">+</span><span class="sb">`self._left_tag_pattern`</span><span class="o">+</span><span class="s">&#39;, &#39;</span><span class="o">+</span>
+                <span class="sb">`self._right_tag_pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ExpandRightRule"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ExpandRightRule">[docs]</a><span class="k">class</span> <span class="nc">ExpandRightRule</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to expand chunks in a C{ChunkString} to the</span>
+<span class="sd">    right, using two matching tag patterns: a left pattern, and a</span>
+<span class="sd">    right pattern.  When applied to a C{ChunkString}, it will find any</span>
+<span class="sd">    chunk whose end matches left pattern, and immediately followed by</span>
+<span class="sd">    a chink whose beginning matches right pattern.  It will then</span>
+<span class="sd">    expand the chunk to incorporate the new material on the right.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_tag_pattern</span><span class="p">,</span> <span class="n">right_tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ExpandRightRule}.</span>
+
+<span class="sd">        @type right_tag_pattern: C{string}</span>
+<span class="sd">        @param right_tag_pattern: This rule&#39;s right tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose end matches</span>
+<span class="sd">            C{left_tag_pattern}, and immediately followed by a chink</span>
+<span class="sd">            whose beginning matches this pattern.  It will</span>
+<span class="sd">            then merge those two chunks into a single chunk.</span>
+<span class="sd">        @type left_tag_pattern: C{string}</span>
+<span class="sd">        @param left_tag_pattern: This rule&#39;s left tag</span>
+<span class="sd">            pattern.  When applied to a C{ChunkString}, this</span>
+<span class="sd">            rule will find any chunk whose end matches</span>
+<span class="sd">            this pattern, and immediately followed by a chink</span>
+<span class="sd">            whose beginning matches C{right_tag_pattern}.  It will</span>
+<span class="sd">            then expand the chunk to incorporate the new material on the right.</span>
+<span class="sd">            </span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Ensure that the individual patterns are coherent.  E.g., if</span>
+        <span class="c"># left=&#39;(&#39; and right=&#39;)&#39;, then this will raise an exception:</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left_tag_pattern</span> <span class="o">=</span> <span class="n">left_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right_tag_pattern</span> <span class="o">=</span> <span class="n">right_tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;left&gt;</span><span class="si">%s</span><span class="s">)\}(?P&lt;right&gt;</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_tag_pattern</span><span class="p">)))</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="s">&#39;\g&lt;left&gt;\g&lt;right&gt;}&#39;</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;ExpandRightRule: &#39;&lt;NN|DT|JJ&gt;&#39;, &#39;&lt;NN|JJ&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;ExpandRightRule: &#39;</span><span class="o">+</span><span class="sb">`self._left_tag_pattern`</span><span class="o">+</span><span class="s">&#39;, &#39;</span><span class="o">+</span>
+                <span class="sb">`self._right_tag_pattern`</span><span class="o">+</span><span class="s">&#39;&gt;&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ChunkRuleWithContext"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.ChunkRuleWithContext">[docs]</a><span class="k">class</span> <span class="nc">ChunkRuleWithContext</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A rule specifying how to add chunks to a C{ChunkString}, using</span>
+<span class="sd">    three matching tag patterns: one for the left context, one for the</span>
+<span class="sd">    chunk, and one for the right context.  When applied to a</span>
+<span class="sd">    C{ChunkString}, it will find any substring that matches the chunk</span>
+<span class="sd">    tag pattern, is surrounded by substrings that match the two</span>
+<span class="sd">    context patterns, and is not already part of a chunk; and create a</span>
+<span class="sd">    new chunk containing the substring that matched the chunk tag</span>
+<span class="sd">    pattern.</span>
+
+<span class="sd">    Caveat: Both the left and right context are consumed when this</span>
+<span class="sd">    rule matches; therefore, if you need to find overlapping matches,</span>
+<span class="sd">    you will need to apply your rule more than once.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_context_tag_pattern</span><span class="p">,</span> <span class="n">chunk_tag_pattern</span><span class="p">,</span>
+                 <span class="n">right_context_tag_pattern</span><span class="p">,</span> <span class="n">descr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{ChunkRuleWithContext}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type left_context_tag_pattern: C{string}</span>
+<span class="sd">        @param left_context_tag_pattern: A tag pattern that must match</span>
+<span class="sd">            the left context of C{chunk_tag_pattern} for this rule to</span>
+<span class="sd">            apply.</span>
+<span class="sd">        @type chunk_tag_pattern: C{string}</span>
+<span class="sd">        @param chunk_tag_pattern: A tag pattern that must match for this</span>
+<span class="sd">            rule to apply.  If the rule does apply, then this pattern</span>
+<span class="sd">            also identifies the substring that will be made into a chunk.</span>
+<span class="sd">        @type right_context_tag_pattern: C{string}</span>
+<span class="sd">        @param right_context_tag_pattern: A tag pattern that must match</span>
+<span class="sd">            the right context of C{chunk_tag_pattern} for this rule to</span>
+<span class="sd">            apply.</span>
+<span class="sd">        @type descr: C{string}</span>
+<span class="sd">        @param descr: A short description of the purpose and/or effect</span>
+<span class="sd">            of this rule.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Ensure that the individual patterns are coherent.  E.g., if</span>
+        <span class="c"># left=&#39;(&#39; and right=&#39;)&#39;, then this will raise an exception:</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_context_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">chunk_tag_pattern</span><span class="p">))</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_context_tag_pattern</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left_context_tag_pattern</span> <span class="o">=</span> <span class="n">left_context_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_tag_pattern</span> <span class="o">=</span> <span class="n">chunk_tag_pattern</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right_context_tag_pattern</span> <span class="o">=</span> <span class="n">right_context_tag_pattern</span>
+        <span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(?P&lt;left&gt;</span><span class="si">%s</span><span class="s">)(?P&lt;chunk&gt;</span><span class="si">%s</span><span class="s">)(?P&lt;right&gt;</span><span class="si">%s</span><span class="s">)</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">left_context_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">chunk_tag_pattern</span><span class="p">),</span>
+                             <span class="n">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">right_context_tag_pattern</span><span class="p">),</span>
+                             <span class="n">ChunkString</span><span class="o">.</span><span class="n">IN_CHINK_PATTERN</span><span class="p">))</span>
+        <span class="n">replacement</span> <span class="o">=</span> <span class="s">r&#39;\g&lt;left&gt;{\g&lt;chunk&gt;}\g&lt;right&gt;&#39;</span>
+        <span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">replacement</span><span class="p">,</span> <span class="n">descr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        @return: A string representation of this rule.  This</span>
+<span class="sd">             string representation has the form::</span>
+
+<span class="sd">                 &lt;ChunkRuleWithContext: &#39;&lt;IN&gt;&#39;, &#39;&lt;NN&gt;&#39;, &#39;&lt;DT&gt;&#39;&gt;</span>
+
+<span class="sd">             Note that this representation does not include the</span>
+<span class="sd">             description string; that string can be accessed</span>
+<span class="sd">             separately with the C{descr} method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;ChunkRuleWithContext: </span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_left_context_tag_pattern</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_tag_pattern</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_right_context_tag_pattern</span><span class="p">)</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Tag Pattern Format Conversion</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+
+<span class="c"># this should probably be made more strict than it is -- e.g., it</span>
+<span class="c"># currently accepts &#39;foo&#39;.</span></div>
+<span class="n">CHUNK_TAG_PATTERN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;^((</span><span class="si">%s</span><span class="s">|&lt;</span><span class="si">%s</span><span class="s">&gt;)*)$&#39;</span> <span class="o">%</span>
+                                <span class="p">(</span><span class="s">&#39;[^\{\}&lt;&gt;]+&#39;</span><span class="p">,</span>
+                                 <span class="s">&#39;[^\{\}&lt;&gt;]+&#39;</span><span class="p">))</span>
+
+<div class="viewcode-block" id="tag_pattern2re_pattern"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.tag_pattern2re_pattern">[docs]</a><span class="k">def</span> <span class="nf">tag_pattern2re_pattern</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a tag pattern to a regular expression pattern.  A X{tag</span>
+<span class="sd">    pattern} is a modified version of a regular expression, designed</span>
+<span class="sd">    for matching sequences of tags.  The differences between regular</span>
+<span class="sd">    expression patterns and tag patterns are:</span>
+
+<span class="sd">        - In tag patterns, C{&#39;&lt;&#39;} and C{&#39;&gt;&#39;} act as parentheses; so </span>
+<span class="sd">          C{&#39;&lt;NN&gt;+&#39;} matches one or more repetitions of C{&#39;&lt;NN&gt;&#39;}, not</span>
+<span class="sd">          C{&#39;&lt;NN&#39;} followed by one or more repetitions of C{&#39;&gt;&#39;}.</span>
+<span class="sd">        - Whitespace in tag patterns is ignored.  So</span>
+<span class="sd">          C{&#39;&lt;DT&gt; | &lt;NN&gt;&#39;} is equivalant to C{&#39;&lt;DT&gt;|&lt;NN&gt;&#39;}</span>
+<span class="sd">        - In tag patterns, C{&#39;.&#39;} is equivalant to C{&#39;[^{}&lt;&gt;]&#39;}; so</span>
+<span class="sd">          C{&#39;&lt;NN.*&gt;&#39;} matches any single tag starting with C{&#39;NN&#39;}.</span>
+
+<span class="sd">    In particular, C{tag_pattern2re_pattern} performs the following</span>
+<span class="sd">    transformations on the given pattern:</span>
+
+<span class="sd">        - Replace &#39;.&#39; with &#39;[^&lt;&gt;{}]&#39;</span>
+<span class="sd">        - Remove any whitespace</span>
+<span class="sd">        - Add extra parens around &#39;&lt;&#39; and &#39;&gt;&#39;, to make &#39;&lt;&#39; and &#39;&gt;&#39; act</span>
+<span class="sd">          like parentheses.  E.g., so that in &#39;&lt;NN&gt;+&#39;, the &#39;+&#39; has scope</span>
+<span class="sd">          over the entire &#39;&lt;NN&gt;&#39;; and so that in &#39;&lt;NN|IN&gt;&#39;, the &#39;|&#39; has</span>
+<span class="sd">          scope over &#39;NN&#39; and &#39;IN&#39;, but not &#39;&lt;&#39; or &#39;&gt;&#39;.</span>
+<span class="sd">        - Check to make sure the resulting pattern is valid.</span>
+
+<span class="sd">    @type tag_pattern: C{string}</span>
+<span class="sd">    @param tag_pattern: The tag pattern to convert to a regular</span>
+<span class="sd">        expression pattern.</span>
+<span class="sd">    @raise ValueError: If C{tag_pattern} is not a valid tag pattern.</span>
+<span class="sd">        In particular, C{tag_pattern} should not include braces; and it</span>
+<span class="sd">        should not contain nested or mismatched angle-brackets.</span>
+<span class="sd">    @rtype: C{string}</span>
+<span class="sd">    @return: A regular expression pattern corresponding to</span>
+<span class="sd">        C{tag_pattern}. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Clean up the regular expression</span>
+    <span class="n">tag_pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;\s&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">)</span>
+    <span class="n">tag_pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;&lt;&#39;</span><span class="p">,</span> <span class="s">&#39;(&lt;(&#39;</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">)</span>
+    <span class="n">tag_pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;&gt;&#39;</span><span class="p">,</span> <span class="s">&#39;)&gt;)&#39;</span><span class="p">,</span> <span class="n">tag_pattern</span><span class="p">)</span>
+
+    <span class="c"># Check the regular expression</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">CHUNK_TAG_PATTERN</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad tag pattern: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">tag_pattern</span><span class="p">)</span>
+
+    <span class="c"># Replace &quot;.&quot; with CHUNK_TAG_CHAR.</span>
+    <span class="c"># We have to do this after, since it adds {}[]&lt;&gt;s, which would</span>
+    <span class="c"># confuse CHUNK_TAG_PATTERN.</span>
+    <span class="c"># PRE doesn&#39;t have lookback assertions, so reverse twice, and do</span>
+    <span class="c"># the pattern backwards (with lookahead assertions).  This can be</span>
+    <span class="c"># made much cleaner once we can switch back to SRE.</span>
+    <span class="k">def</span> <span class="nf">reverse_str</span><span class="p">(</span><span class="nb">str</span><span class="p">):</span>
+        <span class="n">lst</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+        <span class="n">lst</span><span class="o">.</span><span class="n">reverse</span><span class="p">()</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span>
+    <span class="n">tc_rev</span> <span class="o">=</span> <span class="n">reverse_str</span><span class="p">(</span><span class="n">ChunkString</span><span class="o">.</span><span class="n">CHUNK_TAG_CHAR</span><span class="p">)</span>
+    <span class="nb">reversed</span> <span class="o">=</span> <span class="n">reverse_str</span><span class="p">(</span><span class="n">tag_pattern</span><span class="p">)</span>
+    <span class="nb">reversed</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;\.(?!</span><span class="se">\\</span><span class="s">(</span><span class="se">\\\\</span><span class="s">)*($|[^</span><span class="se">\\</span><span class="s">]))&#39;</span><span class="p">,</span> <span class="n">tc_rev</span><span class="p">,</span> <span class="nb">reversed</span><span class="p">)</span>
+    <span class="n">tag_pattern</span> <span class="o">=</span> <span class="n">reverse_str</span><span class="p">(</span><span class="nb">reversed</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">tag_pattern</span>
+
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  RegexpChunkParser</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="RegexpChunkParser"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkParser">[docs]</a><span class="k">class</span> <span class="nc">RegexpChunkParser</span><span class="p">(</span><span class="n">ChunkParserI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A regular expression based chunk parser.  C{RegexpChunkParser} uses a</span>
+<span class="sd">    sequence of X{rules} to find chunks of a single type within a</span>
+<span class="sd">    text.  The chunking of the text is encoded using a C{ChunkString},</span>
+<span class="sd">    and each rule acts by modifying the chunking in the</span>
+<span class="sd">    C{ChunkString}.  The rules are all implemented using regular</span>
+<span class="sd">    expression matching and substitution.</span>
+
+<span class="sd">    The C{RegexpChunkRule} class and its subclasses (C{ChunkRule},</span>
+<span class="sd">    C{ChinkRule}, C{UnChunkRule}, C{MergeRule}, and C{SplitRule})</span>
+<span class="sd">    define the rules that are used by C{RegexpChunkParser}.  Each rule</span>
+<span class="sd">    defines an C{apply} method, which modifies the chunking encoded</span>
+<span class="sd">    by a given C{ChunkString}.</span>
+
+<span class="sd">    @type _rules: C{list} of C{RegexpChunkRule}</span>
+<span class="sd">    @ivar _rules: The list of rules that should be applied to a text.</span>
+<span class="sd">    @type _trace: C{int}</span>
+<span class="sd">    @ivar _trace: The default level of tracing.</span>
+<span class="sd">        </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rules</span><span class="p">,</span> <span class="n">chunk_node</span><span class="o">=</span><span class="s">&#39;NP&#39;</span><span class="p">,</span> <span class="n">top_node</span><span class="o">=</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{RegexpChunkParser}.</span>
+<span class="sd">        </span>
+<span class="sd">        @type rules: C{list} of C{RegexpChunkRule}</span>
+<span class="sd">        @param rules: The sequence of rules that should be used to</span>
+<span class="sd">            generate the chunking for a tagged text.</span>
+<span class="sd">        @type chunk_node: C{string}</span>
+<span class="sd">        @param chunk_node: The node value that should be used for</span>
+<span class="sd">            chunk subtrees.  This is typically a short string</span>
+<span class="sd">            describing the type of information contained by the chunk,</span>
+<span class="sd">            such as C{&quot;NP&quot;} for base noun phrases.</span>
+<span class="sd">        @type top_node: C{string}</span>
+<span class="sd">        @param top_node: The node value that should be used for the</span>
+<span class="sd">            top node of the chunk structure.</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            C{1} will generate normal tracing output; and C{2} or</span>
+<span class="sd">            higher will generate verbose tracing output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span> <span class="o">=</span> <span class="n">rules</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_chunk_node</span> <span class="o">=</span> <span class="n">chunk_node</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_top_node</span> <span class="o">=</span> <span class="n">top_node</span>
+
+    <span class="k">def</span> <span class="nf">_trace_apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunkstr</span><span class="p">,</span> <span class="n">verbose</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply each of this C{RegexpChunkParser}&#39;s rules to C{chunkstr}, in</span>
+<span class="sd">        turn.  Generate trace output between each rule.  If C{verbose}</span>
+<span class="sd">        is true, then generate verbose output.</span>
+
+<span class="sd">        @type chunkstr: C{ChunkString}</span>
+<span class="sd">        @param chunkstr: The chunk string to which each rule should be</span>
+<span class="sd">            applied.</span>
+<span class="sd">        @type verbose: C{boolean}</span>
+<span class="sd">        @param verbose: Whether output should be verbose.</span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">print</span> <span class="s">&#39;# Input:&#39;</span>
+        <span class="k">print</span> <span class="n">chunkstr</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">:</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">chunkstr</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&#39;#&#39;</span><span class="p">,</span> <span class="n">rule</span><span class="o">.</span><span class="n">descr</span><span class="p">()</span><span class="o">+</span><span class="s">&#39; (&#39;</span><span class="o">+</span><span class="sb">`rule`</span><span class="o">+</span><span class="s">&#39;):&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&#39;#&#39;</span><span class="p">,</span> <span class="n">rule</span><span class="o">.</span><span class="n">descr</span><span class="p">()</span><span class="o">+</span><span class="s">&#39;:&#39;</span>
+            <span class="k">print</span> <span class="n">chunkstr</span>
+        
+    <span class="k">def</span> <span class="nf">_notrace_apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunkstr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply each of this C{RegexpChunkParser}&#39;s rules to C{chunkstr}, in</span>
+<span class="sd">        turn.</span>
+
+<span class="sd">        @param chunkstr: The chunk string to which each rule should be</span>
+<span class="sd">            applied.</span>
+<span class="sd">        @type chunkstr: C{ChunkString}</span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">:</span>
+            <span class="n">rule</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">chunkstr</span><span class="p">)</span>
+        
+<div class="viewcode-block" id="RegexpChunkParser.parse"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk_struct</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @type chunk_struct: C{Tree}</span>
+<span class="sd">        @param chunk_struct: the chunk structure to be (further) chunked</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            C{1} will generate normal tracing output; and C{2} or</span>
+<span class="sd">            highter will generate verbose tracing output.  This value</span>
+<span class="sd">            overrides the trace level value that was given to the</span>
+<span class="sd">            constructor. </span>
+<span class="sd">        @rtype: C{Tree}</span>
+<span class="sd">        @return: a chunk structure that encodes the chunks in a given</span>
+<span class="sd">            tagged sentence.  A chunk is a non-overlapping linguistic</span>
+<span class="sd">            group, such as a noun phrase.  The set of chunks</span>
+<span class="sd">            identified in the chunk structure depends on the rules</span>
+<span class="sd">            used to define this C{RegexpChunkParser}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk_struct</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Warning: parsing empty text&#39;</span>
+            <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_top_node</span><span class="p">,</span> <span class="p">[])</span>
+        
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">chunk_struct</span><span class="o">.</span><span class="n">node</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">chunk_struct</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_top_node</span><span class="p">,</span> <span class="n">chunk_struct</span><span class="p">)</span>
+        
+        <span class="c"># Use the default trace value?</span>
+        <span class="k">if</span> <span class="n">trace</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span> <span class="n">trace</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span>
+
+        <span class="n">chunkstr</span> <span class="o">=</span> <span class="n">ChunkString</span><span class="p">(</span><span class="n">chunk_struct</span><span class="p">)</span>
+
+        <span class="c"># Apply the sequence of rules to the chunkstring.</span>
+        <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
+            <span class="n">verbose</span> <span class="o">=</span> <span class="p">(</span><span class="n">trace</span><span class="o">&gt;</span><span class="mi">1</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_trace_apply</span><span class="p">(</span><span class="n">chunkstr</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_notrace_apply</span><span class="p">(</span><span class="n">chunkstr</span><span class="p">)</span>
+
+        <span class="c"># Use the chunkstring to create a chunk structure.</span>
+        <span class="k">return</span> <span class="n">chunkstr</span><span class="o">.</span><span class="n">to_chunkstruct</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_chunk_node</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="RegexpChunkParser.rules"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpChunkParser.rules">[docs]</a>    <span class="k">def</span> <span class="nf">rules</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the sequence of rules used by C{RegexpChunkParser}.</span>
+<span class="sd">        @rtype: C{list} of C{RegexpChunkRule}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a concise string representation of this</span>
+<span class="sd">            C{RegexpChunkParser}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;RegexpChunkParser with </span><span class="si">%d</span><span class="s"> rules&gt;&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a verbose string representation of this C{RegexpChunkParser}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;RegexpChunkParser with </span><span class="si">%d</span><span class="s"> rules:</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">)</span>
+        <span class="n">margin</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">:</span>
+            <span class="n">margin</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">margin</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">rule</span><span class="o">.</span><span class="n">descr</span><span class="p">()))</span>
+        <span class="k">if</span> <span class="n">margin</span> <span class="o">&lt;</span> <span class="mi">35</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&quot;    %&quot;</span> <span class="o">+</span> <span class="sb">`-(margin+3)`</span> <span class="o">+</span> <span class="s">&quot;s</span><span class="si">%s</span><span class="se">\n</span><span class="s">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&quot;    </span><span class="si">%s</span><span class="se">\n</span><span class="s">      </span><span class="si">%s</span><span class="se">\n</span><span class="s">&quot;</span>
+        <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="n">format</span> <span class="o">%</span> <span class="p">(</span><span class="n">rule</span><span class="o">.</span><span class="n">descr</span><span class="p">(),</span> <span class="sb">`rule`</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">s</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Chunk Grammar</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="RegexpParser"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpParser">[docs]</a><span class="k">class</span> <span class="nc">RegexpParser</span><span class="p">(</span><span class="n">ChunkParserI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A grammar based chunk parser.  C{chunk.RegexpParser} uses a set of</span>
+<span class="sd">    regular expression patterns to specify the behavior of the parser.</span>
+<span class="sd">    The chunking of the text is encoded using a C{ChunkString}, and</span>
+<span class="sd">    each rule acts by modifying the chunking in the C{ChunkString}.</span>
+<span class="sd">    The rules are all implemented using regular expression matching</span>
+<span class="sd">    and substitution.</span>
+
+<span class="sd">    A grammar contains one or more clauses in the following form::</span>
+
+<span class="sd">     NP:</span>
+<span class="sd">       {&lt;DT|JJ&gt;}          # chunk determiners and adjectives</span>
+<span class="sd">       }&lt;[\.VI].*&gt;+{      # chink any tag beginning with V, I, or .</span>
+<span class="sd">       &lt;.*&gt;}{&lt;DT&gt;         # split a chunk at a determiner</span>
+<span class="sd">       &lt;DT|JJ&gt;{}&lt;NN.*&gt;    # merge chunk ending with det/adj</span>
+<span class="sd">                          # with one starting with a noun</span>
+
+<span class="sd">    The patterns of a clause are executed in order.  An earlier</span>
+<span class="sd">    pattern may introduce a chunk boundary that prevents a later</span>
+<span class="sd">    pattern from executing.  Sometimes an individual pattern will</span>
+<span class="sd">    match on multiple, overlapping extents of the input.  As with</span>
+<span class="sd">    regular expression substitution more generally, the chunker will</span>
+<span class="sd">    identify the first match possible, then continue looking for matches</span>
+<span class="sd">    after this one has ended.</span>
+
+<span class="sd">    The clauses of a grammar are also executed in order.  A cascaded</span>
+<span class="sd">    chunk parser is one having more than one clause.  The maximum depth</span>
+<span class="sd">    of a parse tree created by this chunk parser is the same as the</span>
+<span class="sd">    number of clauses in the grammar.</span>
+
+<span class="sd">    When tracing is turned on, the comment portion of a line is displayed</span>
+<span class="sd">    each time the corresponding pattern is applied.</span>
+
+<span class="sd">    @type _start: C{string}</span>
+<span class="sd">    @ivar _start: The start symbol of the grammar (the root node of</span>
+<span class="sd">        resulting trees)</span>
+<span class="sd">    @type _stages: C{int}</span>
+<span class="sd">    @ivar _stages: The list of parsing stages corresponding to the grammar</span>
+<span class="sd">        </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">top_node</span><span class="o">=</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">loop</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new chunk parser, from the given start state</span>
+<span class="sd">        and set of chunk patterns.</span>
+<span class="sd">        </span>
+<span class="sd">        @param grammar: The grammar, or a list of RegexpChunkParser objects</span>
+<span class="sd">        @type grammar: C{string} or C{list} of C{RegexpChunkParser}</span>
+<span class="sd">        @param top_node: The top node of the tree being created</span>
+<span class="sd">        @type top_node: C{string} or C{Nonterminal}</span>
+<span class="sd">        @param loop: The number of times to run through the patterns</span>
+<span class="sd">        @type loop: C{int}</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            C{1} will generate normal tracing output; and C{2} or</span>
+<span class="sd">            higher will generate verbose tracing output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stages</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_loop</span> <span class="o">=</span> <span class="n">loop</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_parse_grammar</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Make sur the grammar looks like it has the right type:</span>
+            <span class="n">type_err</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;Expected string or list of RegexpChunkParsers &#39;</span>
+                        <span class="s">&#39;for the grammar.&#39;</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span> <span class="n">grammar</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+            <span class="k">except</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">type_err</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">grammar</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">RegexpChunkParser</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">type_err</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stages</span> <span class="o">=</span> <span class="n">grammar</span>
+
+    <span class="k">def</span> <span class="nf">_parse_grammar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function for __init__: parse the grammar if it is a</span>
+<span class="sd">        string.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">lhs</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">grammar</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            
+            <span class="c"># New stage begins if there&#39;s an unescaped &#39;:&#39;</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">&#39;(?P&lt;nonterminal&gt;(</span><span class="se">\\</span><span class="s">.|[^:])*)(:(?P&lt;rule&gt;.*))&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+                <span class="c"># Record the stage that we just completed.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_add_stage</span><span class="p">(</span><span class="n">rules</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+                <span class="c"># Start a new stage.</span>
+                <span class="n">lhs</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;nonterminal&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="n">rules</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;rule&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+            <span class="c"># Skip blank &amp; comment-only lines</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span> <span class="ow">or</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">):</span> <span class="k">continue</span>
+
+            <span class="c"># Add the rule</span>
+            <span class="n">rules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">RegexpChunkRule</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+
+        <span class="c"># Record the final stage</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_add_stage</span><span class="p">(</span><span class="n">rules</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_add_stage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rules</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function for __init__: add a new stage to the parser.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">rules</span> <span class="o">!=</span> <span class="p">[]:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">lhs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Expected stage marker (eg NP:)&#39;</span><span class="p">)</span>
+            <span class="n">parser</span> <span class="o">=</span> <span class="n">RegexpChunkParser</span><span class="p">(</span><span class="n">rules</span><span class="p">,</span> <span class="n">chunk_node</span><span class="o">=</span><span class="n">lhs</span><span class="p">,</span>
+                                       <span class="n">top_node</span><span class="o">=</span><span class="n">top_node</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stages</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">parser</span><span class="p">)</span>
+
+<div class="viewcode-block" id="RegexpParser.parse"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.RegexpParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunk_struct</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply the chunk parser to this input.</span>
+<span class="sd">        </span>
+<span class="sd">        @type chunk_struct: C{Tree}</span>
+<span class="sd">        @param chunk_struct: the chunk structure to be (further) chunked</span>
+<span class="sd">            (this tree is modified, and is also returned)</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            C{1} will generate normal tracing output; and C{2} or</span>
+<span class="sd">            highter will generate verbose tracing output.  This value</span>
+<span class="sd">            overrides the trace level value that was given to the</span>
+<span class="sd">            constructor. </span>
+<span class="sd">        @return: the chunked output.</span>
+<span class="sd">        @rtype: C{Tree}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">trace</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span> <span class="n">trace</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_loop</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">parser</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stages</span><span class="p">:</span>
+                <span class="n">chunk_struct</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">chunk_struct</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">chunk_struct</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a concise string representation of this C{chunk.RegexpParser}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;chunk.RegexpParser with </span><span class="si">%d</span><span class="s"> stages&gt;&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stages</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a verbose string representation of this</span>
+<span class="sd">            C{RegexpChunkParser}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;chunk.RegexpParser with </span><span class="si">%d</span><span class="s"> stages:</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stages</span><span class="p">)</span>
+        <span class="n">margin</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">parser</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stages</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="n">parser</span><span class="o">.</span><span class="n">__str__</span><span class="p">()</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
+        <span class="k">return</span> <span class="n">s</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Demonstration code</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="demo_eval"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.demo_eval">[docs]</a><span class="k">def</span> <span class="nf">demo_eval</span><span class="p">(</span><span class="n">chunkparser</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Demonstration code for evaluating a chunk parser, using a</span>
+<span class="sd">    C{ChunkScore}.  This function assumes that C{text} contains one</span>
+<span class="sd">    sentence per line, and that each sentence has the form expected by</span>
+<span class="sd">    C{tree.chunk}.  It runs the given chunk parser on each sentence in</span>
+<span class="sd">    the text, and scores the result.  It prints the final score</span>
+<span class="sd">    (precision, recall, and f-measure); and reports the set of chunks</span>
+<span class="sd">    that were missed and the set of chunks that were incorrect.  (At</span>
+<span class="sd">    most 10 missing chunks and 10 incorrect chunks are reported).</span>
+
+<span class="sd">    @param chunkparser: The chunkparser to be tested</span>
+<span class="sd">    @type chunkparser: C{ChunkParserI}</span>
+<span class="sd">    @param text: The chunked tagged text that should be used for</span>
+<span class="sd">        evaluation.</span>
+<span class="sd">    @type text: C{string}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">chunk</span>
+    <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+
+    <span class="c"># Evaluate our chunk parser.</span>
+    <span class="n">chunkscore</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">ChunkScore</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):</span>
+        <span class="k">print</span> <span class="n">sentence</span>
+        <span class="n">sentence</span> <span class="o">=</span> <span class="n">sentence</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sentence</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="n">gold</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">tagstr2tree</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">gold</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+        <span class="n">test</span> <span class="o">=</span> <span class="n">chunkparser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">),</span> <span class="n">trace</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">chunkscore</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">gold</span><span class="p">,</span> <span class="n">test</span><span class="p">)</span>
+        <span class="k">print</span>
+
+    <span class="k">print</span> <span class="s">&#39;/&#39;</span><span class="o">+</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">75</span><span class="p">)</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span>
+    <span class="k">print</span> <span class="s">&#39;Scoring&#39;</span><span class="p">,</span> <span class="n">chunkparser</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">77</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;Precision: </span><span class="si">%5.1f%%</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">chunkscore</span><span class="o">.</span><span class="n">precision</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">),</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">4</span><span class="p">,</span>
+    <span class="k">print</span> <span class="s">&#39;Recall: </span><span class="si">%5.1f%%</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">chunkscore</span><span class="o">.</span><span class="n">recall</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">),</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">6</span><span class="p">,</span>
+    <span class="k">print</span> <span class="s">&#39;F-Measure: </span><span class="si">%5.1f%%</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">chunkscore</span><span class="o">.</span><span class="n">f_measure</span><span class="p">()</span><span class="o">*</span><span class="mi">100</span><span class="p">)</span>
+    
+
+    <span class="c"># Missed chunks.</span>
+    <span class="k">if</span> <span class="n">chunkscore</span><span class="o">.</span><span class="n">missed</span><span class="p">():</span>
+        <span class="k">print</span> <span class="s">&#39;Missed:&#39;</span>
+        <span class="n">missed</span> <span class="o">=</span> <span class="n">chunkscore</span><span class="o">.</span><span class="n">missed</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">missed</span><span class="p">[:</span><span class="mi">10</span><span class="p">]:</span>
+            <span class="k">print</span> <span class="s">&#39;  &#39;</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">__str__</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunk</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunkscore</span><span class="o">.</span><span class="n">missed</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;  ...&#39;</span>
+
+    <span class="c"># Incorrect chunks.</span>
+    <span class="k">if</span> <span class="n">chunkscore</span><span class="o">.</span><span class="n">incorrect</span><span class="p">():</span>
+        <span class="k">print</span> <span class="s">&#39;Incorrect:&#39;</span>
+        <span class="n">incorrect</span> <span class="o">=</span> <span class="n">chunkscore</span><span class="o">.</span><span class="n">incorrect</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">incorrect</span><span class="p">[:</span><span class="mi">10</span><span class="p">]:</span>
+            <span class="k">print</span> <span class="s">&#39;  &#39;</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">__str__</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunk</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunkscore</span><span class="o">.</span><span class="n">incorrect</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;  ...&#39;</span>
+    
+    <span class="k">print</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="o">+</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">75</span><span class="p">)</span><span class="o">+</span><span class="s">&#39;/&#39;</span>
+    <span class="k">print</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.regexp.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration for the C{RegexpChunkParser} class.  A single text is</span>
+<span class="sd">    parsed with four different chunk parsers, using a variety of rules</span>
+<span class="sd">    and strategies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">Tree</span>
+
+    <span class="n">text</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s">    [ the/DT little/JJ cat/NN ] sat/VBD on/IN [ the/DT mat/NN ] ./.</span>
+<span class="s">    [ John/NNP ] saw/VBD [the/DT cats/NNS] [the/DT dog/NN] chased/VBD ./.</span>
+<span class="s">    [ John/NNP ] thinks/VBZ [ Mary/NN ] saw/VBD [ the/DT cat/NN ] sit/VB on/IN [ the/DT mat/NN ]./.</span>
+<span class="s">    &quot;&quot;&quot;</span>
+
+    <span class="k">print</span> <span class="s">&#39;*&#39;</span><span class="o">*</span><span class="mi">75</span>
+    <span class="k">print</span> <span class="s">&#39;Evaluation text:&#39;</span>
+    <span class="k">print</span> <span class="n">text</span>
+    <span class="k">print</span> <span class="s">&#39;*&#39;</span><span class="o">*</span><span class="mi">75</span>
+    <span class="k">print</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP:                   # NP stage</span>
+<span class="s">      {&lt;DT&gt;?&lt;JJ&gt;*&lt;NN&gt;}    # chunk determiners, adjectives and nouns</span>
+<span class="s">      {&lt;NNP&gt;+}            # chunk proper nouns</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="n">chunk</span><span class="o">.</span><span class="n">demo_eval</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP:</span>
+<span class="s">      {&lt;.*&gt;}              # start by chunking each tag</span>
+<span class="s">      }&lt;[\.VI].*&gt;+{       # unchunk any verbs, prepositions or periods</span>
+<span class="s">      &lt;DT|JJ&gt;{}&lt;NN.*&gt;     # merge det/adj with nouns</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="n">chunk</span><span class="o">.</span><span class="n">demo_eval</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP: {&lt;DT&gt;?&lt;JJ&gt;*&lt;NN&gt;}    # chunk determiners, adjectives and nouns</span>
+<span class="s">    VP: {&lt;TO&gt;?&lt;VB.*&gt;}       # VP = verb words</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="n">chunk</span><span class="o">.</span><span class="n">demo_eval</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP: {&lt;.*&gt;*}             # start by chunking everything</span>
+<span class="s">        }&lt;[\.VI].*&gt;+{       # chink any verbs, prepositions or periods</span>
+<span class="s">        &lt;.*&gt;}{&lt;DT&gt;          # separate on determiners</span>
+<span class="s">    PP: {&lt;IN&gt;&lt;NP&gt;}          # PP = preposition + noun phrase</span>
+<span class="s">    VP: {&lt;VB.*&gt;&lt;NP|PP&gt;*}    # VP = verb words + NPs and PPs</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="n">chunk</span><span class="o">.</span><span class="n">demo_eval</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+<span class="c"># Evaluation</span>
+
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">conll2000</span>
+
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Demonstration of empty grammar:&quot;</span>
+    
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="s">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">chunk</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">conll2000</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s">&#39;test.txt&#39;</span><span class="p">,</span>
+                                                     <span class="n">chunk_types</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;NP&#39;</span><span class="p">,)))</span>
+
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Demonstration of accuracy evaluation using CoNLL tags:&quot;</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP:</span>
+<span class="s">      {&lt;.*&gt;}              # start by chunking each tag</span>
+<span class="s">      }&lt;[\.VI].*&gt;+{       # unchunk any verbs, prepositions or periods</span>
+<span class="s">      &lt;DT|JJ&gt;{}&lt;NN.*&gt;     # merge det/adj with nouns</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">chunk</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span> <span class="n">conll2000</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s">&#39;test.txt&#39;</span><span class="p">)[:</span><span class="mi">5</span><span class="p">])</span>
+
+    <span class="k">print</span>
+    <span class="k">print</span> <span class="s">&quot;Demonstration of tagged token input&quot;</span>
+    
+    <span class="n">grammar</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    NP: {&lt;.*&gt;*}             # start by chunking everything</span>
+<span class="s">        }&lt;[\.VI].*&gt;+{       # chink any verbs, prepositions or periods</span>
+<span class="s">        &lt;.*&gt;}{&lt;DT&gt;          # separate on determiners</span>
+<span class="s">    PP: {&lt;IN&gt;&lt;NP&gt;}          # PP = preposition + noun phrase</span>
+<span class="s">    VP: {&lt;VB.*&gt;&lt;NP|PP&gt;*}    # VP = verb words + NPs and PPs</span>
+<span class="s">    &quot;&quot;&quot;</span>
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">RegexpParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">cp</span><span class="o">.</span><span class="n">parse</span><span class="p">([(</span><span class="s">&quot;the&quot;</span><span class="p">,</span><span class="s">&quot;DT&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s">&quot;little&quot;</span><span class="p">,</span><span class="s">&quot;JJ&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s">&quot;cat&quot;</span><span class="p">,</span> <span class="s">&quot;NN&quot;</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s">&quot;sat&quot;</span><span class="p">,</span> <span class="s">&quot;VBD&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s">&quot;on&quot;</span><span class="p">,</span> <span class="s">&quot;IN&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s">&quot;the&quot;</span><span class="p">,</span> <span class="s">&quot;DT&quot;</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s">&quot;mat&quot;</span><span class="p">,</span> <span class="s">&quot;NN&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s">&quot;.&quot;</span><span class="p">,</span> <span class="s">&quot;.&quot;</span><span class="p">)])</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../chunk.html" >nltk.chunk</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,312 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.parse.malt &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.parse" href="../parse.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" accesskey="U">nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.parse.malt</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Interface to MaltParser </span>
+<span class="c">#</span>
+<span class="c"># Author: Dan Garrette &lt;dhgarrette@gmail.com&gt;</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">add</span>
+
+<span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="n">ParserI</span>
+<span class="kn">from</span> <span class="nn">dependencygraph</span> <span class="kn">import</span> <span class="n">DependencyGraph</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">find_binary</span>
+
+<div class="viewcode-block" id="MaltParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser">[docs]</a><span class="k">class</span> <span class="nc">MaltParser</span><span class="p">(</span><span class="n">ParserI</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tagger</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config_malt</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mco</span> <span class="o">=</span> <span class="s">&#39;malt_temp&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trained</span> <span class="o">=</span> <span class="bp">False</span>
+        
+        <span class="k">if</span> <span class="n">tagger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tagger</span> <span class="o">=</span> <span class="n">tagger</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tagger</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">tag</span><span class="o">.</span><span class="n">RegexpTagger</span><span class="p">(</span>
+            <span class="p">[(</span><span class="s">r&#39;^-?[0-9]+(.[0-9]+)?$&#39;</span><span class="p">,</span> <span class="s">&#39;CD&#39;</span><span class="p">),</span>   <span class="c"># cardinal numbers</span>
+             <span class="p">(</span><span class="s">r&#39;(The|the|A|a|An|an)$&#39;</span><span class="p">,</span> <span class="s">&#39;AT&#39;</span><span class="p">),</span>   <span class="c"># articles</span>
+             <span class="p">(</span><span class="s">r&#39;.*able$&#39;</span><span class="p">,</span> <span class="s">&#39;JJ&#39;</span><span class="p">),</span>                <span class="c"># adjectives</span>
+             <span class="p">(</span><span class="s">r&#39;.*ness$&#39;</span><span class="p">,</span> <span class="s">&#39;NN&#39;</span><span class="p">),</span>                <span class="c"># nouns formed from adjectives</span>
+             <span class="p">(</span><span class="s">r&#39;.*ly$&#39;</span><span class="p">,</span> <span class="s">&#39;RB&#39;</span><span class="p">),</span>                  <span class="c"># adverbs</span>
+             <span class="p">(</span><span class="s">r&#39;.*s$&#39;</span><span class="p">,</span> <span class="s">&#39;NNS&#39;</span><span class="p">),</span>                  <span class="c"># plural nouns</span>
+             <span class="p">(</span><span class="s">r&#39;.*ing$&#39;</span><span class="p">,</span> <span class="s">&#39;VBG&#39;</span><span class="p">),</span>                <span class="c"># gerunds</span>
+             <span class="p">(</span><span class="s">r&#39;.*ed$&#39;</span><span class="p">,</span> <span class="s">&#39;VBD&#39;</span><span class="p">),</span>                 <span class="c"># past tense verbs</span>
+             <span class="p">(</span><span class="s">r&#39;.*&#39;</span><span class="p">,</span> <span class="s">&#39;NN&#39;</span><span class="p">)</span>                      <span class="c"># nouns (default)</span>
+             <span class="p">])</span>
+    
+<div class="viewcode-block" id="MaltParser.config_malt"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.config_malt">[docs]</a>    <span class="k">def</span> <span class="nf">config_malt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">bin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Configure NLTK&#39;s interface to the C{malt} package.  This</span>
+<span class="sd">        searches for a directory containing the malt jar</span>
+<span class="sd">        </span>
+<span class="sd">        @param bin: The full path to the C{malt} binary.  If not</span>
+<span class="sd">            specified, then nltk will search the system for a C{malt}</span>
+<span class="sd">            binary; and if one is not found, it will raise a</span>
+<span class="sd">            C{LookupError} exception.</span>
+<span class="sd">        @type bin: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c">#: A list of directories that should be searched for the malt</span>
+        <span class="c">#: executables.  This list is used by L{config_malt} when searching</span>
+        <span class="c">#: for the malt executables.</span>
+        <span class="n">_malt_path</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;.&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/lib/malt-1*&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/share/malt-1*&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/local/bin&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/local/malt-1*&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/local/bin/malt-1*&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/local/malt-1*&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;/usr/local/share/malt-1*&#39;</span><span class="p">]</span>
+        
+        <span class="c"># Expand wildcards in _malt_path:</span>
+        <span class="n">malt_path</span> <span class="o">=</span> <span class="nb">reduce</span><span class="p">(</span><span class="n">add</span><span class="p">,</span> <span class="nb">map</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">,</span> <span class="n">_malt_path</span><span class="p">))</span>
+
+        <span class="c"># Find the malt binary.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_malt_bin</span> <span class="o">=</span> <span class="n">find_binary</span><span class="p">(</span><span class="s">&#39;malt.jar&#39;</span><span class="p">,</span> <span class="nb">bin</span><span class="p">,</span>
+            <span class="n">searchpath</span><span class="o">=</span><span class="n">malt_path</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;MALTPARSERHOME&#39;</span><span class="p">],</span>
+            <span class="n">url</span><span class="o">=</span><span class="s">&#39;http://w3.msi.vxu.se/~jha/maltparser/index.html&#39;</span><span class="p">,</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MaltParser.parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use MaltParser to parse a sentence. Takes a sentence as a list of</span>
+<span class="sd">        words; it will be automatically tagged with this MaltParser instance&#39;s</span>
+<span class="sd">        tagger.</span>
+<span class="sd">        </span>
+<span class="sd">        @param sentence: Input sentence to parse</span>
+<span class="sd">        @type sentence: L{list} of L{string}</span>
+<span class="sd">        @return: C{DependencyGraph} the dependency graph representation of the sentence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">taggedwords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagger</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagged_parse</span><span class="p">(</span><span class="n">taggedwords</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MaltParser.raw_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.raw_parse">[docs]</a>    <span class="k">def</span> <span class="nf">raw_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use MaltParser to parse a sentence. Takes a sentence as a string;</span>
+<span class="sd">        before parsing, it will be automatically tokenized and tagged with this</span>
+<span class="sd">        MaltParser instance&#39;s tagger.</span>
+<span class="sd">        </span>
+<span class="sd">        @param sentence: Input sentence to parse</span>
+<span class="sd">        @type sentence: L{string}</span>
+<span class="sd">        @return: C{DependencyGraph} the dependency graph representation of the sentence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">words</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+      </div>
+<div class="viewcode-block" id="MaltParser.tagged_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.tagged_parse">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use MaltParser to parse a sentence. Takes a sentence as a list of</span>
+<span class="sd">        (word, tag) tuples; the sentence must have already been tokenized and</span>
+<span class="sd">        tagged.</span>
+<span class="sd">        </span>
+<span class="sd">        @param sentence: Input sentence to parse</span>
+<span class="sd">        @type sentence: L{list} of (word, tag) L{tuple}s.</span>
+<span class="sd">        @return: C{DependencyGraph} the dependency graph representation of the sentence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_malt_bin</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&quot;MaltParser location is not configured.  Call config_malt() first.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trained</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&quot;Parser has not been trained.  Call train() first.&quot;</span><span class="p">)</span>
+            
+        <span class="n">input_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> <span class="s">&#39;malt_input.conll&#39;</span><span class="p">)</span>
+        <span class="n">output_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> <span class="s">&#39;malt_output.conll&#39;</span><span class="p">)</span>
+        
+        <span class="n">execute_string</span> <span class="o">=</span> <span class="s">&#39;java -jar </span><span class="si">%s</span><span class="s"> -w </span><span class="si">%s</span><span class="s"> -c </span><span class="si">%s</span><span class="s"> -i </span><span class="si">%s</span><span class="s"> -o </span><span class="si">%s</span><span class="s"> -m parse&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="n">execute_string</span> <span class="o">+=</span> <span class="s">&#39; &gt; &#39;</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> <span class="s">&quot;malt.out&quot;</span><span class="p">)</span>
+        
+        <span class="n">f</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">input_file</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span><span class="n">tag</span><span class="p">))</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sentence</span><span class="p">):</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\t</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> 
+                        <span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="s">&#39;_&#39;</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="s">&#39;_&#39;</span><span class="p">,</span> <span class="s">&#39;0&#39;</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">,</span> <span class="s">&#39;_&#39;</span><span class="p">,</span> <span class="s">&#39;_&#39;</span><span class="p">))</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        
+            <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;java&#39;</span><span class="p">,</span> <span class="s">&#39;-jar </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_malt_bin</span><span class="p">,</span> <span class="s">&#39;-w </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> 
+                   <span class="s">&#39;-c </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">mco</span><span class="p">,</span> <span class="s">&#39;-i </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">input_file</span><span class="p">,</span> <span class="s">&#39;-o </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">output_file</span><span class="p">,</span> <span class="s">&#39;-m parse&#39;</span><span class="p">]</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;parse&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+            
+            <span class="k">return</span> <span class="n">DependencyGraph</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">f</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    </div>
+<div class="viewcode-block" id="MaltParser.train"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">depgraphs</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Train MaltParser from a list of C{DependencyGraph}s</span>
+<span class="sd">        </span>
+<span class="sd">        @param depgraphs: C{list} of C{DependencyGraph}s for training input data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">input_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span><span class="s">&#39;malt_train.conll&#39;</span><span class="p">)</span>
+
+        <span class="n">f</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">input_file</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">dg</span><span class="o">.</span><span class="n">to_conll</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="k">for</span> <span class="n">dg</span> <span class="ow">in</span> <span class="n">depgraphs</span><span class="p">]))</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">f</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            
+        <span class="bp">self</span><span class="o">.</span><span class="n">train_from_file</span><span class="p">(</span><span class="n">input_file</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MaltParser.train_from_file"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.MaltParser.train_from_file">[docs]</a>    <span class="k">def</span> <span class="nf">train_from_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conll_file</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Train MaltParser from a file</span>
+<span class="sd">        </span>
+<span class="sd">        @param conll_file: C{str} for the filename of the training input data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_malt_bin</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&quot;MaltParser location is not configured.  Call config_malt() first.&quot;</span><span class="p">)</span>
+
+        <span class="c"># If conll_file is a ZipFilePathPointer, then we need to do some extra massaging</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">conll_file</span><span class="p">,</span> <span class="s">&#39;zipfile&#39;</span><span class="p">):</span>
+            <span class="n">zip_conll_file</span> <span class="o">=</span> <span class="n">conll_file</span>
+            <span class="n">conll_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span><span class="s">&#39;malt_train.conll&#39;</span><span class="p">)</span>
+            <span class="n">conll_str</span> <span class="o">=</span> <span class="n">zip_conll_file</span><span class="o">.</span><span class="n">open</span><span class="p">()</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">conll_file</span><span class="p">,</span><span class="s">&#39;w&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">conll_str</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>        
+
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;java&#39;</span><span class="p">,</span> <span class="s">&#39;-jar </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_malt_bin</span><span class="p">,</span> <span class="s">&#39;-w </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> 
+               <span class="s">&#39;-c </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">mco</span><span class="p">,</span> <span class="s">&#39;-i </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">conll_file</span><span class="p">,</span> <span class="s">&#39;-m learn&#39;</span><span class="p">]</span>
+        
+<span class="c">#        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,</span>
+<span class="c">#                             stderr=subprocess.STDOUT,</span>
+<span class="c">#                             stdin=subprocess.PIPE)</span>
+<span class="c">#        (stdout, stderr) = p.communicate()</span>
+                
+        <span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;train&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trained</span> <span class="o">=</span> <span class="bp">True</span>
+        </div>
+    <span class="k">def</span> <span class="nf">_execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">,</span> <span class="nb">type</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">verbose</span><span class="p">:</span> 
+            <span class="n">temp_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> <span class="s">&#39;&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39; &gt; </span><span class="si">%s</span><span class="s">malt_</span><span class="si">%s</span><span class="s">.out 2&gt; </span><span class="si">%s</span><span class="s">malt_</span><span class="si">%s</span><span class="s">.err&#39;</span> <span class="o">%</span> <span class="p">((</span><span class="n">temp_dir</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span><span class="o">*</span><span class="mi">2</span><span class="p">))</span>
+        <span class="n">malt_exit</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cmd</span><span class="p">))</span>
+
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.malt.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="n">dg1</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="s">&quot;&quot;&quot;1    John    _    NNP   _    _    2    SUBJ    _    _</span>
+<span class="s">                             2    sees    _    VB    _    _    0    ROOT    _    _</span>
+<span class="s">                             3    a       _    DT    _    _    4    SPEC    _    _</span>
+<span class="s">                             4    dog     _    NN    _    _    2    OBJ     _    _</span>
+<span class="s">                          &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">dg2</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="s">&quot;&quot;&quot;1    John    _    NNP   _    _    2    SUBJ    _    _</span>
+<span class="s">                             2    walks   _    VB    _    _    0    ROOT    _    _</span>
+<span class="s">                          &quot;&quot;&quot;</span><span class="p">)</span>
+
+    <span class="n">verbose</span> <span class="o">=</span> <span class="bp">False</span>
+    
+    <span class="n">maltParser</span> <span class="o">=</span> <span class="n">MaltParser</span><span class="p">()</span>
+    <span class="n">maltParser</span><span class="o">.</span><span class="n">train</span><span class="p">([</span><span class="n">dg1</span><span class="p">,</span><span class="n">dg2</span><span class="p">],</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="n">maltParser</span><span class="o">.</span><span class="n">raw_parse</span><span class="p">(</span><span class="s">&#39;John sees Mary&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">maltParser</span><span class="o">.</span><span class="n">raw_parse</span><span class="p">(</span><span class="s">&#39;a man runs&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+    </div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" >nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

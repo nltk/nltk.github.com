@@ -1,0 +1,1113 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.test.doctest_driver &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.test.doctest_driver</h1><div class="highlight"><pre>
+<span class="c">#!/usr/bin/env python</span>
+<span class="c"># A Test Driver for Doctest</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#</span>
+<span class="c"># Provided as-is; use at your own risk; no warranty; no promises; enjoy!</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A driver for testing interactive python examples in text files and</span>
+<span class="sd">docstrings.  This doctest driver performs three functions:</span>
+
+<span class="sd">  - checking: Runs the interactive examples, and reports any examples</span>
+<span class="sd">    whose actual output does not match their expected output.</span>
+
+<span class="sd">  - debugging: Runs the interactive examples, and enters the debugger</span>
+<span class="sd">    whenever an example&#39;s actual output does not match its expected</span>
+<span class="sd">    output.</span>
+
+<span class="sd">  - updating: Runs the interactive examples, and replaces the expected</span>
+<span class="sd">    output with the actual output whenever they don&#39;t match.  This is</span>
+<span class="sd">    used to update the output for new or out-of-date examples.</span>
+
+<span class="sd">A number of other flags can be given; call the driver with the</span>
+<span class="sd">`--help` option for a complete list.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">os.path</span><span class="o">,</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">unittest</span><span class="o">,</span> <span class="nn">pdb</span><span class="o">,</span> <span class="nn">bdb</span><span class="o">,</span> <span class="nn">re</span><span class="o">,</span> <span class="nn">tempfile</span><span class="o">,</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">from</span> <span class="nn">doctest</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">doctest</span> <span class="kn">import</span> <span class="n">DocTestCase</span><span class="p">,</span> <span class="n">DocTestRunner</span>
+<span class="kn">from</span> <span class="nn">optparse</span> <span class="kn">import</span> <span class="n">OptionParser</span><span class="p">,</span> <span class="n">OptionGroup</span><span class="p">,</span> <span class="n">Option</span>
+<span class="kn">from</span> <span class="nn">StringIO</span> <span class="kn">import</span> <span class="n">StringIO</span>
+<span class="kn">import</span> <span class="nn">coverage</span>
+
+<span class="c"># Use local NLTK.</span>
+<span class="n">root_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39;..&#39;</span><span class="p">,</span> <span class="s">&#39;..&#39;</span><span class="p">))</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">root_dir</span><span class="p">)</span>
+
+
+<span class="n">__version__</span> <span class="o">=</span> <span class="s">&#39;0.1&#39;</span>
+
+<span class="c"># Compiler flags: define &#39;/&#39; to do float division, even for ints.</span>
+<span class="kn">import</span> <span class="nn">__future__</span>
+<span class="n">COMPILER_FLAGS</span> <span class="o">=</span> <span class="n">__future__</span><span class="o">.</span><span class="n">division</span><span class="o">.</span><span class="n">compiler_flag</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Monkey-Patch to fix Doctest</span>
+<span class="c">###########################################################################</span>
+
+<span class="c"># The original version of this class has a bug that interferes with</span>
+<span class="c"># code coverage functions.  See: http://tinyurl.com/2htvfx</span>
+<span class="k">class</span> <span class="nc">_OutputRedirectingPdb</span><span class="p">(</span><span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__out</span> <span class="o">=</span> <span class="n">out</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__debugger_used</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">set_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+        <span class="bp">self</span><span class="o">.</span><span class="n">__debugger_used</span> <span class="o">=</span> <span class="bp">True</span> 
+        <span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> 
+    
+    <span class="k">def</span> <span class="nf">set_continue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+        <span class="c"># Calling set_continue unconditionally would break unit test coverage </span>
+        <span class="c"># reporting, as Bdb.set_continue calls sys.settrace(None). </span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__debugger_used</span><span class="p">:</span> 
+            <span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="o">.</span><span class="n">set_continue</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> 
+
+    <span class="k">def</span> <span class="nf">trace_dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="n">save_stdout</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__out</span>
+        <span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="o">.</span><span class="n">trace_dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">save_stdout</span>
+
+<span class="c"># Do the actual monkey-patching.</span>
+<span class="kn">import</span> <span class="nn">doctest</span>
+<span class="n">doctest</span><span class="o">.</span><span class="n">_OutputRedirectingPdb</span> <span class="o">=</span> <span class="n">_OutputRedirectingPdb</span>
+        
+<span class="c">###########################################################################</span>
+<span class="c"># Utility Functions</span>
+<span class="c">###########################################################################</span>
+<span class="c"># These are copied from doctest; I don&#39;t import them because they&#39;re</span>
+<span class="c"># private.  See the versions in doctest for docstrings &amp; comments.</span>
+
+<span class="k">def</span> <span class="nf">_exception_traceback</span><span class="p">(</span><span class="n">exc_info</span><span class="p">):</span>
+    <span class="n">excout</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+    <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span> <span class="o">=</span> <span class="n">exc_info</span>
+    <span class="n">traceback</span><span class="o">.</span><span class="n">print_exception</span><span class="p">(</span><span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">excout</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">excout</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+
+<span class="k">class</span> <span class="nc">_SpoofOut</span><span class="p">(</span><span class="n">StringIO</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">getvalue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">StringIO</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">result</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">):</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;softspace&quot;</span><span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">softspace</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span> <span class="nf">truncate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>   <span class="n">size</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">StringIO</span><span class="o">.</span><span class="n">truncate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;softspace&quot;</span><span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">softspace</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># MyParser</span>
+<span class="c">###########################################################################</span>
+
+<div class="viewcode-block" id="MyDocTestParser"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestParser">[docs]</a><span class="k">class</span> <span class="nc">MyDocTestParser</span><span class="p">(</span><span class="n">DocTestParser</span><span class="p">):</span>
+    <span class="n">PYLISTING_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;</span>
+<span class="s">       (^\.\.[ ]*pylisting::.*\n         # directive</span>
+<span class="s">            (?:[ ]*\n|                   # blank line or</span>
+<span class="s">               [ ]+.*\n)*)               #   indented line</span>
+<span class="s">        &#39;&#39;&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="o">+</span><span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span>
+
+    <span class="c"># [xx] not used: split-pysrc_into_statements is used instead!</span>
+    <span class="n">PYLISTING_EX</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;</span>
+<span class="s">        (?:^[^ ].*\n                       # non-blank line</span>
+<span class="s">            (?:[ ]*\n |                    # blank line or</span>
+<span class="s">               [ ]+.*\n)*)                 #   indented line</span>
+<span class="s">        &#39;&#39;&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="o">+</span><span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span>
+
+    <span class="n">DOCTEST_OPTION_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;</span>
+<span class="s">        ^[ ]*:\w+:.*\n                     # :option:</span>
+<span class="s">        (.*\S.*\n)*                          # non-blank lines</span>
+<span class="s">        &#39;&#39;&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="o">+</span><span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MyDocTestParser.parse"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">string</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;&lt;string&gt;&#39;</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">lineno_offset</span> <span class="o">=</span> <span class="mi">0</span>
+        
+        <span class="k">for</span> <span class="n">piecenum</span><span class="p">,</span> <span class="n">piece</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PYLISTING_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">string</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">example</span> <span class="ow">in</span> <span class="n">DocTestParser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">piece</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">example</span><span class="p">,</span> <span class="n">Example</span><span class="p">):</span>
+                    <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+=</span> <span class="n">lineno_offset</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
+
+                <span class="c"># If we&#39;re inside a pylisting, then convert any</span>
+                <span class="c"># subpieces that are not marked by python prompts into</span>
+                <span class="c"># examples with an expected output of &#39;&#39;.</span>
+                <span class="k">elif</span> <span class="n">piecenum</span><span class="o">%</span><span class="mi">2</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">example</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">example</span><span class="p">[:</span><span class="n">example</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)])</span>
+                    <span class="c"># order matters here:</span>
+                    <span class="n">pysrc</span> <span class="o">=</span> <span class="n">example</span><span class="p">[</span><span class="n">example</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):]</span>
+                    <span class="n">pysrc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">DOCTEST_OPTION_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">pysrc</span><span class="p">)</span>
+                    <span class="n">pysrc</span> <span class="o">=</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">dedent</span><span class="p">(</span><span class="n">pysrc</span><span class="p">)</span>
+
+                    <span class="c">#for ex in self.PYLISTING_EX.findall(pysrc):</span>
+                    <span class="k">for</span> <span class="n">ex</span> <span class="ow">in</span> <span class="n">split_pysrc_into_statements</span><span class="p">(</span><span class="n">pysrc</span><span class="p">):</span>
+                        <span class="n">source</span> <span class="o">=</span> <span class="n">ex</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">source</span><span class="p">:</span> <span class="k">continue</span>
+                        <span class="n">want</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                        <span class="n">exc_msg</span> <span class="o">=</span> <span class="bp">None</span>
+                        <span class="n">indent</span> <span class="o">=</span> <span class="mi">4</span> <span class="c"># close enough.</span>
+                        <span class="n">lineno</span> <span class="o">=</span> <span class="n">lineno_offset</span> <span class="c"># Not quite right!</span>
+                        <span class="n">options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_options</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">lineno</span><span class="p">)</span>
+                        <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Example</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">exc_msg</span><span class="p">,</span>
+                                              <span class="n">lineno</span><span class="p">,</span> <span class="n">indent</span><span class="p">,</span> <span class="n">options</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
+
+            <span class="n">lineno_offset</span> <span class="o">+=</span> <span class="n">piece</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+        <span class="c"># For debugging:</span>
+        <span class="c">#for ex in output:</span>
+        <span class="c">#    if isinstance(ex, Example):</span>
+        <span class="c">#        print &#39;-&#39;*70</span>
+        <span class="c">#        print ex.source</span>
+        <span class="c">#output = []</span>
+
+        <span class="k">return</span> <span class="n">output</span>
+    </div>
+<div class="viewcode-block" id="MyDocTestParser.get_examples"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestParser.get_examples">[docs]</a>    <span class="k">def</span> <span class="nf">get_examples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">string</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;&lt;string&gt;&#39;</span><span class="p">):</span>
+        <span class="n">examples</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ignore</span> <span class="o">=</span> <span class="bp">False</span>
+        
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Example</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ignore</span><span class="p">:</span>
+                    <span class="n">examples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c">#print &#39;.. doctest-ignore:: %s&#39; % x.source.strip()[:50]</span>
+                    <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&#39;\.\.\s*doctest-ignore::?\s*$&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+                    <span class="n">ignore</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">elif</span> <span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                    <span class="n">ignore</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="n">examples</span>
+                
+<span class="c">###########################################################################</span>
+<span class="c"># Update Runner</span>
+<span class="c">###########################################################################</span>
+</div></div>
+<div class="viewcode-block" id="UpdateRunner"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner">[docs]</a><span class="k">class</span> <span class="nc">UpdateRunner</span><span class="p">(</span><span class="n">DocTestRunner</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A subclass of `DocTestRunner` that checks the output of each</span>
+<span class="sd">    example, and replaces the expected output with the actual output</span>
+<span class="sd">    for any examples that fail.</span>
+
+<span class="sd">    `UpdateRunner` can be used:</span>
+<span class="sd">      - To automatically fill in the expected output for new examples.</span>
+<span class="sd">      - To correct examples whose output has become out-of-date.</span>
+
+<span class="sd">    However, care must be taken not to update an example&#39;s expected</span>
+<span class="sd">    output with an incorrect value.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">mark_updates</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Construct a new update runner&#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mark_updates</span> <span class="o">=</span> <span class="n">mark_updates</span>
+        <span class="n">DocTestRunner</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+
+<div class="viewcode-block" id="UpdateRunner.run"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner.run">[docs]</a>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">compileflags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">clear_globs</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Run the update runner&#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_new_want</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="n">t</span><span class="p">)</span> <span class="o">=</span> <span class="n">DocTestRunner</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">compileflags</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">clear_globs</span><span class="p">)</span>
+
+        <span class="c"># Update the test&#39;s docstring, and the lineno&#39;s of the</span>
+        <span class="c"># examples, by breaking it into lines and replacing the old</span>
+        <span class="c"># expected outputs with the new expected outputs.</span>
+        <span class="n">old_lines</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">docstring</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">new_lines</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">lineno</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">for</span> <span class="n">example</span> <span class="ow">in</span> <span class="n">test</span><span class="o">.</span><span class="n">examples</span><span class="p">:</span>
+            <span class="c"># Copy the lines up through the start of the example&#39;s</span>
+            <span class="c"># output from old_lines to new_lines.</span>
+            <span class="n">got_start</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+</span> <span class="n">example</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">new_lines</span> <span class="o">+=</span> <span class="n">old_lines</span><span class="p">[</span><span class="n">lineno</span><span class="p">:</span><span class="n">got_start</span><span class="p">]</span>
+            <span class="n">lineno</span> <span class="o">=</span> <span class="n">got_start</span>
+            <span class="c"># Do a sanity check to make sure we&#39;re at the right lineno</span>
+            <span class="c"># (In particular, check that the example&#39;s expected output</span>
+            <span class="c"># appears in old_lines where we expect it to appear.)</span>
+            <span class="k">if</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> 
+                        <span class="n">old_lines</span><span class="p">[</span><span class="n">lineno</span><span class="p">][</span><span class="n">example</span><span class="o">.</span><span class="n">indent</span><span class="p">:]),</span> \
+                        <span class="s">&#39;Line number mismatch at </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">lineno</span>
+            <span class="c"># Skip over the old expected output.</span>
+            <span class="n">old_len</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">lineno</span> <span class="o">+=</span> <span class="n">old_len</span>
+            <span class="c"># Mark any changes we make.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mark_updates</span> <span class="ow">and</span> <span class="n">example</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_new_want</span><span class="p">:</span>
+                <span class="n">new_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="n">example</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="s">&#39;... &#39;</span> <span class="o">+</span> 
+                                 <span class="s">&#39;# [!!] OUTPUT AUTOMATICALLY UPDATED [!!]&#39;</span><span class="p">)</span>
+            <span class="c"># Add the new expected output.</span>
+            <span class="n">new_want</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_new_want</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">example</span><span class="p">,</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">new_want</span><span class="p">:</span>
+                <span class="n">new_want</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="n">example</span><span class="o">.</span><span class="n">indent</span><span class="o">+</span><span class="n">l</span>
+                                      <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">new_want</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)])</span>
+                <span class="n">new_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_want</span><span class="p">)</span>
+            <span class="c"># Update the example&#39;s want &amp; lieno fields</span>
+            <span class="n">example</span><span class="o">.</span><span class="n">want</span> <span class="o">=</span> <span class="n">new_want</span>
+            <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+=</span> <span class="n">offset</span>
+            <span class="n">offset</span> <span class="o">+=</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="o">-</span> <span class="n">old_len</span>
+        <span class="c"># Add any remaining lines</span>
+        <span class="n">new_lines</span> <span class="o">+=</span> <span class="n">old_lines</span><span class="p">[</span><span class="n">lineno</span><span class="p">:]</span>
+
+        <span class="c"># Update the test&#39;s docstring.</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">docstring</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">new_lines</span><span class="p">)</span>
+
+        <span class="c"># Return failures &amp; tries</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="n">t</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="UpdateRunner.report_start"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner.report_start">[docs]</a>    <span class="k">def</span> <span class="nf">report_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="UpdateRunner.report_success"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner.report_success">[docs]</a>    <span class="k">def</span> <span class="nf">report_success</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">):</span>
+        <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="UpdateRunner.report_unexpected_exception"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner.report_unexpected_exception">[docs]</a>    <span class="k">def</span> <span class="nf">report_unexpected_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">exc_info</span><span class="p">):</span>
+        <span class="n">replacement</span> <span class="o">=</span> <span class="n">_exception_traceback</span><span class="p">(</span><span class="n">exc_info</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_new_want</span><span class="p">[</span><span class="n">example</span><span class="p">]</span> <span class="o">=</span> <span class="n">replacement</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_report_replacement</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">replacement</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="UpdateRunner.report_failure"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.UpdateRunner.report_failure">[docs]</a>    <span class="k">def</span> <span class="nf">report_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_new_want</span><span class="p">[</span><span class="n">example</span><span class="p">]</span> <span class="o">=</span> <span class="n">got</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_report_replacement</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_report_replacement</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">replacement</span><span class="p">):</span>
+        <span class="n">want</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;    &#39;</span><span class="o">+</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="n">repl</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;    &#39;</span><span class="o">+</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">replacement</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="k">if</span> <span class="n">want</span> <span class="ow">and</span> <span class="n">repl</span><span class="p">:</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="s">&#39;Replacing:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="s">With:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">want</span><span class="p">,</span> <span class="n">repl</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">want</span><span class="p">:</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="s">&#39;Removing:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">want</span>
+        <span class="k">elif</span> <span class="n">repl</span><span class="p">:</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="s">&#39;Adding:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">repl</span>
+        <span class="n">out</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_header</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">)</span> <span class="o">+</span> <span class="n">diff</span><span class="p">)</span>
+
+    <span class="n">DIVIDER</span> <span class="o">=</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">70</span>
+    <span class="k">def</span> <span class="nf">_header</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">tag</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;On line #</span><span class="si">%s</span><span class="s"> of </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">lineno</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">test</span><span class="o">.</span><span class="n">lineno</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">tag</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;On line #</span><span class="si">%s</span><span class="s"> of </span><span class="si">%s</span><span class="s"> in </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">lineno</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lineno</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">lineno</span><span class="o">+</span><span class="n">example</span><span class="o">.</span><span class="n">lineno</span><span class="o">+</span><span class="mi">1</span>
+            <span class="n">tag</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;On line #</span><span class="si">%s</span><span class="s"> of </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="n">lineno</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">source_lines</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">DIVIDER</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">tag</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span>
+                <span class="s">&#39;    &gt;&gt;&gt; </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">source_lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span>
+                <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;    ... </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">source_lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]))</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Debugger</span>
+<span class="c">###########################################################################</span>
+</div>
+<span class="k">def</span> <span class="nf">_indent</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;(?m)^(?!$)&#39;</span><span class="p">,</span> <span class="n">indent</span><span class="o">*</span><span class="s">&#39; &#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+<span class="kn">import</span> <span class="nn">keyword</span><span class="o">,</span> <span class="nn">token</span><span class="o">,</span> <span class="nn">tokenize</span>
+<div class="viewcode-block" id="Debugger"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.Debugger">[docs]</a><span class="k">class</span> <span class="nc">Debugger</span><span class="p">:</span>
+    <span class="c"># Just using this for reporting:</span>
+    <span class="n">runner</span> <span class="o">=</span> <span class="n">DocTestRunner</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">checker</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">set_trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">checker</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">checker</span> <span class="o">=</span> <span class="n">OutputChecker</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">checker</span> <span class="o">=</span> <span class="n">checker</span>
+        <span class="k">if</span> <span class="n">set_trace</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">set_trace</span> <span class="o">=</span> <span class="n">pdb</span><span class="o">.</span><span class="n">Pdb</span><span class="p">()</span><span class="o">.</span><span class="n">set_trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_trace</span> <span class="o">=</span> <span class="n">set_trace</span>
+
+    <span class="k">def</span> <span class="nf">_check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="n">want</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">want</span>
+        <span class="n">optionflags</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_optionflags</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
+        <span class="n">got</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">truncate</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">checker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runner</span><span class="o">.</span><span class="n">report_failure</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span><span class="o">.</span><span class="n">write</span><span class="p">,</span> 
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">_check_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="n">want_exc_msg</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">exc_msg</span>
+        <span class="n">optionflags</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_optionflags</span><span class="p">(</span><span class="n">example</span><span class="p">)</span>
+        <span class="n">exc_info</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+        <span class="n">got_exc_msg</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exception_only</span><span class="p">(</span><span class="o">*</span><span class="n">exc_info</span><span class="p">[:</span><span class="mi">2</span><span class="p">])[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">checker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">want_exc_msg</span><span class="p">,</span> <span class="n">got_exc_msg</span><span class="p">,</span>
+                                         <span class="n">optionflags</span><span class="p">):</span>
+            <span class="n">got</span> <span class="o">=</span> <span class="n">_exception_traceback</span><span class="p">(</span><span class="n">exc_info</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runner</span><span class="o">.</span><span class="n">report_failure</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span><span class="o">.</span><span class="n">write</span><span class="p">,</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">_print_if_not_none</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">args</span> <span class="o">==</span> <span class="p">(</span><span class="bp">None</span><span class="p">,):</span>
+            <span class="k">pass</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">print</span> <span class="sb">`args[0]`</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span> <span class="sb">`args`</span> <span class="c"># not quite right: &gt;&gt;&gt; 1,</span>
+
+    <span class="k">def</span> <span class="nf">_comment_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+        <span class="s">&quot;Return a commented form of the given line&quot;</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;# &#39;</span><span class="o">+</span><span class="n">line</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;#&#39;</span>
+
+    <span class="k">def</span> <span class="nf">_script_from_examples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">examplenum</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="n">MyDocTestParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">piece</span><span class="p">,</span> <span class="n">Example</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_script_from_example</span><span class="p">(</span><span class="n">piece</span><span class="p">,</span> <span class="n">examplenum</span><span class="p">,</span> <span class="n">output</span><span class="p">)</span>
+                <span class="n">examplenum</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># Add non-example text.</span>
+                <span class="n">output</span> <span class="o">+=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_comment_line</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+                           <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">piece</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="c"># Combine the output, and return it.</span>
+        <span class="k">return</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+
+    <span class="n">_CHK_OUT</span> <span class="o">=</span> <span class="s">&#39;if not CHECK_OUTPUT(__examples__[</span><span class="si">%d</span><span class="s">]): __set_trace__()&#39;</span>
+    <span class="n">_CHK_EXC</span> <span class="o">=</span> <span class="s">&#39;if not CHECK_EXCEPTION(__examples__[</span><span class="si">%d</span><span class="s">]): __set_trace__()&#39;</span>
+
+    <span class="k">def</span> <span class="nf">_script_from_example</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">output</span><span class="p">):</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_simulate_compile_singlemode</span><span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">source</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">example</span><span class="o">.</span><span class="n">exc_msg</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_CHK_OUT</span> <span class="o">%</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;try:&#39;</span><span class="p">)</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_indent</span><span class="p">(</span><span class="n">source</span><span class="p">))</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;    &#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_CHK_OUT</span> <span class="o">%</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;except:&#39;</span><span class="p">)</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;    &#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_CHK_EXC</span> <span class="o">%</span> <span class="n">i</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_simulate_compile_singlemode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="c"># Calculate line offsets</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pos</span><span class="p">:</span> <span class="k">break</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+
+        <span class="n">oldpos</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">parenlevel</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">deflevel</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">stmt</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">text</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="n">tok_gen</span> <span class="o">=</span> <span class="n">tokenize</span><span class="o">.</span><span class="n">generate_tokens</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">readline</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">toktype</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="p">(</span><span class="n">srow</span><span class="p">,</span><span class="n">scol</span><span class="p">),</span> <span class="p">(</span><span class="n">erow</span><span class="p">,</span><span class="n">ecol</span><span class="p">),</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">tok_gen</span><span class="p">:</span>
+            <span class="n">newpos</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">srow</span><span class="p">]</span> <span class="o">+</span> <span class="n">scol</span>
+            <span class="n">stmt</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">oldpos</span><span class="p">:</span><span class="n">newpos</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="o">!=</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+                <span class="n">stmt</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+            <span class="n">oldpos</span> <span class="o">=</span> <span class="n">newpos</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+
+            <span class="c"># Update the paren level.</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="s">&#39;([{&#39;</span><span class="p">:</span>
+                <span class="n">parenlevel</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="s">&#39;}])&#39;</span><span class="p">:</span>
+                <span class="n">parenlevel</span> <span class="o">-=</span> <span class="mi">1</span>
+
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;def&#39;</span><span class="p">,</span> <span class="s">&#39;class&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">deflevel</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">deflevel</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">deflevel</span> <span class="ow">and</span> <span class="n">toktype</span> <span class="o">==</span> <span class="n">token</span><span class="o">.</span><span class="n">INDENT</span><span class="p">:</span>
+                <span class="n">deflevel</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">deflevel</span> <span class="ow">and</span> <span class="n">toktype</span> <span class="o">==</span> <span class="n">token</span><span class="o">.</span><span class="n">DEDENT</span><span class="p">:</span>
+                <span class="n">deflevel</span> <span class="o">-=</span> <span class="mi">1</span>
+
+            <span class="c"># Are we starting a statement?</span>
+            <span class="k">if</span> <span class="p">((</span><span class="n">toktype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">NEWLINE</span><span class="p">,</span> <span class="n">tokenize</span><span class="o">.</span><span class="n">NL</span><span class="p">,</span> <span class="n">tokenize</span><span class="o">.</span><span class="n">COMMENT</span><span class="p">,</span>
+                             <span class="n">token</span><span class="o">.</span><span class="n">INDENT</span><span class="p">,</span> <span class="n">token</span><span class="o">.</span><span class="n">ENDMARKER</span><span class="p">)</span> <span class="ow">or</span>
+                 <span class="n">tok</span><span class="o">==</span><span class="s">&#39;:&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">parenlevel</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">deflevel</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_expr</span><span class="p">(</span><span class="n">stmt</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">2</span><span class="p">]):</span>
+                    <span class="n">output</span> <span class="o">+=</span> <span class="n">stmt</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;__print__((&#39;</span><span class="p">)</span>
+                    <span class="n">output</span> <span class="o">+=</span> <span class="n">stmt</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;))&#39;</span><span class="p">)</span>
+                    <span class="n">output</span> <span class="o">+=</span> <span class="n">stmt</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">output</span> <span class="o">+=</span> <span class="n">stmt</span>
+                <span class="n">stmt</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_is_expr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stmt</span><span class="p">):</span>
+        <span class="n">stmt</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">stmt</span> <span class="k">if</span> <span class="n">t</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">stmt</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+        <span class="c"># An assignment signifies a non-exception, *unless* it</span>
+        <span class="c"># appears inside of parens (eg, ``f(x=1)``.)</span>
+        <span class="n">parenlevel</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">stmt</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="s">&#39;([{&#39;</span><span class="p">:</span> <span class="n">parenlevel</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="s">&#39;}])&#39;</span><span class="p">:</span> <span class="n">parenlevel</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">parenlevel</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> 
+                <span class="n">tok</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="s">&#39;+=&#39;</span><span class="p">,</span> <span class="s">&#39;-=&#39;</span><span class="p">,</span> <span class="s">&#39;*=&#39;</span><span class="p">,</span> <span class="s">&#39;/=&#39;</span><span class="p">,</span> <span class="s">&#39;%=&#39;</span><span class="p">,</span> <span class="s">&#39;&amp;=&#39;</span><span class="p">,</span> <span class="s">&#39;+=&#39;</span><span class="p">,</span>
+                       <span class="s">&#39;^=&#39;</span><span class="p">,</span> <span class="s">&#39;&lt;&lt;=&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;&gt;=&#39;</span><span class="p">,</span> <span class="s">&#39;**=&#39;</span><span class="p">,</span> <span class="s">&#39;//=&#39;</span><span class="p">)):</span>
+                <span class="k">return</span> <span class="bp">False</span>
+
+        <span class="c"># Any keywords *except* &quot;not&quot;, &quot;or&quot;, &quot;and&quot;, &quot;lambda&quot;, &quot;in&quot;, &quot;is&quot;</span>
+        <span class="c"># signifies a non-expression.</span>
+        <span class="k">if</span> <span class="n">stmt</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&quot;assert&quot;</span><span class="p">,</span> <span class="s">&quot;break&quot;</span><span class="p">,</span> <span class="s">&quot;class&quot;</span><span class="p">,</span> <span class="s">&quot;continue&quot;</span><span class="p">,</span> <span class="s">&quot;def&quot;</span><span class="p">,</span>
+                       <span class="s">&quot;del&quot;</span><span class="p">,</span> <span class="s">&quot;elif&quot;</span><span class="p">,</span> <span class="s">&quot;else&quot;</span><span class="p">,</span> <span class="s">&quot;except&quot;</span><span class="p">,</span> <span class="s">&quot;exec&quot;</span><span class="p">,</span>
+                       <span class="s">&quot;finally&quot;</span><span class="p">,</span> <span class="s">&quot;for&quot;</span><span class="p">,</span> <span class="s">&quot;from&quot;</span><span class="p">,</span> <span class="s">&quot;global&quot;</span><span class="p">,</span> <span class="s">&quot;if&quot;</span><span class="p">,</span>
+                       <span class="s">&quot;import&quot;</span><span class="p">,</span> <span class="s">&quot;pass&quot;</span><span class="p">,</span> <span class="s">&quot;print&quot;</span><span class="p">,</span> <span class="s">&quot;raise&quot;</span><span class="p">,</span> <span class="s">&quot;return&quot;</span><span class="p">,</span>
+                       <span class="s">&quot;try&quot;</span><span class="p">,</span> <span class="s">&quot;while&quot;</span><span class="p">,</span> <span class="s">&quot;yield&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">_get_optionflags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="n">optionflags</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">flag</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span> <span class="ow">in</span> <span class="n">example</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">val</span><span class="p">:</span>
+                <span class="n">optionflags</span> <span class="o">|=</span> <span class="n">flag</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">optionflags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="n">flag</span>
+        <span class="k">return</span> <span class="n">optionflags</span>
+
+<div class="viewcode-block" id="Debugger.debug"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.Debugger.debug">[docs]</a>    <span class="k">def</span> <span class="nf">debug</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">pm</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">test</span> <span class="o">=</span> <span class="n">test</span>
+
+        <span class="c"># Save the old stdout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+
+        <span class="c"># Convert the source docstring to a script.</span>
+        <span class="n">script</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_script_from_examples</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">docstring</span><span class="p">)</span>
+
+        <span class="c"># Create a debugger.</span>
+        <span class="n">debugger</span> <span class="o">=</span> <span class="n">_OutputRedirectingPdb</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+
+        <span class="c"># Patch pdb.set_trace to restore sys.stdout during interactive</span>
+        <span class="c"># debugging (so it&#39;s not still redirected to self._fakeout).</span>
+        <span class="n">save_set_trace</span> <span class="o">=</span> <span class="n">pdb</span><span class="o">.</span><span class="n">set_trace</span>
+        <span class="n">pdb</span><span class="o">.</span><span class="n">set_trace</span> <span class="o">=</span> <span class="n">debugger</span><span class="o">.</span><span class="n">set_trace</span>
+
+        <span class="c"># Write the script to a temporary file.  Note that</span>
+        <span class="c"># tempfile.NameTemporaryFile() cannot be used.  As the docs</span>
+        <span class="c"># say, a file so created cannot be opened by name a second</span>
+        <span class="c"># time on modern Windows boxes, and execfile() needs to open</span>
+        <span class="c"># it.</span>
+        <span class="n">srcfilename</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mktemp</span><span class="p">(</span><span class="s">&quot;.py&quot;</span><span class="p">,</span> <span class="s">&quot;doctestdebug_&quot;</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">srcfilename</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">script</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+        <span class="c"># Set up the globals</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;CHECK_OUTPUT&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_output</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;CHECK_EXCEPTION&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_exception</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;__print__&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_print_if_not_none</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;__set_trace__&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">debugger</span><span class="o">.</span><span class="n">set_trace</span>
+        <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;__examples__&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">test</span><span class="o">.</span><span class="n">examples</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">pm</span> <span class="ow">is</span> <span class="bp">False</span><span class="p">:</span>
+                <span class="n">debugger</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s">&quot;execfile(</span><span class="si">%r</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="n">srcfilename</span><span class="p">,</span>
+                             <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">_SpoofOut</span><span class="p">()</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="nb">execfile</span><span class="p">(</span><span class="n">srcfilename</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">globs</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="n">bdb</span><span class="o">.</span><span class="n">BdbQuit</span><span class="p">:</span>
+                        <span class="k">return</span>
+                    <span class="k">except</span><span class="p">:</span>
+                        <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span>
+                        <span class="n">exc_info</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+                        <span class="n">exc_msg</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exception_only</span><span class="p">(</span>
+                            <span class="n">exc_info</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">exc_info</span><span class="p">[</span><span class="mi">1</span><span class="p">])[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">runner</span><span class="o">.</span><span class="n">DIVIDER</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Unexpected exception:</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span>
+                                               <span class="n">_indent</span><span class="p">(</span><span class="n">exc_msg</span><span class="p">))</span>
+                        <span class="k">raise</span>
+                        <span class="c">#self.post_mortem(debugger, exc_info[2])</span>
+                <span class="k">finally</span><span class="p">:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">save_stdout</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">set_trace</span> <span class="o">=</span> <span class="n">save_set_trace</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">srcfilename</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Debugger.post_mortem"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.Debugger.post_mortem">[docs]</a>    <span class="k">def</span> <span class="nf">post_mortem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">debugger</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="n">debugger</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+        <span class="k">while</span> <span class="n">t</span><span class="o">.</span><span class="n">tb_next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">tb_next</span>
+        <span class="n">debugger</span><span class="o">.</span><span class="n">interaction</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">tb_frame</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Helper functions</span>
+<span class="c">###########################################################################</span>
+
+<span class="c"># Name can be:</span>
+<span class="c">#   - The filename of a text file</span>
+<span class="c">#   - The filename of a python file</span>
+<span class="c">#   - The dotted name of a python module</span>
+
+<span class="c"># Return a list of test!</span></div></div>
+<div class="viewcode-block" id="find"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.find">[docs]</a><span class="k">def</span> <span class="nf">find</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="c"># Check for test names</span>
+    <span class="k">if</span> <span class="s">&#39;:&#39;</span> <span class="ow">in</span> <span class="n">name</span><span class="p">:</span>
+        <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">testname</span><span class="p">)</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">testname</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filename</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ext</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span> <span class="o">!=</span> <span class="s">&#39;.py&#39;</span> <span class="ow">and</span> <span class="n">ext</span><span class="p">[</span><span class="o">-</span><span class="mi">4</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;.py&#39;</span><span class="p">):</span>
+            <span class="c"># It&#39;s a text file; return the filename.</span>
+            <span class="k">if</span> <span class="n">testname</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;test names can&#39;t be specified &quot;</span>
+                                 <span class="s">&quot;for text files&quot;</span><span class="p">)</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span>
+            <span class="n">test</span> <span class="o">=</span> <span class="n">MyDocTestParser</span><span class="p">()</span><span class="o">.</span><span class="n">get_doctest</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="p">{},</span> <span class="n">name</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">test</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># It&#39;s a python file; import it.  Make sure to set the</span>
+            <span class="c"># path correctly.</span>
+            <span class="n">basedir</span><span class="p">,</span> <span class="n">modname</span> <span class="o">=</span> <span class="n">find_module_from_filename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="n">orig_path</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">[:]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">basedir</span><span class="p">)</span>
+                <span class="n">module</span> <span class="o">=</span> <span class="n">import_from_name</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">orig_path</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="n">import_from_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="c"># Find tests.</span>
+    <span class="n">tests</span> <span class="o">=</span> <span class="n">DocTestFinder</span><span class="p">()</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">testname</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">testname</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">.</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">testname</span><span class="p">)</span>
+        <span class="n">tests</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tests</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">testname</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tests</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;test not found&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tests</span>
+</div>
+<div class="viewcode-block" id="import_from_name"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.import_from_name">[docs]</a><span class="k">def</span> <span class="nf">import_from_name</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">__import__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">globals</span><span class="p">(),</span> <span class="nb">locals</span><span class="p">(),</span> <span class="p">[</span><span class="s">&#39;*&#39;</span><span class="p">])</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Error importing </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">name</span>
+</div>
+<div class="viewcode-block" id="find_module_from_filename"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.find_module_from_filename">[docs]</a><span class="k">def</span> <span class="nf">find_module_from_filename</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a filename, return a tuple `(basedir, module)`, where</span>
+<span class="sd">    `module` is the module&#39;s name, and `basedir` is the directory it</span>
+<span class="sd">    should be loaded from (this directory should be added to the</span>
+<span class="sd">    path to import it).  Packages are handled correctly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="nb">file</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="p">(</span><span class="n">module_name</span><span class="p">,</span> <span class="n">ext</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="nb">file</span><span class="p">)</span>
+
+    <span class="c"># If it&#39;s a package, then import with the directory name (don&#39;t</span>
+    <span class="c"># use __init__ as the module name).</span>
+    <span class="k">if</span> <span class="n">module_name</span> <span class="o">==</span> <span class="s">&#39;__init__&#39;</span><span class="p">:</span>
+        <span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="n">module_name</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">basedir</span><span class="p">)</span>
+
+    <span class="c"># If it&#39;s contained inside a package, then find the base dir.</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s">&#39;__init__.py&#39;</span><span class="p">))</span> <span class="ow">or</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s">&#39;__init__.pyc&#39;</span><span class="p">))</span> <span class="ow">or</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s">&#39;__init__.pyw&#39;</span><span class="p">))):</span>
+        <span class="n">package</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s">&#39;__init__.py&#39;</span><span class="p">)):</span>
+            <span class="p">(</span><span class="n">basedir</span><span class="p">,</span><span class="nb">dir</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">basedir</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">dir</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">break</span>
+            <span class="n">package</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">dir</span><span class="p">)</span>
+        <span class="n">package</span><span class="o">.</span><span class="n">reverse</span><span class="p">()</span>
+        <span class="n">module_name</span> <span class="o">=</span> <span class="s">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">package</span><span class="o">+</span><span class="p">[</span><span class="n">module_name</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="n">module_name</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="split_pysrc_into_statements"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.split_pysrc_into_statements">[docs]</a><span class="k">def</span> <span class="nf">split_pysrc_into_statements</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="n">parens</span> <span class="o">=</span> <span class="mi">0</span>              <span class="c"># Number of parens deep we&#39;re nested?</span>
+    <span class="n">quote</span> <span class="o">=</span> <span class="bp">None</span>            <span class="c"># What type of string are we in (if any)?</span>
+    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>         <span class="c"># List of statements we&#39;ve found</span>
+    <span class="n">continuation</span> <span class="o">=</span> <span class="bp">False</span>    <span class="c"># Did last line end with a backslash?</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">lstrip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):</span>
+        <span class="c"># Check indentation level.</span>
+        <span class="n">indent</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s">r&#39;\s*&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+        <span class="c"># [DEBUG PRINTF]</span>
+        <span class="c">#print &#39;%4d %6r %6s %5s %r&#39; % (parens, quote, continuation,</span>
+        <span class="c">#                              indent, line[:40])</span>
+
+        <span class="c"># Add the line as a new statement or a continuation.</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">parens</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">quote</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">indent</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span>
+            <span class="p">(</span><span class="ow">not</span> <span class="n">continuation</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">statements</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">+</span><span class="n">line</span>
+
+        <span class="c"># Scan the line, checking for quotes, parens, and comment</span>
+        <span class="c"># markers (so we can decide when a line is a continuation).</span>
+        <span class="n">line_has_comment</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">r&#39;</span><span class="se">\\</span><span class="s">.|&quot;&quot;&quot;|</span><span class="se">\&#39;\&#39;\&#39;</span><span class="s">|&quot;|</span><span class="se">\&#39;</span><span class="s">|\(|\)|\[|\]|\{|\}|\#&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">quote</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">quote</span><span class="p">:</span>
+                    <span class="n">quote</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">elif</span> <span class="n">c</span> <span class="ow">in</span> <span class="s">&#39;([{&#39;</span><span class="p">:</span>
+                <span class="n">parens</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="n">c</span> <span class="ow">in</span> <span class="s">&#39;)]}&#39;</span><span class="p">:</span>
+                <span class="n">parens</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="n">c</span> <span class="o">==</span> <span class="s">&#39;#&#39;</span><span class="p">:</span>
+                <span class="n">line_has_comment</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">break</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">:</span>
+                <span class="n">quote</span> <span class="o">=</span> <span class="n">c</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">line_has_comment</span><span class="p">:</span>
+            <span class="n">continuation</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">statements</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Custom Checker, to ignore [# _foo] callouts in output.</span>
+<span class="c">###########################################################################</span>
+</div>
+<div class="viewcode-block" id="MyOutputChecker"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyOutputChecker">[docs]</a><span class="k">class</span> <span class="nc">MyOutputChecker</span><span class="p">(</span><span class="n">OutputChecker</span><span class="p">):</span>
+    <span class="n">CALLOUT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39; *#[ ]+\[_([\w-]+)\][ ]*$&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span>
+<div class="viewcode-block" id="MyOutputChecker.check_output"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyOutputChecker.check_output">[docs]</a>    <span class="k">def</span> <span class="nf">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">OutputChecker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">want</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">CALLOUT_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">want</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">OutputChecker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">)</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Basic Actions</span>
+<span class="c">###########################################################################</span>
+
+<span class="c"># Finer control over output verbosity:</span></div></div>
+<span class="kn">from</span> <span class="nn">epydoc.cli</span> <span class="kn">import</span> <span class="n">TerminalController</span>
+
+<div class="viewcode-block" id="MyDocTestRunner"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestRunner">[docs]</a><span class="k">class</span> <span class="nc">MyDocTestRunner</span><span class="p">(</span><span class="n">DocTestRunner</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">checker</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">optionflags</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                 <span class="n">kbinterrupt_continue</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">DocTestRunner</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">checker</span><span class="p">,</span> <span class="p">(</span><span class="n">verbosity</span><span class="o">&gt;</span><span class="mi">2</span><span class="p">),</span> <span class="n">optionflags</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">=</span> <span class="n">verbosity</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_current_test</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_term</span> <span class="o">=</span> <span class="n">TerminalController</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span> <span class="o">=</span> <span class="n">TerminalController</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">__stderr__</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_kbinterrupt_continue</span> <span class="o">=</span> <span class="n">kbinterrupt_continue</span>
+
+<div class="viewcode-block" id="MyDocTestRunner.report_start"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestRunner.report_start">[docs]</a>    <span class="k">def</span> <span class="nf">report_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="k">if</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">&lt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">src</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">60</span><span class="p">:</span> <span class="n">src</span> <span class="o">=</span> <span class="n">src</span><span class="p">[:</span><span class="mi">57</span><span class="p">]</span><span class="o">+</span><span class="s">&#39;...&#39;</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="nb">unicode</span><span class="p">):</span> <span class="n">src</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span>
+            <span class="n">lineno</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+</span> <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">CLEAR_LINE</span><span class="p">:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">__stderr__</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">CLEAR_LINE</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">__stderr__</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">__stderr__</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">  [Line </span><span class="si">%s</span><span class="s">] </span><span class="si">%s%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">BOLD</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span>
+                                  <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">,</span> <span class="n">src</span><span class="p">))</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">__stderr__</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">DocTestRunner</span><span class="o">.</span><span class="n">report_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">__stdout__</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_current_test</span> <span class="o">=</span> <span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">)</span>
+
+        <span class="c"># Total hack warning: This munges the original source to</span>
+        <span class="c"># catch any keyboard interrupts, and turn them into special</span>
+        <span class="c"># ValueError interrupts.</span>
+        <span class="n">example</span><span class="o">.</span><span class="n">original_source</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">source</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kbinterrupt_continue</span><span class="p">:</span>
+            <span class="n">example</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;try:</span><span class="se">\n</span><span class="si">%s</span><span class="s">except KeyboardInterrupt:</span><span class="se">\n</span><span class="s">    &#39;</span>
+                              <span class="s">&#39;raise ValueError(&quot;KEYBOARD-INTERRUPT&quot;)</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span>
+                              <span class="n">doctest</span><span class="o">.</span><span class="n">_indent</span><span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">source</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="MyDocTestRunner.report_failure"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestRunner.report_failure">[docs]</a>    <span class="k">def</span> <span class="nf">report_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">):</span>
+        <span class="n">example</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">original_source</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_failure_header</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">RED</span><span class="o">+</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_checker</span><span class="o">.</span><span class="n">output_difference</span><span class="p">(</span><span class="n">example</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span><span class="p">)</span><span class="o">+</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MyDocTestRunner.report_unexpected_exception"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestRunner.report_unexpected_exception">[docs]</a>    <span class="k">def</span> <span class="nf">report_unexpected_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">,</span> <span class="n">exc_info</span><span class="p">):</span>
+        <span class="n">example</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">original_source</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_failure_header</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">RED</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">exc_info</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="ow">and</span>
+            <span class="n">exc_info</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;KEYBOARD-INTERRUPT&#39;</span><span class="p">):</span>
+            <span class="n">out</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">RED</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">BOLD</span><span class="p">)</span>
+            <span class="n">out</span><span class="p">(</span><span class="s">&#39;Keyboard interrupt; Continuing!</span><span class="se">\n\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">(</span><span class="s">&#39;Exception raised:</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">NORMAL</span> <span class="o">+</span>
+                <span class="n">_indent</span><span class="p">(</span><span class="n">_exception_traceback</span><span class="p">(</span><span class="n">exc_info</span><span class="p">)))</span>
+</div>
+    <span class="k">def</span> <span class="nf">_failure_header</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">example</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">CYAN</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">BOLD</span><span class="o">+</span><span class="s">&#39;*&#39;</span><span class="o">*</span><span class="mi">75</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">GREEN</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">test</span><span class="o">.</span><span class="n">lineno</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">lineno</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+</span> <span class="n">example</span><span class="o">.</span><span class="n">lineno</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">lineno</span> <span class="o">=</span> <span class="s">&#39;?&#39;</span>
+            <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39;File &quot;</span><span class="si">%s</span><span class="s">&quot;, line </span><span class="si">%s</span><span class="s">, in </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span>
+                       <span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39;Line </span><span class="si">%s</span><span class="s">, in </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">example</span><span class="o">.</span><span class="n">lineno</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_term</span><span class="o">.</span><span class="n">RED</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39;Failed example:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">example</span><span class="o">.</span><span class="n">source</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="p">(</span><span class="n">_indent</span><span class="p">(</span><span class="n">source</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="nb">unicode</span><span class="p">):</span> <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+
+<div class="viewcode-block" id="MyDocTestRunner.run"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.MyDocTestRunner.run">[docs]</a>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">compileflags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">clear_globs</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="n">save_stderr</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span> <span class="o">=</span> <span class="n">_SpoofOut</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span><span class="p">,</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">CYAN</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">BOLD</span><span class="o">+</span>
+                <span class="s">&#39;Testing </span><span class="si">%s</span><span class="s">...&#39;</span><span class="o">%</span><span class="n">test</span><span class="o">.</span><span class="n">name</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fails</span><span class="p">,</span> <span class="n">tries</span> <span class="o">=</span> <span class="n">DocTestRunner</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">compileflags</span><span class="p">,</span>
+                                             <span class="n">out</span><span class="p">,</span> <span class="n">clear_globs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_test</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span>
+
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_failure_header</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_test</span><span class="p">)</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span><span class="p">,</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">RED</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">BOLD</span><span class="o">+</span>
+                <span class="s">&#39;Keyboard Interrupt!&#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">save_stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">CLEAR_LINE</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fails</span><span class="p">:</span>
+                <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span><span class="p">,</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">RED</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">BOLD</span><span class="o">+</span>
+                    <span class="s">&#39;  </span><span class="si">%d</span><span class="s"> example(s) failed!&#39;</span><span class="o">%</span><span class="n">fails</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span><span class="p">,</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">GREEN</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">BOLD</span><span class="o">+</span>
+                    <span class="s">&#39;  All examples passed&#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">_stderr_term</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
+        <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">save_stderr</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span> <span class="o">=</span> <span class="n">save_stderr</span>
+</div></div>
+<div class="viewcode-block" id="run"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.run">[docs]</a><span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">kbinterrupt_continue</span><span class="p">):</span>
+    <span class="n">checker</span> <span class="o">=</span> <span class="n">MyOutputChecker</span><span class="p">()</span>
+    <span class="n">runner</span> <span class="o">=</span> <span class="n">MyDocTestRunner</span><span class="p">(</span><span class="n">checker</span><span class="o">=</span><span class="n">checker</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="n">verbosity</span><span class="p">,</span>
+                             <span class="n">optionflags</span><span class="o">=</span><span class="n">optionflags</span><span class="p">,</span>
+                             <span class="n">kbinterrupt_continue</span><span class="o">=</span><span class="n">kbinterrupt_continue</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span> <span class="n">tests</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">: Error processing </span><span class="si">%s</span><span class="s"> -- </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="n">tests</span><span class="p">:</span>
+            <span class="n">runner</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">COMPILER_FLAGS</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbosity</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">();</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">runner</span>
+    
+    <span class="c"># temporary hack:</span>
+<span class="c">#     for name in names:</span>
+<span class="c">#         testfile(name, optionflags=optionflags, verbose=True,</span>
+<span class="c">#                  module_relative=False)</span>
+<span class="c">#     return</span>
+
+    <span class="n">suite</span> <span class="o">=</span> <span class="n">unittest</span><span class="o">.</span><span class="n">TestSuite</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="n">suite</span><span class="o">.</span><span class="n">addTest</span><span class="p">(</span><span class="n">DocTestCase</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">: Error processing </span><span class="si">%s</span><span class="s"> -- </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+    <span class="n">unittest</span><span class="o">.</span><span class="n">TextTestRunner</span><span class="p">(</span><span class="n">verbosity</span><span class="o">=</span><span class="n">verbosity</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">suite</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="debug"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.debug">[docs]</a><span class="k">def</span> <span class="nf">debug</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">pm</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="n">debugger</span> <span class="o">=</span> <span class="n">Debugger</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="n">debugger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">pm</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">: Error processing </span><span class="si">%s</span><span class="s"> -- </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="update"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.update">[docs]</a><span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">):</span>
+    <span class="n">runner</span> <span class="o">=</span> <span class="n">UpdateRunner</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># Make sure we&#39;re running on a text file.</span>
+            <span class="n">tests</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tests</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">tests</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lineno</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;update can only be used with text files&#39;</span><span class="p">)</span>
+            <span class="n">test</span> <span class="o">=</span> <span class="n">tests</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c"># Run the updater!</span>
+            <span class="p">(</span><span class="n">failures</span><span class="p">,</span> <span class="n">tries</span><span class="p">)</span> <span class="o">=</span> <span class="n">runner</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">test</span><span class="p">)</span>
+
+            <span class="c"># Confirm the changes.</span>
+            <span class="k">if</span> <span class="n">failures</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&#39;No updates needed!&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&#39;*&#39;</span><span class="o">*</span><span class="mi">70</span>
+                <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s"> examples updated.&#39;</span> <span class="o">%</span> <span class="n">failures</span>
+                <span class="k">print</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">70</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Accept updates? [y/N] &#39;</span><span class="p">)</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;y&#39;</span><span class="p">,</span> <span class="s">&#39;yes&#39;</span><span class="p">):</span>
+                    <span class="c"># Make a backup of the original contents.</span>
+                    <span class="n">backup</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="o">+</span><span class="s">&#39;.bak&#39;</span>
+                    <span class="k">print</span> <span class="s">&#39;Renaming </span><span class="si">%s</span><span class="s"> -&gt; </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">backup</span><span class="p">)</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">backup</span><span class="p">)</span>
+                    <span class="c"># Write the new contents.</span>
+                    <span class="k">print</span> <span class="s">&#39;Writing updated version to </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+                    <span class="n">out</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">docstring</span><span class="p">)</span>
+                    <span class="n">out</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">print</span> <span class="s">&#39;Updates rejected!&#39;</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span>
+            <span class="k">print</span> <span class="o">&gt;&gt;</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">: Error processing </span><span class="si">%s</span><span class="s"> -- </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+
+<span class="c">###########################################################################</span>
+<span class="c"># Main script</span>
+<span class="c">###########################################################################</span>
+
+<span class="c"># Action options</span></div>
+<span class="n">CHECK_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--check&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;action&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="s">&quot;check&quot;</span><span class="p">,</span> 
+               <span class="n">default</span><span class="o">=</span><span class="s">&quot;check&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Verify the output of the doctest examples in the &quot;</span>
+                    <span class="s">&quot;given files.&quot;</span><span class="p">)</span>
+
+<span class="n">UPDATE_OPT</span>   <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--update&quot;</span><span class="p">,</span> <span class="s">&quot;-u&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;action&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="s">&quot;update&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Update the expected output for new or out-of-date &quot;</span>
+                    <span class="s">&quot;doctest examples in the given files.  In &quot;</span>
+                    <span class="s">&quot;particular, find every example whose actual output &quot;</span>
+                    <span class="s">&quot;does not match its expected output; and replace its &quot;</span>
+                    <span class="s">&quot;expected output with its actual output.  You will &quot;</span>
+                    <span class="s">&quot;be asked to verify the changes before they are &quot;</span>
+                    <span class="s">&quot;written back to the file; be sure to check them over &quot;</span>
+                    <span class="s">&quot;carefully, to ensure that you don&#39;t accidentally &quot;</span>
+                    <span class="s">&quot;create broken test cases.&quot;</span><span class="p">)</span>
+
+<span class="n">DEBUG_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--debug&quot;</span><span class="p">,</span> 
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;action&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="s">&quot;debug&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Verify the output of the doctest examples in the &quot;</span>
+                    <span class="s">&quot;given files.  If any example fails, then enter the &quot;</span>
+                    <span class="s">&quot;python debugger.&quot;</span><span class="p">)</span>
+
+<span class="c"># Reporting options</span>
+<span class="n">VERBOSE_OPT</span>  <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;-v&quot;</span><span class="p">,</span> <span class="s">&quot;--verbose&quot;</span><span class="p">,</span> 
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;count&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;verbosity&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Increase verbosity.&quot;</span><span class="p">)</span>
+
+<span class="n">QUIET_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;-q&quot;</span><span class="p">,</span> <span class="s">&quot;--quiet&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;verbosity&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Decrease verbosity.&quot;</span><span class="p">)</span>
+
+<span class="n">UDIFF_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--udiff&quot;</span><span class="p">,</span> <span class="s">&#39;-d&#39;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;udiff&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Display test failures using unified diffs.&quot;</span><span class="p">)</span>
+
+<span class="n">CDIFF_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--cdiff&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;cdiff&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Display test failures using context diffs.&quot;</span><span class="p">)</span>
+
+<span class="n">NDIFF_OPT</span>    <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--ndiff&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;ndiff&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Display test failures using ndiffs.&quot;</span><span class="p">)</span>
+
+<span class="n">COVERAGE_OPT</span> <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--coverage&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;coverage&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&#39;FILENAME&#39;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Generate coverage information, and write it to the &quot;</span>
+                     <span class="s">&quot;given file.&quot;</span><span class="p">)</span>
+
+<span class="n">CONTINUE_OPT</span> <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--continue&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&#39;kbinterrupt_continue&#39;</span><span class="p">,</span>
+                      <span class="n">action</span><span class="o">=</span><span class="s">&#39;store_const&#39;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                      <span class="n">help</span><span class="o">=</span><span class="s">&quot;If a test is interrupted by a keyboard &quot;</span>
+                      <span class="s">&quot;interrupt, then report the interrupt and continue&quot;</span><span class="p">)</span>
+
+<span class="c"># Output Comparison options</span>
+<span class="n">ELLIPSIS_OPT</span> <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--ellipsis&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;ellipsis&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Allow </span><span class="se">\&quot;</span><span class="s">...</span><span class="se">\&quot;</span><span class="s"> to be used for ellipsis in the &quot;</span>
+                    <span class="s">&quot;expected output.&quot;</span><span class="p">)</span>
+<span class="n">NORMWS_OPT</span>   <span class="o">=</span> <span class="n">Option</span><span class="p">(</span><span class="s">&quot;--normalize_whitespace&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;normws&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;Ignore whitespace differences between &quot;</span>
+                    <span class="s">&quot;the expected output and the actual output.&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_driver.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="c"># Create the option parser.</span>
+    <span class="n">optparser</span> <span class="o">=</span> <span class="n">OptionParser</span><span class="p">(</span><span class="n">usage</span><span class="o">=</span><span class="s">&#39;%prog [options] NAME ...&#39;</span><span class="p">,</span>
+                             <span class="n">version</span><span class="o">=</span><span class="s">&quot;Edloper&#39;s Doctest Driver, &quot;</span>
+                                     <span class="s">&quot;version </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">__version__</span><span class="p">)</span>
+
+    <span class="n">action_group</span> <span class="o">=</span> <span class="n">OptionGroup</span><span class="p">(</span><span class="n">optparser</span><span class="p">,</span> <span class="s">&#39;Actions (default=check)&#39;</span><span class="p">)</span>
+    <span class="n">action_group</span><span class="o">.</span><span class="n">add_options</span><span class="p">([</span><span class="n">CHECK_OPT</span><span class="p">,</span> <span class="n">UPDATE_OPT</span><span class="p">,</span> <span class="n">DEBUG_OPT</span><span class="p">])</span>
+    <span class="n">optparser</span><span class="o">.</span><span class="n">add_option_group</span><span class="p">(</span><span class="n">action_group</span><span class="p">)</span>
+
+    <span class="n">reporting_group</span> <span class="o">=</span> <span class="n">OptionGroup</span><span class="p">(</span><span class="n">optparser</span><span class="p">,</span> <span class="s">&#39;Reporting&#39;</span><span class="p">)</span>
+    <span class="n">reporting_group</span><span class="o">.</span><span class="n">add_options</span><span class="p">([</span><span class="n">VERBOSE_OPT</span><span class="p">,</span> <span class="n">QUIET_OPT</span><span class="p">,</span>
+                                 <span class="n">UDIFF_OPT</span><span class="p">,</span> <span class="n">CDIFF_OPT</span><span class="p">,</span> <span class="n">NDIFF_OPT</span><span class="p">,</span>
+                                 <span class="n">COVERAGE_OPT</span><span class="p">,</span> <span class="n">CONTINUE_OPT</span><span class="p">])</span>
+    <span class="n">optparser</span><span class="o">.</span><span class="n">add_option_group</span><span class="p">(</span><span class="n">reporting_group</span><span class="p">)</span>
+
+    <span class="n">compare_group</span> <span class="o">=</span> <span class="n">OptionGroup</span><span class="p">(</span><span class="n">optparser</span><span class="p">,</span> <span class="s">&#39;Output Comparison&#39;</span><span class="p">)</span>
+    <span class="n">compare_group</span><span class="o">.</span><span class="n">add_options</span><span class="p">([</span><span class="n">ELLIPSIS_OPT</span><span class="p">,</span> <span class="n">NORMWS_OPT</span><span class="p">])</span>
+    <span class="n">optparser</span><span class="o">.</span><span class="n">add_option_group</span><span class="p">(</span><span class="n">compare_group</span><span class="p">)</span>
+
+    <span class="c"># Extract optionflags and the list of file names.</span>
+    <span class="n">optionvals</span><span class="p">,</span> <span class="n">names</span> <span class="o">=</span> <span class="n">optparser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">optparser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s">&quot;No files specified&quot;</span><span class="p">)</span>
+    <span class="n">optionflags</span> <span class="o">=</span> <span class="p">(</span><span class="n">optionvals</span><span class="o">.</span><span class="n">udiff</span> <span class="o">*</span> <span class="n">REPORT_UDIFF</span> <span class="o">|</span>
+                   <span class="n">optionvals</span><span class="o">.</span><span class="n">cdiff</span> <span class="o">*</span> <span class="n">REPORT_CDIFF</span> <span class="o">|</span>
+                   <span class="n">optionvals</span><span class="o">.</span><span class="n">ellipsis</span> <span class="o">*</span> <span class="n">ELLIPSIS</span> <span class="o">|</span>
+                   <span class="n">optionvals</span><span class="o">.</span><span class="n">normws</span> <span class="o">*</span> <span class="n">NORMALIZE_WHITESPACE</span><span class="p">)</span>
+
+    <span class="c"># Check coverage, if requested</span>
+    <span class="k">if</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">coverage</span><span class="p">:</span>
+        <span class="n">coverage</span><span class="o">.</span><span class="n">use_cache</span><span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="n">cache_file</span><span class="o">=</span><span class="n">optionvals</span><span class="o">.</span><span class="n">coverage</span><span class="p">)</span>
+        <span class="n">coverage</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="c"># Perform the requested action.</span>
+    <span class="k">if</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">action</span> <span class="o">==</span> <span class="s">&#39;check&#39;</span><span class="p">:</span>
+        <span class="n">run</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">verbosity</span><span class="p">,</span>
+            <span class="n">optionvals</span><span class="o">.</span><span class="n">kbinterrupt_continue</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">action</span> <span class="o">==</span> <span class="s">&#39;update&#39;</span><span class="p">:</span>
+        <span class="n">update</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">verbosity</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">action</span> <span class="o">==</span> <span class="s">&#39;debug&#39;</span><span class="p">:</span>
+        <span class="n">debug</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">,</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">verbosity</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">optparser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s">&#39;INTERNAL ERROR: Bad action </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">action</span><span class="p">)</span>
+
+    <span class="c"># Check coverage, if requested</span>
+    <span class="k">if</span> <span class="n">optionvals</span><span class="o">.</span><span class="n">coverage</span><span class="p">:</span>
+        <span class="n">coverage</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span> <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

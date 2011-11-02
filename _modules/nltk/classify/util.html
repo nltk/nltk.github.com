@@ -1,0 +1,350 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.classify.util &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.classify" href="../classify.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" accesskey="U">nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.classify.util</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Classifier Utility Functions</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt; (minor additions)</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Utility functions and classes for classifiers.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">math</span>
+
+<span class="c">#from nltk.util import Deprecated</span>
+<span class="kn">import</span> <span class="nn">nltk.classify.util</span> <span class="c"># for accuracy &amp; log_likelihood</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">LazyMap</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Helper Functions</span>
+<span class="c">######################################################################</span>
+
+<span class="c"># alternative name possibility: &#39;map_featurefunc()&#39;?</span>
+<span class="c"># alternative name possibility: &#39;detect_features()&#39;?</span>
+<span class="c"># alternative name possibility: &#39;map_featuredetect()&#39;?</span>
+<span class="c"># or.. just have users use LazyMap directly?</span>
+<div class="viewcode-block" id="apply_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.apply_features">[docs]</a><span class="k">def</span> <span class="nf">apply_features</span><span class="p">(</span><span class="n">feature_func</span><span class="p">,</span> <span class="n">toks</span><span class="p">,</span> <span class="n">labeled</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use the L{LazyMap} class to construct a lazy list-like</span>
+<span class="sd">    object that is analogous to C{map(feature_func, toks)}.  In</span>
+<span class="sd">    particular, if C{labeled=False}, then the returned list-like</span>
+<span class="sd">    object&#39;s values are equal to::</span>
+
+<span class="sd">        [feature_func(tok) for tok in toks]</span>
+
+<span class="sd">    If C{labeled=True}, then the returned list-like object&#39;s values</span>
+<span class="sd">    are equal to::</span>
+
+<span class="sd">        [(feature_func(tok), label) for (tok, label) in toks]</span>
+
+<span class="sd">    The primary purpose of this function is to avoid the memory</span>
+<span class="sd">    overhead involved in storing all the featuresets for every token</span>
+<span class="sd">    in a corpus.  Instead, these featuresets are constructed lazily,</span>
+<span class="sd">    as-needed.  The reduction in memory overhead can be especially</span>
+<span class="sd">    significant when the underlying list of tokens is itself lazy (as</span>
+<span class="sd">    is the case with many corpus readers).</span>
+
+<span class="sd">    @param feature_func: The function that will be applied to each</span>
+<span class="sd">        token.  It should return a featureset -- i.e., a C{dict}</span>
+<span class="sd">        mapping feature names to feature values.</span>
+<span class="sd">    @param toks: The list of tokens to which C{feature_func} should be</span>
+<span class="sd">        applied.  If C{labeled=True}, then the list elements will be</span>
+<span class="sd">        passed directly to C{feature_func()}.  If C{labeled=False},</span>
+<span class="sd">        then the list elements should be tuples C{(tok,label)}, and</span>
+<span class="sd">        C{tok} will be passed to C{feature_func()}.</span>
+<span class="sd">    @param labeled: If true, then C{toks} contains labeled tokens --</span>
+<span class="sd">        i.e., tuples of the form C{(tok, label)}.  (Default:</span>
+<span class="sd">        auto-detect based on types.)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">labeled</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">labeled</span> <span class="o">=</span> <span class="n">toks</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">toks</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">labeled</span><span class="p">:</span>
+        <span class="k">def</span> <span class="nf">lazy_func</span><span class="p">(</span><span class="n">labeled_token</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">feature_func</span><span class="p">(</span><span class="n">labeled_token</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">labeled_token</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">LazyMap</span><span class="p">(</span><span class="n">lazy_func</span><span class="p">,</span> <span class="n">toks</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">LazyMap</span><span class="p">(</span><span class="n">feature_func</span><span class="p">,</span> <span class="n">toks</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="attested_labels"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.attested_labels">[docs]</a><span class="k">def</span> <span class="nf">attested_labels</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: A list of all labels that are attested in the given list</span>
+<span class="sd">        of tokens.</span>
+<span class="sd">    @rtype: C{list} of (immutable)</span>
+<span class="sd">    @param tokens: The list of classified tokens from which to extract</span>
+<span class="sd">        labels.  A classified token has the form C{(token, label)}.</span>
+<span class="sd">    @type tokens: C{list}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">set</span><span class="p">([</span><span class="n">label</span> <span class="k">for</span> <span class="p">(</span><span class="n">tok</span><span class="p">,</span><span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">]))</span>
+</div>
+<div class="viewcode-block" id="log_likelihood"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.log_likelihood">[docs]</a><span class="k">def</span> <span class="nf">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">classifier</span><span class="o">.</span><span class="n">batch_prob_classify</span><span class="p">([</span><span class="n">fs</span> <span class="k">for</span> <span class="p">(</span><span class="n">fs</span><span class="p">,</span><span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">gold</span><span class="p">])</span>
+    <span class="n">ll</span> <span class="o">=</span> <span class="p">[</span><span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="p">((</span><span class="n">fs</span><span class="p">,</span><span class="n">l</span><span class="p">),</span> <span class="n">pdist</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">gold</span><span class="p">,</span> <span class="n">results</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">ll</span><span class="p">))</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">ll</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="accuracy"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.accuracy">[docs]</a><span class="k">def</span> <span class="nf">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">classifier</span><span class="o">.</span><span class="n">batch_classify</span><span class="p">([</span><span class="n">fs</span> <span class="k">for</span> <span class="p">(</span><span class="n">fs</span><span class="p">,</span><span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">gold</span><span class="p">])</span>
+    <span class="n">correct</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span><span class="o">==</span><span class="n">r</span> <span class="k">for</span> <span class="p">((</span><span class="n">fs</span><span class="p">,</span><span class="n">l</span><span class="p">),</span> <span class="n">r</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">gold</span><span class="p">,</span> <span class="n">results</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="n">correct</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">correct</span><span class="p">))</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">correct</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+</div>
+<div class="viewcode-block" id="CutoffChecker"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.CutoffChecker">[docs]</a><span class="k">class</span> <span class="nc">CutoffChecker</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A helper class that implements cutoff checks based on number of</span>
+<span class="sd">    iterations and log likelihood.</span>
+
+<span class="sd">    Accuracy cutoffs are also implemented, but they&#39;re almost never</span>
+<span class="sd">    a good idea to use.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cutoffs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cutoffs</span> <span class="o">=</span> <span class="n">cutoffs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s">&#39;min_ll&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span><span class="p">:</span>
+            <span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_ll&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="nb">abs</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_ll&#39;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="s">&#39;min_lldelta&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span><span class="p">:</span>
+            <span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_lldelta&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_lldelta&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ll</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">acc</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">iter</span> <span class="o">=</span> <span class="mi">1</span>
+        
+<div class="viewcode-block" id="CutoffChecker.check"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.CutoffChecker.check">[docs]</a>    <span class="k">def</span> <span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">):</span>
+        <span class="n">cutoffs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cutoffs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">iter</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="s">&#39;max_iter&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">iter</span> <span class="o">&gt;=</span> <span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;max_iter&#39;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="bp">True</span> <span class="c"># iteration cutoff.</span>
+        
+        <span class="n">new_ll</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">math</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">new_ll</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        
+        <span class="k">if</span> <span class="s">&#39;min_ll&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">or</span> <span class="s">&#39;min_lldelta&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s">&#39;min_ll&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">and</span> <span class="n">new_ll</span> <span class="o">&gt;=</span> <span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_ll&#39;</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="bp">True</span> <span class="c"># log likelihood cutoff</span>
+            <span class="k">if</span> <span class="p">(</span><span class="s">&#39;min_lldelta&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">ll</span> <span class="ow">and</span>
+                <span class="p">((</span><span class="n">new_ll</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">ll</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_lldelta&#39;</span><span class="p">]))):</span>
+                <span class="k">return</span> <span class="bp">True</span> <span class="c"># log likelihood delta cutoff</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ll</span> <span class="o">=</span> <span class="n">new_ll</span>
+
+        <span class="k">if</span> <span class="s">&#39;max_acc&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">or</span> <span class="s">&#39;min_accdelta&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span><span class="p">:</span>
+            <span class="n">new_acc</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span>
+                <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s">&#39;max_acc&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">and</span> <span class="n">new_acc</span> <span class="o">&gt;=</span> <span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;max_acc&#39;</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="bp">True</span> <span class="c"># log likelihood cutoff</span>
+            <span class="k">if</span> <span class="p">(</span><span class="s">&#39;min_accdelta&#39;</span> <span class="ow">in</span> <span class="n">cutoffs</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">acc</span> <span class="ow">and</span>
+                <span class="p">((</span><span class="n">new_acc</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">acc</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">[</span><span class="s">&#39;min_accdelta&#39;</span><span class="p">]))):</span>
+                <span class="k">return</span> <span class="bp">True</span> <span class="c"># log likelihood delta cutoff</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">acc</span> <span class="o">=</span> <span class="n">new_acc</span>
+
+            <span class="k">return</span> <span class="bp">False</span> <span class="c"># no cutoff reached.</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Demos</span>
+<span class="c">######################################################################</span>
+</div></div>
+<div class="viewcode-block" id="names_demo_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.names_demo_features">[docs]</a><span class="k">def</span> <span class="nf">names_demo_features</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;alwayson&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;startswith&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;endswith&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">letter</span> <span class="ow">in</span> <span class="s">&#39;abcdefghijklmnopqrstuvwxyz&#39;</span><span class="p">:</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;count(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">letter</span><span class="p">)</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;has(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="n">letter</span> <span class="ow">in</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">features</span>
+</div>
+<div class="viewcode-block" id="binary_names_demo_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.binary_names_demo_features">[docs]</a><span class="k">def</span> <span class="nf">binary_names_demo_features</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;alwayson&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;startswith(vowel)&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="s">&#39;aeiouy&#39;</span>
+    <span class="n">features</span><span class="p">[</span><span class="s">&#39;endswith(vowel)&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="s">&#39;aeiouy&#39;</span>
+    <span class="k">for</span> <span class="n">letter</span> <span class="ow">in</span> <span class="s">&#39;abcdefghijklmnopqrstuvwxyz&#39;</span><span class="p">:</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;count(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">letter</span><span class="p">)</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;has(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="n">letter</span> <span class="ow">in</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;startswith(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">letter</span><span class="o">==</span><span class="n">name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;endswith(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">letter</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">letter</span><span class="o">==</span><span class="n">name</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">features</span>
+</div>
+<div class="viewcode-block" id="names_demo"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.names_demo">[docs]</a><span class="k">def</span> <span class="nf">names_demo</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">features</span><span class="o">=</span><span class="n">names_demo_features</span><span class="p">):</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">names</span>
+    <span class="kn">import</span> <span class="nn">random</span>
+
+    <span class="c"># Construct a list of classified names, using the names corpus.</span>
+    <span class="n">namelist</span> <span class="o">=</span> <span class="p">([(</span><span class="n">name</span><span class="p">,</span> <span class="s">&#39;male&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;male.txt&#39;</span><span class="p">)]</span> <span class="o">+</span> 
+                <span class="p">[(</span><span class="n">name</span><span class="p">,</span> <span class="s">&#39;female&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;female.txt&#39;</span><span class="p">)])</span>
+
+    <span class="c"># Randomly split the names into a test &amp; train set.</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">123456</span><span class="p">)</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">namelist</span><span class="p">)</span>
+    <span class="n">train</span> <span class="o">=</span> <span class="n">namelist</span><span class="p">[:</span><span class="mi">5000</span><span class="p">]</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">namelist</span><span class="p">[</span><span class="mi">5000</span><span class="p">:</span><span class="mi">5500</span><span class="p">]</span>
+
+    <span class="c"># Train up a classifier.</span>
+    <span class="k">print</span> <span class="s">&#39;Training classifier...&#39;</span>
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">trainer</span><span class="p">(</span> <span class="p">[(</span><span class="n">features</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">g</span><span class="p">)</span> <span class="ow">in</span> <span class="n">train</span><span class="p">]</span> <span class="p">)</span>
+
+    <span class="c"># Run the classifier on the test data.</span>
+    <span class="k">print</span> <span class="s">&#39;Testing classifier...&#39;</span>
+    <span class="n">acc</span> <span class="o">=</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="p">[(</span><span class="n">features</span><span class="p">(</span><span class="n">n</span><span class="p">),</span><span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">g</span><span class="p">)</span> <span class="ow">in</span> <span class="n">test</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;Accuracy: </span><span class="si">%6.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">acc</span>
+
+    <span class="c"># For classifiers that can find probabilities, show the log</span>
+    <span class="c"># likelihood and some sample probability distributions.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">test_featuresets</span> <span class="o">=</span> <span class="p">[</span><span class="n">features</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">g</span><span class="p">)</span> <span class="ow">in</span> <span class="n">test</span><span class="p">]</span>
+        <span class="n">pdists</span> <span class="o">=</span> <span class="n">classifier</span><span class="o">.</span><span class="n">batch_prob_classify</span><span class="p">(</span><span class="n">test_featuresets</span><span class="p">)</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="p">[</span><span class="n">pdist</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+              <span class="k">for</span> <span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">gold</span><span class="p">),</span> <span class="n">pdist</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">pdists</span><span class="p">)]</span>
+        <span class="k">print</span> <span class="s">&#39;Avg. log likelihood: </span><span class="si">%6.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">ll</span><span class="p">)</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">))</span>
+        <span class="k">print</span>
+        <span class="k">print</span> <span class="s">&#39;Unseen Names      P(Male)  P(Female)</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">+</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">40</span>
+        <span class="k">for</span> <span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">gender</span><span class="p">),</span> <span class="n">pdist</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">pdists</span><span class="p">)[:</span><span class="mi">5</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">gender</span> <span class="o">==</span> <span class="s">&#39;male&#39;</span><span class="p">:</span>
+                <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;  </span><span class="si">%-15s</span><span class="s"> *</span><span class="si">%6.4f</span><span class="s">   </span><span class="si">%6.4f</span><span class="s">&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;  </span><span class="si">%-15s</span><span class="s">  </span><span class="si">%6.4f</span><span class="s">  *</span><span class="si">%6.4f</span><span class="s">&#39;</span>
+            <span class="k">print</span> <span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;male&#39;</span><span class="p">),</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;female&#39;</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+        <span class="k">pass</span>
+    
+    <span class="c"># Return the classifier</span>
+    <span class="k">return</span> <span class="n">classifier</span>
+</div>
+<span class="n">_inst_cache</span> <span class="o">=</span> <span class="p">{}</span>
+<div class="viewcode-block" id="wsd_demo"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.util.wsd_demo">[docs]</a><span class="k">def</span> <span class="nf">wsd_demo</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">features</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">senseval</span>
+    <span class="kn">import</span> <span class="nn">random</span>
+
+    <span class="c"># Get the instances.</span>
+    <span class="k">print</span> <span class="s">&#39;Reading data...&#39;</span>
+    <span class="k">global</span> <span class="n">_inst_cache</span>
+    <span class="k">if</span> <span class="n">word</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_inst_cache</span><span class="p">:</span>
+        <span class="n">_inst_cache</span><span class="p">[</span><span class="n">word</span><span class="p">]</span> <span class="o">=</span> <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">.</span><span class="n">senses</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">senseval</span><span class="o">.</span><span class="n">instances</span><span class="p">(</span><span class="n">word</span><span class="p">)]</span>
+    <span class="n">instances</span> <span class="o">=</span> <span class="n">_inst_cache</span><span class="p">[</span><span class="n">word</span><span class="p">][:]</span>
+    <span class="k">if</span> <span class="n">n</span><span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">instances</span><span class="p">):</span> <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">instances</span><span class="p">)</span>
+    <span class="n">senses</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">l</span> <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">))</span>
+    <span class="k">print</span> <span class="s">&#39;  Senses: &#39;</span> <span class="o">+</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">senses</span><span class="p">)</span>
+
+    <span class="c"># Randomly split the names into a test &amp; train set.</span>
+    <span class="k">print</span> <span class="s">&#39;Splitting into test &amp; train...&#39;</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">123456</span><span class="p">)</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">instances</span><span class="p">)</span>
+    <span class="n">train</span> <span class="o">=</span> <span class="n">instances</span><span class="p">[:</span><span class="nb">int</span><span class="p">(</span><span class="o">.</span><span class="mi">8</span><span class="o">*</span><span class="n">n</span><span class="p">)]</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">instances</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="o">.</span><span class="mi">8</span><span class="o">*</span><span class="n">n</span><span class="p">):</span><span class="n">n</span><span class="p">]</span>
+
+    <span class="c"># Train up a classifier.</span>
+    <span class="k">print</span> <span class="s">&#39;Training classifier...&#39;</span>
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">trainer</span><span class="p">(</span> <span class="p">[(</span><span class="n">features</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">train</span><span class="p">]</span> <span class="p">)</span>
+
+    <span class="c"># Run the classifier on the test data.</span>
+    <span class="k">print</span> <span class="s">&#39;Testing classifier...&#39;</span>
+    <span class="n">acc</span> <span class="o">=</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="p">[(</span><span class="n">features</span><span class="p">(</span><span class="n">i</span><span class="p">),</span><span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">l</span><span class="p">)</span> <span class="ow">in</span> <span class="n">test</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;Accuracy: </span><span class="si">%6.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">acc</span>
+
+    <span class="c"># For classifiers that can find probabilities, show the log</span>
+    <span class="c"># likelihood and some sample probability distributions.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">test_featuresets</span> <span class="o">=</span> <span class="p">[</span><span class="n">features</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">n</span><span class="p">)</span> <span class="ow">in</span> <span class="n">test</span><span class="p">]</span>
+        <span class="n">pdists</span> <span class="o">=</span> <span class="n">classifier</span><span class="o">.</span><span class="n">batch_prob_classify</span><span class="p">(</span><span class="n">test_featuresets</span><span class="p">)</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="p">[</span><span class="n">pdist</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+              <span class="k">for</span> <span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">gold</span><span class="p">),</span> <span class="n">pdist</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">pdists</span><span class="p">)]</span>
+        <span class="k">print</span> <span class="s">&#39;Avg. log likelihood: </span><span class="si">%6.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">ll</span><span class="p">)</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+        <span class="k">pass</span>
+    
+    <span class="c"># Return the classifier</span>
+    <span class="k">return</span> <span class="n">classifier</span>
+</pre></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" >nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

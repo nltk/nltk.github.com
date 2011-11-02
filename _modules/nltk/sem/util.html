@@ -1,0 +1,508 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.sem.util &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.sem" href="../sem.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" accesskey="U">nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.sem.util</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Semantic Interpretation</span>
+<span class="c">#</span>
+<span class="c"># Author: Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Utility functions for batch-processing sentences: parsing and</span>
+<span class="sd">extraction of the semantic representation of the root node of the the</span>
+<span class="sd">syntax tree, followed by evaluation of the semantic representation in</span>
+<span class="sd">a first-order model.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">evaluate</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">nltk</span>
+
+<span class="kn">from</span> <span class="nn">nltk.sem.logic</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">##############################################################</span>
+<span class="c">## Utility functions for connecting parse output to semantics</span>
+<span class="c">##############################################################</span>
+
+<div class="viewcode-block" id="batch_parse"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.batch_parse">[docs]</a><span class="k">def</span> <span class="nf">batch_parse</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert input sentences into syntactic trees.</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter inputs: sentences to be parsed</span>
+<span class="sd">    @type inputs: C{list} of C{str}</span>
+<span class="sd">    @parameter grammar: L{FeatureGrammar} or name of feature-based grammar</span>
+<span class="sd">    @rtype: C{dict}</span>
+<span class="sd">    @return: a mapping from input sentences to a list of L{Tree}s</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">FeatureGrammar</span><span class="p">):</span>
+        <span class="n">cp</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">parse</span><span class="o">.</span><span class="n">FeatureChartParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cp</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">parse</span><span class="o">.</span><span class="n">load_parser</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">)</span>
+    <span class="n">parses</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">:</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">sent</span><span class="o">.</span><span class="n">split</span><span class="p">()</span> <span class="c"># use a tokenizer?</span>
+        <span class="n">syntrees</span> <span class="o">=</span> <span class="n">cp</span><span class="o">.</span><span class="n">nbest_parse</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="n">parses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syntrees</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parses</span>
+</div>
+<div class="viewcode-block" id="root_semrep"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.root_semrep">[docs]</a><span class="k">def</span> <span class="nf">root_semrep</span><span class="p">(</span><span class="n">syntree</span><span class="p">,</span> <span class="n">semkey</span><span class="o">=</span><span class="s">&#39;SEM&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the semantic representation at the root of a tree.</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter syntree: a parse L{Tree}</span>
+<span class="sd">    @parameter semkey: the feature label to use for the root semantics in the tree</span>
+<span class="sd">    @return: the semantic representation at the root of a L{Tree}</span>
+<span class="sd">    @rtype: L{logic.Expression}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">node</span> <span class="o">=</span> <span class="n">syntree</span><span class="o">.</span><span class="n">node</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">FeatStructNonterminal</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">node</span><span class="p">[</span><span class="n">semkey</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="k">print</span> <span class="n">node</span><span class="p">,</span>
+        <span class="k">print</span> <span class="s">&quot;has no specification for the feature </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">semkey</span>
+    <span class="k">raise</span>
+</div>
+<div class="viewcode-block" id="batch_interpret"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.batch_interpret">[docs]</a><span class="k">def</span> <span class="nf">batch_interpret</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">semkey</span><span class="o">=</span><span class="s">&#39;SEM&#39;</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add the semantic representation to each syntactic parse tree</span>
+<span class="sd">    of each input sentence.</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter inputs: a list of sentences</span>
+<span class="sd">    @parameter grammar: L{FeatureGrammar} or name of feature-based grammar</span>
+<span class="sd">    @return: a mapping from sentences to lists of pairs (parse-tree, semantic-representations)</span>
+<span class="sd">    @rtype: C{dict}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[[(</span><span class="n">syn</span><span class="p">,</span> <span class="n">root_semrep</span><span class="p">(</span><span class="n">syn</span><span class="p">,</span> <span class="n">semkey</span><span class="p">))</span> <span class="k">for</span> <span class="n">syn</span> <span class="ow">in</span> <span class="n">syntrees</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">syntrees</span> <span class="ow">in</span> <span class="n">batch_parse</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">)]</span>
+</div>
+<div class="viewcode-block" id="batch_evaluate"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.batch_evaluate">[docs]</a><span class="k">def</span> <span class="nf">batch_evaluate</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">assignment</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add the truth-in-a-model value to each semantic representation</span>
+<span class="sd">    for each syntactic parse of each input sentences.</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter inputs: a list of sentences</span>
+<span class="sd">    @parameter grammar: L{FeatureGrammar} or name of feature-based grammar    </span>
+<span class="sd">    @return: a mapping from sentences to lists of triples (parse-tree, semantic-representations, evaluation-in-model)</span>
+<span class="sd">    @rtype: C{dict}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[[(</span><span class="n">syn</span><span class="p">,</span> <span class="n">sem</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">sem</span><span class="p">),</span> <span class="n">assignment</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">))</span>
+            <span class="k">for</span> <span class="p">(</span><span class="n">syn</span><span class="p">,</span> <span class="n">sem</span><span class="p">)</span> <span class="ow">in</span> <span class="n">interpretations</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">interpretations</span> <span class="ow">in</span> <span class="n">batch_interpret</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">grammar</span><span class="p">)]</span>
+
+
+<span class="c">##########################################</span>
+<span class="c"># REs used by the parse_valuation function</span>
+<span class="c">##########################################</span></div>
+<span class="n">_VAL_SPLIT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*=+&gt;\s*&#39;</span><span class="p">)</span>
+<span class="n">_ELEMENT_SPLIT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*,\s*&#39;</span><span class="p">)</span>
+<span class="n">_TUPLES_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;&quot;&quot;\s*         </span>
+<span class="s">                                (\([^)]+\))  # tuple-expression</span>
+<span class="s">                                \s*&quot;&quot;&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+<div class="viewcode-block" id="parse_valuation_line"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.parse_valuation_line">[docs]</a><span class="k">def</span> <span class="nf">parse_valuation_line</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse a line in a valuation file.</span>
+<span class="sd">    </span>
+<span class="sd">    Lines are expected to be of the form::</span>
+<span class="sd">    </span>
+<span class="sd">      noosa =&gt; n</span>
+<span class="sd">      girl =&gt; {g1, g2}</span>
+<span class="sd">      chase =&gt; {(b1, g1), (b2, g1), (g1, d1), (g2, d2)}</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter s: input line</span>
+<span class="sd">    @type s: C{str}</span>
+<span class="sd">    @return: a pair (symbol, value)</span>
+<span class="sd">    @rtype: C{tuple}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pieces</span> <span class="o">=</span> <span class="n">_VAL_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">symbol</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c"># check whether the value is meant to be a set</span>
+    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;{&#39;</span><span class="p">):</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">tuple_strings</span> <span class="o">=</span> <span class="n">_TUPLES_RE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="c"># are the set elements tuples?</span>
+        <span class="k">if</span> <span class="n">tuple_strings</span><span class="p">:</span>
+            <span class="n">set_elements</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">tuple_strings</span><span class="p">:</span>
+                <span class="n">ts</span> <span class="o">=</span> <span class="n">ts</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">element</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_ELEMENT_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">ts</span><span class="p">))</span>
+                <span class="n">set_elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">set_elements</span> <span class="o">=</span> <span class="n">_ELEMENT_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">set_elements</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">value</span>
+    </div>
+<div class="viewcode-block" id="parse_valuation"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.parse_valuation">[docs]</a><span class="k">def</span> <span class="nf">parse_valuation</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a valuation file into a valuation.</span>
+<span class="sd">    </span>
+<span class="sd">    @parameter s: the contents of a valuation file</span>
+<span class="sd">    @type s: C{str}</span>
+<span class="sd">    @return: a L{nltk.sem} valuation</span>
+<span class="sd">    @rtype: L{Valuation}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span> <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">parse_valuation_line</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">Valuation</span><span class="p">(</span><span class="n">statements</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">val</span>
+</div>
+<div class="viewcode-block" id="parse_logic"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.parse_logic">[docs]</a><span class="k">def</span> <span class="nf">parse_logic</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a file of First Order Formulas into a list of {Expression}s.</span>
+<span class="sd">    </span>
+<span class="sd">    @param s: the contents of the file</span>
+<span class="sd">    @type s: C{str}</span>
+<span class="sd">    @param logic_parser: The parser to be used to parse the logical expression</span>
+<span class="sd">    @type logic_parser: C{LogicParser}</span>
+<span class="sd">    @return: a list of parsed formulas.</span>
+<span class="sd">    @rtype: C{list} of L{Expression}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">logic_parser</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">logic_parser</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span>
+        
+    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">logic_parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">ParseException</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">statements</span>
+        
+        </div>
+<div class="viewcode-block" id="skolemize"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.skolemize">[docs]</a><span class="k">def</span> <span class="nf">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">univ_scope</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">used_variables</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Skolemize the expression and convert to conjunctive normal form (CNF)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">univ_scope</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">univ_scope</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">used_variables</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">used_variables</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">AllExpression</span><span class="p">):</span>
+        <span class="n">term</span> <span class="o">=</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">term</span><span class="p">,</span> <span class="n">univ_scope</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">]),</span> <span class="n">used_variables</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">]))</span>
+        <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">unique_variable</span><span class="p">(</span><span class="n">ignore</span><span class="o">=</span><span class="n">used_variables</span><span class="p">)))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span> <span class="o">&amp;</span>\
+               <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">OrExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                      <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ImpExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                      <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">IffExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                      <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span> <span class="o">&amp;</span>\
+               <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                      <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">expression</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">EqualityExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">expression</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">NegatedExpression</span><span class="p">):</span>
+        <span class="n">negated</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">term</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">AllExpression</span><span class="p">):</span>
+            <span class="n">term</span> <span class="o">=</span> <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">term</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">]))</span>
+            <span class="k">if</span> <span class="n">univ_scope</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">skolem_function</span><span class="p">(</span><span class="n">univ_scope</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">skolem_constant</span> <span class="o">=</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">unique_variable</span><span class="p">(</span><span class="n">ignore</span><span class="o">=</span><span class="n">used_variables</span><span class="p">))</span>
+                <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">skolem_constant</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                          <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">OrExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span> <span class="o">&amp;</span>\
+                   <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">ImpExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span> <span class="o">&amp;</span>\
+                   <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">IffExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                          <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span> <span class="o">&amp;</span>\
+                   <span class="n">to_cnf</span><span class="p">(</span><span class="n">skolemize</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">),</span> 
+                          <span class="n">skolemize</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">EqualityExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">expression</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">NegatedExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">term</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">ExistsExpression</span><span class="p">):</span>
+            <span class="n">term</span> <span class="o">=</span> <span class="n">skolemize</span><span class="p">(</span><span class="o">-</span><span class="n">negated</span><span class="o">.</span><span class="n">term</span><span class="p">,</span> <span class="n">univ_scope</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">]),</span> <span class="n">used_variables</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">]))</span>
+            <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">negated</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">unique_variable</span><span class="p">(</span><span class="n">ignore</span><span class="o">=</span><span class="n">used_variables</span><span class="p">)))</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">negated</span><span class="p">,</span> <span class="n">ApplicationExpression</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">expression</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s"> cannot be skolemized&#39;</span> <span class="o">%</span> <span class="n">expression</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ExistsExpression</span><span class="p">):</span>
+        <span class="n">term</span> <span class="o">=</span> <span class="n">skolemize</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">term</span><span class="p">,</span> <span class="n">univ_scope</span><span class="p">,</span> <span class="n">used_variables</span><span class="o">|</span><span class="nb">set</span><span class="p">([</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="n">univ_scope</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">skolem_function</span><span class="p">(</span><span class="n">univ_scope</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">skolem_constant</span> <span class="o">=</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">unique_variable</span><span class="p">(</span><span class="n">ignore</span><span class="o">=</span><span class="n">used_variables</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">term</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">variable</span><span class="p">,</span> <span class="n">skolem_constant</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ApplicationExpression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">expression</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s"> cannot be skolemized&#39;</span> <span class="o">%</span> <span class="n">expression</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="to_cnf"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.to_cnf">[docs]</a><span class="k">def</span> <span class="nf">to_cnf</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert this split disjunction to conjunctive normal form (CNF)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">):</span>
+        <span class="n">r_first</span> <span class="o">=</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">first</span><span class="o">.</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
+        <span class="n">r_second</span> <span class="o">=</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">first</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r_first</span> <span class="o">&amp;</span> <span class="n">r_second</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">second</span><span class="p">,</span> <span class="n">AndExpression</span><span class="p">):</span>
+        <span class="n">r_first</span> <span class="o">=</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="o">.</span><span class="n">first</span><span class="p">)</span>
+        <span class="n">r_second</span> <span class="o">=</span> <span class="n">to_cnf</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="o">.</span><span class="n">second</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r_first</span> <span class="o">&amp;</span> <span class="n">r_second</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">first</span> <span class="o">|</span> <span class="n">second</span>
+
+</div>
+<div class="viewcode-block" id="demo_model0"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.demo_model0">[docs]</a><span class="k">def</span> <span class="nf">demo_model0</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">m0</span><span class="p">,</span> <span class="n">g0</span>
+    <span class="c">#Initialize a valuation of non-logical constants.&quot;&quot;&quot;</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;john&#39;</span><span class="p">,</span> <span class="s">&#39;b1&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;mary&#39;</span><span class="p">,</span> <span class="s">&#39;g1&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;suzie&#39;</span><span class="p">,</span> <span class="s">&#39;g2&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;fido&#39;</span><span class="p">,</span> <span class="s">&#39;d1&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;tess&#39;</span><span class="p">,</span> <span class="s">&#39;d2&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;noosa&#39;</span><span class="p">,</span> <span class="s">&#39;n&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;girl&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;g1&#39;</span><span class="p">,</span> <span class="s">&#39;g2&#39;</span><span class="p">])),</span>
+        <span class="p">(</span><span class="s">&#39;boy&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;b2&#39;</span><span class="p">])),</span>
+        <span class="p">(</span><span class="s">&#39;dog&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;d1&#39;</span><span class="p">,</span> <span class="s">&#39;d2&#39;</span><span class="p">])),</span>
+        <span class="p">(</span><span class="s">&#39;bark&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;d1&#39;</span><span class="p">,</span> <span class="s">&#39;d2&#39;</span><span class="p">])),</span>
+        <span class="p">(</span><span class="s">&#39;walk&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;g2&#39;</span><span class="p">,</span> <span class="s">&#39;d1&#39;</span><span class="p">])),</span>
+        <span class="p">(</span><span class="s">&#39;chase&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;g1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;b2&#39;</span><span class="p">,</span> <span class="s">&#39;g1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;g1&#39;</span><span class="p">,</span> <span class="s">&#39;d1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;g2&#39;</span><span class="p">,</span> <span class="s">&#39;d2&#39;</span><span class="p">)])),</span>
+        <span class="p">(</span><span class="s">&#39;see&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;g1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;b2&#39;</span><span class="p">,</span> <span class="s">&#39;d2&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;g1&#39;</span><span class="p">,</span> <span class="s">&#39;b1&#39;</span><span class="p">),(</span><span class="s">&#39;d2&#39;</span><span class="p">,</span> <span class="s">&#39;b1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;g2&#39;</span><span class="p">,</span> <span class="s">&#39;n&#39;</span><span class="p">)])),</span>
+        <span class="p">(</span><span class="s">&#39;in&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;n&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;b2&#39;</span><span class="p">,</span> <span class="s">&#39;n&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;d2&#39;</span><span class="p">,</span> <span class="s">&#39;n&#39;</span><span class="p">)])),</span>
+        <span class="p">(</span><span class="s">&#39;with&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">([(</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;g1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;g1&#39;</span><span class="p">,</span> <span class="s">&#39;b1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;d1&#39;</span><span class="p">,</span> <span class="s">&#39;b1&#39;</span><span class="p">),</span> <span class="p">(</span><span class="s">&#39;b1&#39;</span><span class="p">,</span> <span class="s">&#39;d1&#39;</span><span class="p">)]))</span>
+     <span class="p">]</span>
+    <span class="c">#Read in the data from C{v}</span>
+    <span class="n">val</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">Valuation</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="c">#Bind C{dom} to the C{domain} property of C{val}</span>
+    <span class="n">dom</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">domain</span>
+    <span class="c">#Initialize a model with parameters C{dom} and C{val}.</span>
+    <span class="n">m0</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">Model</span><span class="p">(</span><span class="n">dom</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span>
+    <span class="c">#Initialize a variable assignment with parameter C{dom}</span>
+    <span class="n">g0</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">Assignment</span><span class="p">(</span><span class="n">dom</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="read_sents"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.read_sents">[docs]</a><span class="k">def</span> <span class="nf">read_sents</span><span class="p">(</span><span class="nb">file</span><span class="p">):</span>
+    <span class="n">sents</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">open</span><span class="p">(</span><span class="nb">file</span><span class="p">)]</span>
+    <span class="c"># get rid of blank lines</span>
+    <span class="n">sents</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">sents</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="n">sents</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">sents</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">l</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;#&#39;</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">sents</span>
+</div>
+<div class="viewcode-block" id="demo_legacy_grammar"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.demo_legacy_grammar">[docs]</a><span class="k">def</span> <span class="nf">demo_legacy_grammar</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check that batch_interpret() is compatible with legacy grammars that use</span>
+<span class="sd">    a lowercase &#39;sem&#39; feature.</span>
+<span class="sd">    </span>
+<span class="sd">    Define &#39;test.fcfg&#39; to be the following</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">parse_fcfg</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    </span><span class="si">% s</span><span class="s">tart S</span>
+<span class="s">    S[sem=&lt;hello&gt;] -&gt; &#39;hello&#39;</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&quot;Reading grammar: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">g</span>
+    <span class="k">print</span> <span class="s">&quot;*&quot;</span> <span class="o">*</span> <span class="mi">20</span>
+    <span class="k">for</span> <span class="n">reading</span> <span class="ow">in</span> <span class="n">batch_interpret</span><span class="p">([</span><span class="s">&#39;hello&#39;</span><span class="p">],</span> <span class="n">g</span><span class="p">,</span> <span class="n">semkey</span><span class="o">=</span><span class="s">&#39;sem&#39;</span><span class="p">):</span>
+        <span class="n">syn</span><span class="p">,</span> <span class="n">sem</span> <span class="o">=</span> <span class="n">reading</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">print</span> 
+        <span class="k">print</span> <span class="s">&quot;output: &quot;</span><span class="p">,</span> <span class="n">sem</span>     
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.util.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="kn">import</span> <span class="nn">sys</span>
+    <span class="kn">from</span> <span class="nn">optparse</span> <span class="kn">import</span> <span class="n">OptionParser</span>
+    <span class="n">description</span> <span class="o">=</span> \
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse and evaluate some sentences.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">opts</span> <span class="o">=</span> <span class="n">OptionParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
+    
+    <span class="n">opts</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">evaluate</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">syntrace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                      <span class="n">semtrace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">demo</span><span class="o">=</span><span class="s">&#39;default&#39;</span><span class="p">,</span> <span class="n">grammar</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">sentences</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-d&quot;</span><span class="p">,</span> <span class="s">&quot;--demo&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;demo&quot;</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s">&quot;choose demo D; omit this for the default demo, or specify &#39;chat80&#39;&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;D&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-g&quot;</span><span class="p">,</span> <span class="s">&quot;--gram&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;grammar&quot;</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s">&quot;read in grammar G&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;G&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-m&quot;</span><span class="p">,</span> <span class="s">&quot;--model&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;model&quot;</span><span class="p">,</span>
+                        <span class="n">help</span><span class="o">=</span><span class="s">&quot;import model M (omit &#39;.py&#39; suffix)&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;M&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-s&quot;</span><span class="p">,</span> <span class="s">&quot;--sentences&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;sentences&quot;</span><span class="p">,</span>
+                        <span class="n">help</span><span class="o">=</span><span class="s">&quot;read in a file of test sentences S&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;S&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-e&quot;</span><span class="p">,</span> <span class="s">&quot;--no-eval&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_false&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;evaluate&quot;</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s">&quot;just do a syntactic analysis&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-b&quot;</span><span class="p">,</span> <span class="s">&quot;--no-beta-reduction&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_false&quot;</span><span class="p">,</span>
+                    <span class="n">dest</span><span class="o">=</span><span class="s">&quot;beta&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;don&#39;t carry out beta-reduction&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-t&quot;</span><span class="p">,</span> <span class="s">&quot;--syntrace&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;count&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;syntrace&quot;</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s">&quot;set syntactic tracing on; requires &#39;-e&#39; option&quot;</span><span class="p">)</span>
+    <span class="n">opts</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&quot;-T&quot;</span><span class="p">,</span> <span class="s">&quot;--semtrace&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;count&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;semtrace&quot;</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s">&quot;set semantic tracing on&quot;</span><span class="p">)</span>
+
+    <span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span> <span class="o">=</span> <span class="n">opts</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+    
+    <span class="n">SPACER</span> <span class="o">=</span> <span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">30</span>
+
+    <span class="n">demo_model0</span><span class="p">()</span>
+
+    <span class="n">sents</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s">&#39;Fido sees a boy with Mary&#39;</span><span class="p">,</span>
+    <span class="s">&#39;John sees Mary&#39;</span><span class="p">,</span>
+    <span class="s">&#39;every girl chases a dog&#39;</span><span class="p">,</span>
+    <span class="s">&#39;every boy chases a girl&#39;</span><span class="p">,</span>
+    <span class="s">&#39;John walks with a girl in Noosa&#39;</span><span class="p">,</span>
+    <span class="s">&#39;who walks&#39;</span><span class="p">]</span>
+    
+    <span class="n">gramfile</span> <span class="o">=</span> <span class="s">&#39;grammars/sample_grammars/sem2.fcfg&#39;</span>
+        
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">sentences</span><span class="p">:</span>
+        <span class="n">sentsfile</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">sentences</span>
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">grammar</span><span class="p">:</span>
+        <span class="n">gramfile</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">grammar</span>
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">model</span><span class="p">:</span>
+        <span class="k">exec</span> <span class="s">&quot;import </span><span class="si">%s</span><span class="s"> as model&quot;</span> <span class="o">%</span> <span class="n">options</span><span class="o">.</span><span class="n">model</span>
+    
+    <span class="k">if</span> <span class="n">sents</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">sents</span> <span class="o">=</span> <span class="n">read_sents</span><span class="p">(</span><span class="n">sentsfile</span><span class="p">)</span>
+
+    <span class="c"># Set model and assignment</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">m0</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">g0</span>
+
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">evaluate</span><span class="p">:</span> 
+        <span class="n">evaluations</span> <span class="o">=</span> \
+            <span class="n">batch_evaluate</span><span class="p">(</span><span class="n">sents</span><span class="p">,</span> <span class="n">gramfile</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">options</span><span class="o">.</span><span class="n">semtrace</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">semreps</span> <span class="o">=</span> \
+            <span class="n">batch_interpret</span><span class="p">(</span><span class="n">sents</span><span class="p">,</span> <span class="n">gramfile</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="n">options</span><span class="o">.</span><span class="n">syntrace</span><span class="p">)</span>
+        
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sents</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">print</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">Sentence: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">sent</span>
+        <span class="k">print</span> <span class="n">SPACER</span>
+        <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">evaluate</span><span class="p">:</span> 
+            
+            <span class="k">for</span> <span class="p">(</span><span class="n">syntree</span><span class="p">,</span> <span class="n">semrep</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="ow">in</span> <span class="n">evaluations</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="n">value</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s">:  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">semrep</span><span class="p">)</span>
+                <span class="k">print</span> <span class="n">value</span>
+                <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+           
+            <span class="k">for</span> <span class="p">(</span><span class="n">syntree</span><span class="p">,</span> <span class="n">semrep</span><span class="p">)</span> <span class="ow">in</span> <span class="n">semreps</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s">:  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">semrep</span><span class="p">)</span>
+                <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+                </div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c">#demo()</span>
+    <span class="n">demo_legacy_grammar</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../sem.html" >nltk.sem</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

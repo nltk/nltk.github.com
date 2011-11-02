@@ -1,0 +1,470 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.reader.nombank &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="nltk.corpus.reader" href="../reader.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" accesskey="U">nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.reader.nombank</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: NomBank Corpus Reader</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Authors: Paul Bedaride &lt;paul.bedaride@gmail.com&gt; </span>
+<span class="c">#          Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">codecs</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">from</span> <span class="nn">nltk.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span>
+
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.util</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="NombankCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">NombankCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Corpus reader for the nombank corpus, which augments the Penn</span>
+<span class="sd">    Treebank with information about the predicate argument structure</span>
+<span class="sd">    of every noun instance.  The corpus consists of two parts: the</span>
+<span class="sd">    predicate-argument annotations themselves, and a set of X{frameset</span>
+<span class="sd">    files} which define the argument labels used by the annotations,</span>
+<span class="sd">    on a per-noun basis.  Each X{frameset file} contains one or more</span>
+<span class="sd">    predicates, such as C{&#39;turn&#39;} or C{&#39;turn_on&#39;}, each of which is</span>
+<span class="sd">    divided into coarse-grained word senses called X{rolesets}.  For</span>
+<span class="sd">    each X{roleset}, the frameset file provides descriptions of the</span>
+<span class="sd">    argument roles, along with examples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">nomfile</span><span class="p">,</span> <span class="n">framefiles</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span>
+                 <span class="n">nounsfile</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">parse_fileid_xform</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">parse_corpus</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param root: The root directory for this corpus.</span>
+<span class="sd">        @param nomfile: The name of the file containing the predicate-</span>
+<span class="sd">            argument annotations (relative to C{root}).</span>
+<span class="sd">        @param framefiles: A list or regexp specifying the frameset</span>
+<span class="sd">            fileids for this corpus.</span>
+<span class="sd">        @param parse_fileid_xform: A transform that should be applied</span>
+<span class="sd">            to the fileids in this corpus.  This should be a function</span>
+<span class="sd">            of one argument (a fileid) that returns a string (the new</span>
+<span class="sd">            fileid).</span>
+<span class="sd">        @param parse_corpus: The corpus containing the parse trees</span>
+<span class="sd">            corresponding to this corpus.  These parse trees are</span>
+<span class="sd">            necessary to resolve the tree pointers used by nombank.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># If framefiles is specified as a regexp, expand it.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">framefiles</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="n">framefiles</span> <span class="o">=</span> <span class="n">find_corpus_fileids</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">framefiles</span><span class="p">)</span>
+        <span class="n">framefiles</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">framefiles</span><span class="p">)</span>
+        <span class="c"># Initialze the corpus reader.</span>
+        <span class="n">CorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="p">[</span><span class="n">nomfile</span><span class="p">,</span> <span class="n">nounsfile</span><span class="p">]</span> <span class="o">+</span> <span class="n">framefiles</span><span class="p">,</span>
+                              <span class="n">encoding</span><span class="p">)</span>
+
+        <span class="c"># Record our frame fileids &amp; nom file.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nomfile</span> <span class="o">=</span> <span class="n">nomfile</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_framefiles</span> <span class="o">=</span> <span class="n">framefiles</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nounsfile</span> <span class="o">=</span> <span class="n">nounsfile</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parse_fileid_xform</span> <span class="o">=</span> <span class="n">parse_fileid_xform</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parse_corpus</span> <span class="o">=</span> <span class="n">parse_corpus</span>
+
+<div class="viewcode-block" id="NombankCorpusReader.raw"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader.raw">[docs]</a>    <span class="k">def</span> <span class="nf">raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the text contents of the given fileids, as a single string.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fileids</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">fileids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fileids</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span> <span class="n">fileids</span> <span class="o">=</span> <span class="p">[</span><span class="n">fileids</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="NombankCorpusReader.instances"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader.instances">[docs]</a>    <span class="k">def</span> <span class="nf">instances</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a corpus view that acts as a list of</span>
+<span class="sd">        L{NombankInstance} objects, one for each noun in the corpus.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">StreamBackedCorpusView</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nomfile</span><span class="p">),</span>
+                                      <span class="bp">self</span><span class="o">.</span><span class="n">_read_instance_block</span><span class="p">,</span>
+                                      <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nomfile</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="NombankCorpusReader.lines"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader.lines">[docs]</a>    <span class="k">def</span> <span class="nf">lines</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a corpus view that acts as a list of strings, one for</span>
+<span class="sd">        each line in the predicate-argument annotation file.  </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">StreamBackedCorpusView</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nomfile</span><span class="p">),</span>
+                                      <span class="n">read_line_block</span><span class="p">,</span>
+                                      <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nomfile</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="NombankCorpusReader.roleset"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader.roleset">[docs]</a>    <span class="k">def</span> <span class="nf">roleset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">roleset_id</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the xml description for the given roleset.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">lemma</span> <span class="o">=</span> <span class="n">roleset_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">framefile</span> <span class="o">=</span> <span class="s">&#39;frames/</span><span class="si">%s</span><span class="s">.xml&#39;</span> <span class="o">%</span> <span class="n">lemma</span>
+        <span class="k">if</span> <span class="n">framefile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_framefiles</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Frameset file for </span><span class="si">%s</span><span class="s"> not found&#39;</span> <span class="o">%</span>
+                             <span class="n">roleset_id</span><span class="p">)</span>
+
+        <span class="c"># n.b.: The encoding for XML fileids is specified by the file</span>
+        <span class="c"># itself; so we ignore self._encoding here.</span>
+        <span class="n">etree</span> <span class="o">=</span> <span class="n">ElementTree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">framefile</span><span class="p">)</span><span class="o">.</span><span class="n">open</span><span class="p">())</span><span class="o">.</span><span class="n">getroot</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">roleset</span> <span class="ow">in</span> <span class="n">etree</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;predicate/roleset&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">roleset</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;id&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">roleset_id</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">roleset</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Roleset </span><span class="si">%s</span><span class="s"> not found in </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="n">roleset_id</span><span class="p">,</span> <span class="n">framefile</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="NombankCorpusReader.nouns"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankCorpusReader.nouns">[docs]</a>    <span class="k">def</span> <span class="nf">nouns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: a corpus view that acts as a list of all noun lemmas</span>
+<span class="sd">        in this corpus (from the nombank.1.0.words file).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">StreamBackedCorpusView</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nounsfile</span><span class="p">),</span>
+                                      <span class="n">read_line_block</span><span class="p">,</span>
+                                      <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nounsfile</span><span class="p">))</span>
+</div>
+    <span class="k">def</span> <span class="nf">_read_instance_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">):</span>
+        <span class="n">block</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c"># Read 100 at a time.</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">line</span><span class="p">:</span>
+                <span class="n">block</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">NombankInstance</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span>
+                    <span class="n">line</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_fileid_xform</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_parse_corpus</span><span class="p">))</span>
+                
+        <span class="k">return</span> <span class="n">block</span>
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Nombank Instance &amp; related datatypes</span>
+<span class="c">######################################################################</span>
+</div>
+<div class="viewcode-block" id="NombankInstance"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankInstance">[docs]</a><span class="k">class</span> <span class="nc">NombankInstance</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">baseform</span><span class="p">,</span> <span class="n">sensenumber</span><span class="p">,</span>
+                 <span class="n">predicate</span><span class="p">,</span> <span class="n">predid</span><span class="p">,</span> <span class="n">arguments</span><span class="p">,</span> <span class="n">parse_corpus</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">fileid</span> <span class="o">=</span> <span class="n">fileid</span>
+        <span class="sd">&quot;&quot;&quot;The name of the file containing the parse tree for this</span>
+<span class="sd">        instance&#39;s sentence.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">sentnum</span> <span class="o">=</span> <span class="n">sentnum</span>
+        <span class="sd">&quot;&quot;&quot;The sentence number of this sentence within L{fileid}.</span>
+<span class="sd">        Indexing starts from zero.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span> <span class="o">=</span> <span class="n">wordnum</span>
+        <span class="sd">&quot;&quot;&quot;The word number of this instance&#39;s predicate within its</span>
+<span class="sd">        containing sentence.  Word numbers are indexed starting from</span>
+<span class="sd">        zero, and include traces and other empty parse elements.&quot;&quot;&quot;</span>
+            
+        <span class="bp">self</span><span class="o">.</span><span class="n">baseform</span> <span class="o">=</span> <span class="n">baseform</span>
+        <span class="sd">&quot;&quot;&quot;The baseform of the predicate.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">sensenumber</span> <span class="o">=</span> <span class="n">sensenumber</span>
+        <span class="sd">&quot;&quot;&quot;The sense number os the predicate&quot;&quot;&quot;</span>
+               
+        <span class="bp">self</span><span class="o">.</span><span class="n">predicate</span> <span class="o">=</span> <span class="n">predicate</span>
+        <span class="sd">&quot;&quot;&quot;A L{NombankTreePointer} indicating the position of this</span>
+<span class="sd">        instance&#39;s predicate within its containing sentence.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">predid</span> <span class="o">=</span> <span class="n">predid</span>
+        <span class="sd">&quot;&quot;&quot;Identifier of the predicate &quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">arguments</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+        <span class="sd">&quot;&quot;&quot;A list of tuples (argloc, argid), specifying the location</span>
+<span class="sd">        and identifier for each of the predicate&#39;s argument in the</span>
+<span class="sd">        containing sentence.  Argument identifiers are strings such as</span>
+<span class="sd">        C{&#39;ARG0&#39;} or C{&#39;ARGM-TMP&#39;}.  This list does *not* contain</span>
+<span class="sd">        the predicate.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">parse_corpus</span> <span class="o">=</span> <span class="n">parse_corpus</span>
+        <span class="sd">&quot;&quot;&quot;A corpus reader for the parse trees corresponding to the</span>
+<span class="sd">        instances in this nombank corpus.&quot;&quot;&quot;</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="NombankInstance.roleset"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankInstance.roleset">[docs]</a>    <span class="k">def</span> <span class="nf">roleset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The name of the roleset used by this instance&#39;s predicate.</span>
+<span class="sd">        Use L{nombank.roleset() &lt;NombankCorpusReader.roleset&gt;} to</span>
+<span class="sd">        look up information about the roleset.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">.</span><span class="si">%s</span><span class="s">&#39;</span><span class="o">%</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">baseform</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sensenumber</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&#39;&lt;NombankInstance: </span><span class="si">%s</span><span class="s">, sent </span><span class="si">%s</span><span class="s">, word </span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fileid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sentnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fileid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sentnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">,</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">basename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sensenumber</span><span class="p">)</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">arguments</span> <span class="o">+</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">predicate</span><span class="p">,</span> <span class="s">&#39;rel&#39;</span><span class="p">),)</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">argloc</span><span class="p">,</span> <span class="n">argid</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39; </span><span class="si">%s</span><span class="s">-</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">argloc</span><span class="p">,</span> <span class="n">argid</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">s</span>
+
+    <span class="k">def</span> <span class="nf">_get_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_corpus</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">return</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fileid</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_corpus</span><span class="o">.</span><span class="n">fileids</span><span class="p">():</span> <span class="k">return</span> <span class="bp">None</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_corpus</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fileid</span><span class="p">)[</span><span class="bp">self</span><span class="o">.</span><span class="n">sentnum</span><span class="p">]</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_tree</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">        The parse tree corresponding to this instance, or C{None} if</span>
+<span class="s">        the corresponding tree is not available.&quot;&quot;&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="NombankInstance.parse"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankInstance.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">parse_fileid_xform</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">parse_corpus</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">6</span><span class="p">:</span> 
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Badly formatted nombank line: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="c"># Divide the line into its basic pieces.</span>
+        <span class="p">(</span><span class="n">fileid</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span>
+          <span class="n">baseform</span><span class="p">,</span> <span class="n">sensenumber</span><span class="p">)</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+
+        <span class="n">args</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">5</span><span class="p">:]</span>
+        <span class="n">rel</span> <span class="o">=</span> <span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="k">if</span> <span class="s">&#39;-rel&#39;</span> <span class="ow">in</span> <span class="n">p</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rel</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Badly formatted nombank line: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="c"># Apply the fileid selector, if any.</span>
+        <span class="k">if</span> <span class="n">parse_fileid_xform</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">fileid</span> <span class="o">=</span> <span class="n">parse_fileid_xform</span><span class="p">(</span><span class="n">fileid</span><span class="p">)</span>
+
+        <span class="c"># Convert sentence &amp; word numbers to ints.</span>
+        <span class="n">sentnum</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sentnum</span><span class="p">)</span>
+        <span class="n">wordnum</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wordnum</span><span class="p">)</span>
+
+        <span class="c"># Parse the predicate location.</span>
+
+        <span class="n">predloc</span><span class="p">,</span> <span class="n">predid</span> <span class="o">=</span> <span class="n">rel</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">predicate</span> <span class="o">=</span> <span class="n">NombankTreePointer</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">predloc</span><span class="p">)</span>
+
+        <span class="c"># Parse the arguments.</span>
+        <span class="n">arguments</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="n">argloc</span><span class="p">,</span> <span class="n">argid</span> <span class="o">=</span> <span class="n">arg</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">arguments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">NombankTreePointer</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">argloc</span><span class="p">),</span> <span class="n">argid</span><span class="p">)</span> <span class="p">)</span>
+
+        <span class="c"># Put it all together.</span>
+        <span class="k">return</span> <span class="n">NombankInstance</span><span class="p">(</span><span class="n">fileid</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">baseform</span><span class="p">,</span> <span class="n">sensenumber</span><span class="p">,</span> 
+                               <span class="n">predicate</span><span class="p">,</span> <span class="n">predid</span><span class="p">,</span> <span class="n">arguments</span><span class="p">,</span> <span class="n">parse_corpus</span><span class="p">)</span>
+</div></div>
+<div class="viewcode-block" id="NombankPointer"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankPointer">[docs]</a><span class="k">class</span> <span class="nc">NombankPointer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A pointer used by nombank to identify one or more constituents in</span>
+<span class="sd">    a parse tree.  C{NombankPointer} is an abstract base class with</span>
+<span class="sd">    three concrete subclasses:</span>
+
+<span class="sd">      - L{NombankTreePointer} is used to point to single constituents.</span>
+<span class="sd">      - L{NombankSplitTreePointer} is used to point to &#39;split&#39;</span>
+<span class="sd">        constituents, which consist of a sequence of two or more</span>
+<span class="sd">        C{NombankTreePointer}s.</span>
+<span class="sd">      - L{NombankChainTreePointer} is used to point to entire trace</span>
+<span class="sd">        chains in a tree.  It consists of a sequence of pieces, which</span>
+<span class="sd">        can be C{NombankTreePointer}s or C{NombankSplitTreePointer}s.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">==</span> <span class="n">NombankPoitner</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;NombankPointer is an abstract base class&#39;</span><span class="p">)</span>
+            </div>
+<div class="viewcode-block" id="NombankChainTreePointer"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankChainTreePointer">[docs]</a><span class="k">class</span> <span class="nc">NombankChainTreePointer</span><span class="p">(</span><span class="n">NombankPointer</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pieces</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span> <span class="o">=</span> <span class="n">pieces</span>
+        <span class="sd">&quot;&quot;&quot;A list of the pieces that make up this chain.  Elements may</span>
+<span class="sd">           be either L{NombankSplitTreePointer}s or</span>
+<span class="sd">           L{NombankTreePointer}s.&quot;&quot;&quot;</span>
+        
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;*&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;NombankChainTreePointer: </span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="bp">self</span>
+<div class="viewcode-block" id="NombankChainTreePointer.select"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankChainTreePointer.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tree</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Parse tree not avaialable&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;*CHAIN*&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span><span class="p">])</span>
+</div></div>
+<div class="viewcode-block" id="NombankSplitTreePointer"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankSplitTreePointer">[docs]</a><span class="k">class</span> <span class="nc">NombankSplitTreePointer</span><span class="p">(</span><span class="n">NombankPointer</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pieces</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span> <span class="o">=</span> <span class="n">pieces</span>
+        <span class="sd">&quot;&quot;&quot;A list of the pieces that make up this chain.  Elements are</span>
+<span class="sd">           all L{NombankTreePointer}s.&quot;&quot;&quot;</span>
+        
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;NombankSplitTreePointer: </span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="bp">self</span>
+<div class="viewcode-block" id="NombankSplitTreePointer.select"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankSplitTreePointer.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tree</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Parse tree not avaialable&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;*SPLIT*&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pieces</span><span class="p">])</span>
+</div></div>
+<div class="viewcode-block" id="NombankTreePointer"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankTreePointer">[docs]</a><span class="k">class</span> <span class="nc">NombankTreePointer</span><span class="p">(</span><span class="n">NombankPointer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    wordnum:height*wordnum:height*...</span>
+<span class="sd">    wordnum:height,</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">height</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span> <span class="o">=</span> <span class="n">wordnum</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">height</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="NombankTreePointer.parse"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankTreePointer.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+        <span class="c"># Deal with chains (xx*yy*zz)</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;*&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NombankChainTreePointer</span><span class="p">([</span><span class="n">NombankTreePointer</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span>
+                                              <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">])</span>
+
+        <span class="c"># Deal with split args (xx,yy,zz)</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NombankSplitTreePointer</span><span class="p">([</span><span class="n">NombankTreePointer</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span>
+                                             <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">])</span>
+
+        <span class="c"># Deal with normal pointers.</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;bad nombank pointer </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">NombankTreePointer</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">pieces</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">pieces</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</div>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">:</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;NombankTreePointer(</span><span class="si">%d</span><span class="s">, </span><span class="si">%d</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__cmp__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">while</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="p">(</span><span class="n">NombankChainTreePointer</span><span class="p">,</span>
+                                 <span class="n">NombankSplitTreePointer</span><span class="p">)):</span>
+            <span class="n">other</span> <span class="o">=</span> <span class="n">other</span><span class="o">.</span><span class="n">pieces</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">NombankTreePointer</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">cmp</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="nb">id</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="nb">cmp</span><span class="p">(</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">,</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">height</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">wordnum</span><span class="p">,</span> <span class="o">-</span><span class="n">other</span><span class="o">.</span><span class="n">height</span><span class="p">)</span> <span class="p">)</span>
+
+<div class="viewcode-block" id="NombankTreePointer.select"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankTreePointer.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tree</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Parse tree not avaialable&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tree</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">treepos</span><span class="p">(</span><span class="n">tree</span><span class="p">)]</span>
+</div>
+<div class="viewcode-block" id="NombankTreePointer.treepos"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nombank.NombankTreePointer.treepos">[docs]</a>    <span class="k">def</span> <span class="nf">treepos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert this pointer to a standard &#39;tree position&#39; pointer,</span>
+<span class="sd">        given that it points to the given tree.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tree</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Parse tree not avaialable&#39;</span><span class="p">)</span>
+        <span class="n">stack</span> <span class="o">=</span> <span class="p">[</span><span class="n">tree</span><span class="p">]</span>
+        <span class="n">treepos</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">wordnum</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="c">#print treepos</span>
+            <span class="c">#print stack[-1]</span>
+            <span class="c"># tree node:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">Tree</span><span class="p">):</span>
+                <span class="c"># Select the next child.</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">treepos</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">):</span>
+                    <span class="n">treepos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">treepos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="c"># Update the stack.</span>
+                <span class="k">if</span> <span class="n">treepos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+                    <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">treepos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c"># End of node&#39;s child list: pop up a level.</span>
+                    <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+                    <span class="n">treepos</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+            <span class="c"># word node:</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">wordnum</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">wordnum</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">treepos</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">treepos</span><span class="p">)</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">height</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">wordnum</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+</pre></div></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../../corpus.html" >nltk.corpus</a> &raquo;</li>
+          <li><a href="../reader.html" >nltk.corpus.reader</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1584 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.grammar &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.grammar</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: Context Free Grammars</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c">#         Edward Loper &lt;edloper@seas.upenn.edu&gt;</span>
+<span class="c">#         Jason Narad &lt;jason.narad@gmail.com&gt;</span>
+<span class="c">#         Peter Ljunglöf &lt;peter.ljunglof@heatherleaf.se&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="c">#</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Basic data classes for representing context free grammars.  A</span>
+<span class="sd">X{grammar} specifies which trees can represent the structure of a</span>
+<span class="sd">given text.  Each of these trees is called a X{parse tree} for the</span>
+<span class="sd">text (or simply a X{parse}).  In a X{context free} grammar, the set of</span>
+<span class="sd">parse trees for any piece of a text can depend only on that piece, and</span>
+<span class="sd">not on the rest of the text (i.e., the piece&#39;s context).  Context free</span>
+<span class="sd">grammars are often used to find possible syntactic structures for</span>
+<span class="sd">sentences.  In this context, the leaves of a parse tree are word</span>
+<span class="sd">tokens; and the node values are phrasal categories, such as C{NP}</span>
+<span class="sd">and C{VP}.</span>
+
+<span class="sd">The L{ContextFreeGrammar} class is used to encode context free grammars.  Each</span>
+<span class="sd">C{ContextFreeGrammar} consists of a start symbol and a set of productions.</span>
+<span class="sd">The X{start symbol} specifies the root node value for parse trees.  For example,</span>
+<span class="sd">the start symbol for syntactic parsing is usually C{S}.  Start</span>
+<span class="sd">symbols are encoded using the C{Nonterminal} class, which is discussed</span>
+<span class="sd">below.</span>
+
+<span class="sd">A Grammar&#39;s X{productions} specify what parent-child relationships a parse</span>
+<span class="sd">tree can contain.  Each production specifies that a particular</span>
+<span class="sd">node can be the parent of a particular set of children.  For example,</span>
+<span class="sd">the production C{&lt;S&gt; -&gt; &lt;NP&gt; &lt;VP&gt;} specifies that an C{S} node can</span>
+<span class="sd">be the parent of an C{NP} node and a C{VP} node.</span>
+
+<span class="sd">Grammar productions are implemented by the C{Production} class.</span>
+<span class="sd">Each C{Production} consists of a left hand side and a right hand</span>
+<span class="sd">side.  The X{left hand side} is a C{Nonterminal} that specifies the</span>
+<span class="sd">node type for a potential parent; and the X{right hand side} is a list</span>
+<span class="sd">that specifies allowable children for that parent.  This lists</span>
+<span class="sd">consists of C{Nonterminals} and text types: each C{Nonterminal}</span>
+<span class="sd">indicates that the corresponding child may be a C{TreeToken} with the</span>
+<span class="sd">specified node type; and each text type indicates that the</span>
+<span class="sd">corresponding child may be a C{Token} with the with that type.</span>
+
+<span class="sd">The C{Nonterminal} class is used to distinguish node values from leaf</span>
+<span class="sd">values.  This prevents the grammar from accidentally using a leaf</span>
+<span class="sd">value (such as the English word &quot;A&quot;) as the node of a subtree.  Within</span>
+<span class="sd">a C{ContextFreeGrammar}, all node values are wrapped in the C{Nonterminal} class.</span>
+<span class="sd">Note, however, that the trees that are specified by the grammar do</span>
+<span class="sd">B{not} include these C{Nonterminal} wrappers.</span>
+
+<span class="sd">Grammars can also be given a more procedural interpretation.  According to</span>
+<span class="sd">this interpretation, a Grammar specifies any tree structure M{tree} that</span>
+<span class="sd">can be produced by the following procedure:</span>
+
+<span class="sd">    - Set M{tree} to the start symbol</span>
+<span class="sd">    - Repeat until M{tree} contains no more nonterminal leaves:</span>
+<span class="sd">      - Choose a production M{prod} with whose left hand side</span>
+<span class="sd">        M{lhs} is a nonterminal leaf of M{tree}.</span>
+<span class="sd">      - Replace the nonterminal leaf with a subtree, whose node</span>
+<span class="sd">        value is the value wrapped by the nonterminal M{lhs}, and</span>
+<span class="sd">        whose children are the right hand side of M{prod}.</span>
+
+<span class="sd">The operation of replacing the left hand side (M{lhs}) of a production</span>
+<span class="sd">with the right hand side (M{rhs}) in a tree (M{tree}) is known as</span>
+<span class="sd">X{expanding} M{lhs} to M{rhs} in M{tree}.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="nb">all</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">transitive_closure</span><span class="p">,</span> <span class="n">invert_graph</span>
+
+<span class="kn">from</span> <span class="nn">probability</span> <span class="kn">import</span> <span class="n">ImmutableProbabilisticMixIn</span>
+<span class="kn">from</span> <span class="nn">featstruct</span> <span class="kn">import</span> <span class="n">FeatStruct</span><span class="p">,</span> <span class="n">FeatDict</span><span class="p">,</span> <span class="n">FeatStructParser</span><span class="p">,</span> <span class="n">SLASH</span><span class="p">,</span> <span class="n">TYPE</span>
+
+<span class="c">#################################################################</span>
+<span class="c"># Nonterminal</span>
+<span class="c">#################################################################</span>
+
+<div class="viewcode-block" id="Nonterminal"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Nonterminal">[docs]</a><span class="k">class</span> <span class="nc">Nonterminal</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A non-terminal symbol for a context free grammar.  C{Nonterminal}</span>
+<span class="sd">    is a wrapper class for node values; it is used by</span>
+<span class="sd">    C{Production}s to distinguish node values from leaf values.</span>
+<span class="sd">    The node value that is wrapped by a C{Nonterminal} is known as its</span>
+<span class="sd">    X{symbol}.  Symbols are typically strings representing phrasal</span>
+<span class="sd">    categories (such as C{&quot;NP&quot;} or C{&quot;VP&quot;}).  However, more complex</span>
+<span class="sd">    symbol types are sometimes used (e.g., for lexicalized grammars).</span>
+<span class="sd">    Since symbols are node values, they must be immutable and</span>
+<span class="sd">    hashable.  Two C{Nonterminal}s are considered equal if their</span>
+<span class="sd">    symbols are equal.</span>
+
+<span class="sd">    @see: L{ContextFreeGrammar}</span>
+<span class="sd">    @see: L{Production}</span>
+<span class="sd">    @type _symbol: (any)</span>
+<span class="sd">    @ivar _symbol: The node value corresponding to this</span>
+<span class="sd">        C{Nonterminal}.  This value must be immutable and hashable. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">symbol</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new non-terminal from the given symbol.</span>
+
+<span class="sd">        @type symbol: (any)</span>
+<span class="sd">        @param symbol: The node value corresponding to this</span>
+<span class="sd">            C{Nonterminal}.  This value must be immutable and</span>
+<span class="sd">            hashable. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span> <span class="o">=</span> <span class="n">symbol</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span> <span class="o">=</span> <span class="nb">hash</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Nonterminal.symbol"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Nonterminal.symbol">[docs]</a>    <span class="k">def</span> <span class="nf">symbol</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The node value corresponding to this C{Nonterminal}. </span>
+<span class="sd">        @rtype: (any)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span>
+</div>
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: True if this non-terminal is equal to C{other}.  In</span>
+<span class="sd">            particular, return true iff C{other} is a C{Nonterminal}</span>
+<span class="sd">            and this non-terminal&#39;s symbol is equal to C{other}&#39;s</span>
+<span class="sd">            symbol.</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_symbol</span><span class="p">)</span> \
+                    <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: True if this non-terminal is not equal to C{other}.  In</span>
+<span class="sd">            particular, return true iff C{other} is not a C{Nonterminal}</span>
+<span class="sd">            or this non-terminal&#39;s symbol is not equal to C{other}&#39;s</span>
+<span class="sd">            symbol.</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">==</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__cmp__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span> 
+            <span class="k">return</span> <span class="nb">cmp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">_symbol</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span> 
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A string representation for this C{Nonterminal}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;</span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A string representation for this C{Nonterminal}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;</span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,)</span>
+
+    <span class="k">def</span> <span class="nf">__div__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A new nonterminal whose symbol is C{M{A}/M{B}}, where</span>
+<span class="sd">            C{M{A}} is the symbol for this nonterminal, and C{M{B}}</span>
+<span class="sd">            is the symbol for rhs.</span>
+<span class="sd">        @rtype: L{Nonterminal}</span>
+<span class="sd">        @param rhs: The nonterminal used to form the right hand side</span>
+<span class="sd">            of the new nonterminal.</span>
+<span class="sd">        @type rhs: L{Nonterminal}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Nonterminal</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">/</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_symbol</span><span class="p">,</span> <span class="n">rhs</span><span class="o">.</span><span class="n">_symbol</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="nonterminals"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.nonterminals">[docs]</a><span class="k">def</span> <span class="nf">nonterminals</span><span class="p">(</span><span class="n">symbols</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a string containing a list of symbol names, return a list of</span>
+<span class="sd">    C{Nonterminals} constructed from those symbols.  </span>
+
+<span class="sd">    @param symbols: The symbol name string.  This string can be</span>
+<span class="sd">        delimited by either spaces or commas.</span>
+<span class="sd">    @type symbols: C{string}</span>
+<span class="sd">    @return: A list of C{Nonterminals} constructed from the symbol</span>
+<span class="sd">        names given in C{symbols}.  The C{Nonterminals} are sorted</span>
+<span class="sd">        in the same order as the symbols names.</span>
+<span class="sd">    @rtype: C{list} of L{Nonterminal}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="s">&#39;,&#39;</span> <span class="ow">in</span> <span class="n">symbols</span><span class="p">:</span> <span class="n">symbol_list</span> <span class="o">=</span> <span class="n">symbols</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span> <span class="n">symbol_list</span> <span class="o">=</span> <span class="n">symbols</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">Nonterminal</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">symbol_list</span><span class="p">]</span>
+</div>
+<span class="k">class</span> <span class="nc">FeatStructNonterminal</span><span class="p">(</span><span class="n">FeatDict</span><span class="p">,</span> <span class="n">Nonterminal</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A feature structure that&#39;s also a nonterminal.  It acts as its</span>
+<span class="sd">    own symbol, and automatically freezes itself when hashed.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">freeze</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">FeatStruct</span><span class="o">.</span><span class="n">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">symbol</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+<span class="k">def</span> <span class="nf">is_nonterminal</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: True if the item is a C{Nonterminal}.</span>
+<span class="sd">    @rtype: C{bool}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Nonterminal</span><span class="p">)</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Terminals</span>
+<span class="c">#################################################################</span>
+
+<span class="k">def</span> <span class="nf">is_terminal</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: True if the item is a terminal, which currently is </span>
+<span class="sd">    if it is hashable and not a C{Nonterminal}.</span>
+<span class="sd">    @rtype: C{bool}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;__hash__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Nonterminal</span><span class="p">)</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Productions</span>
+<span class="c">#################################################################</span>
+
+<div class="viewcode-block" id="Production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Production">[docs]</a><span class="k">class</span> <span class="nc">Production</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A grammar production.  Each production maps a single symbol</span>
+<span class="sd">    on the X{left-hand side} to a sequence of symbols on the</span>
+<span class="sd">    X{right-hand side}.  (In the case of context-free productions,</span>
+<span class="sd">    the left-hand side must be a C{Nonterminal}, and the right-hand</span>
+<span class="sd">    side is a sequence of terminals and C{Nonterminals}.)</span>
+<span class="sd">    X{terminals} can be any immutable hashable object that is</span>
+<span class="sd">    not a C{Nonterminal}.  Typically, terminals are strings</span>
+<span class="sd">    representing words, such as C{&quot;dog&quot;} or C{&quot;under&quot;}.</span>
+
+<span class="sd">    @see: L{ContextFreeGrammar}</span>
+<span class="sd">    @see: L{DependencyGrammar}</span>
+<span class="sd">    @see: L{Nonterminal}</span>
+<span class="sd">    @type _lhs: L{Nonterminal}</span>
+<span class="sd">    @ivar _lhs: The left-hand side of the production.</span>
+<span class="sd">    @type _rhs: C{tuple} of (C{Nonterminal} and (terminal))</span>
+<span class="sd">    @ivar _rhs: The right-hand side of the production.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{Production}.</span>
+
+<span class="sd">        @param lhs: The left-hand side of the new C{Production}.</span>
+<span class="sd">        @type lhs: L{Nonterminal}</span>
+<span class="sd">        @param rhs: The right-hand side of the new C{Production}.</span>
+<span class="sd">        @type rhs: sequence of (C{Nonterminal} and (terminal))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">unicode</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;production right hand side should be a list, &#39;</span>
+                            <span class="s">&#39;not a string&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">=</span> <span class="n">lhs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span> <span class="o">=</span> <span class="nb">hash</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Production.lhs"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Production.lhs">[docs]</a>    <span class="k">def</span> <span class="nf">lhs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the left-hand side of this C{Production}.</span>
+<span class="sd">        @rtype: L{Nonterminal}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span>
+    </div>
+<div class="viewcode-block" id="Production.rhs"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Production.rhs">[docs]</a>    <span class="k">def</span> <span class="nf">rhs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the right-hand side of this C{Production}.</span>
+<span class="sd">        @rtype: sequence of (C{Nonterminal} and (terminal))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span>
+    </div>
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: the length of the right-hand side.</span>
+<span class="sd">        @rtype: C{integer}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">)</span>
+    
+<div class="viewcode-block" id="Production.is_nonlexical"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Production.is_nonlexical">[docs]</a>    <span class="k">def</span> <span class="nf">is_nonlexical</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: True if the right-hand side only contains C{Nonterminal}s</span>
+<span class="sd">        @rtype: C{bool}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">all</span><span class="p">([</span><span class="n">is_nonterminal</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="Production.is_lexical"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.Production.is_lexical">[docs]</a>    <span class="k">def</span> <span class="nf">is_lexical</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: True if the right-hand contain at least one terminal token</span>
+<span class="sd">        @rtype: C{bool}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_nonlexical</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A verbose string representation of the</span>
+<span class="sd">            C{Production}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%r</span><span class="s"> -&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,)</span>
+        <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39; </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">elt</span><span class="p">,)</span>
+        <span class="k">return</span> <span class="nb">str</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A concise string representation of the</span>
+<span class="sd">            C{Production}. </span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: true if this C{Production} is equal to C{other}.</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_lhs</span> <span class="ow">and</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_rhs</span><span class="p">)</span>
+                 
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span> <span class="o">==</span> <span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__cmp__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">):</span> <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">return</span> <span class="nb">cmp</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">),</span> <span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">_rhs</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A hash value for the C{Production}.</span>
+<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span>
+
+</div>
+<div class="viewcode-block" id="DependencyProduction"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.DependencyProduction">[docs]</a><span class="k">class</span> <span class="nc">DependencyProduction</span><span class="p">(</span><span class="n">Production</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dependency grammar production.  Each production maps a single</span>
+<span class="sd">    head word to an unordered list of one or more modifier words.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A verbose string representation of the </span>
+<span class="sd">            C{DependencyProduction}.</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s"> -&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,)</span>
+        <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39; </span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">elt</span><span class="p">,)</span>
+        <span class="k">return</span> <span class="nb">str</span>
+
+</div>
+<div class="viewcode-block" id="WeightedProduction"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.WeightedProduction">[docs]</a><span class="k">class</span> <span class="nc">WeightedProduction</span><span class="p">(</span><span class="n">Production</span><span class="p">,</span> <span class="n">ImmutableProbabilisticMixIn</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A probabilistic context free grammar production.</span>
+<span class="sd">    PCFG C{WeightedProduction}s are essentially just C{Production}s that</span>
+<span class="sd">    have probabilities associated with them.  These probabilities are</span>
+<span class="sd">    used to record how likely it is that a given production will</span>
+<span class="sd">    be used.  In particular, the probability of a C{WeightedProduction}</span>
+<span class="sd">    records the likelihood that its right-hand side is the correct</span>
+<span class="sd">    instantiation for any given occurance of its left-hand side.</span>
+
+<span class="sd">    @see: L{Production}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="o">**</span><span class="n">prob</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct a new C{WeightedProduction}.</span>
+
+<span class="sd">        @param lhs: The left-hand side of the new C{WeightedProduction}.</span>
+<span class="sd">        @type lhs: L{Nonterminal}</span>
+<span class="sd">        @param rhs: The right-hand side of the new C{WeightedProduction}.</span>
+<span class="sd">        @type rhs: sequence of (C{Nonterminal} and (terminal))</span>
+<span class="sd">        @param prob: Probability parameters of the new C{WeightedProduction}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ImmutableProbabilisticMixIn</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">prob</span><span class="p">)</span>
+        <span class="n">Production</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Production</span><span class="o">.</span><span class="n">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39; [</span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_lhs</span> <span class="ow">and</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_rhs</span> <span class="ow">and</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">()</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">prob</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span> <span class="o">==</span> <span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">()))</span>
+
+<span class="c">#################################################################</span>
+<span class="c"># Grammars</span>
+<span class="c">#################################################################</span>
+</div>
+<div class="viewcode-block" id="ContextFreeGrammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar">[docs]</a><span class="k">class</span> <span class="nc">ContextFreeGrammar</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A context-free grammar.  A grammar consists of a start state and </span>
+<span class="sd">    a set of productions.  The set of terminals and nonterminals is</span>
+<span class="sd">    implicitly specified by the productions.</span>
+
+<span class="sd">    If you need efficient key-based access to productions, you</span>
+<span class="sd">    can use a subclass to implement it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">,</span> <span class="n">calculate_leftcorners</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new context-free grammar, from the given start state</span>
+<span class="sd">        and set of C{Production}s.</span>
+<span class="sd">        </span>
+<span class="sd">        @param start: The start symbol</span>
+<span class="sd">        @type start: L{Nonterminal}</span>
+<span class="sd">        @param productions: The list of productions that defines the grammar</span>
+<span class="sd">        @type productions: C{list} of L{Production}</span>
+<span class="sd">        @param calculate_leftcorners: False if we don&#39;t want to calculate the </span>
+<span class="sd">        leftcorner relation. In that case, some optimized chart parsers won&#39;t work.</span>
+<span class="sd">        @type calculate_leftcorners: C{bool}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start</span> <span class="o">=</span> <span class="n">start</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span> <span class="o">=</span> <span class="n">productions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">prod</span><span class="o">.</span><span class="n">lhs</span><span class="p">()</span> <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="n">productions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_indexes</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_grammar_forms</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">calculate_leftcorners</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_leftcorners</span><span class="p">()</span>
+    
+    <span class="k">def</span> <span class="nf">_calculate_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lexical_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="c"># Left hand side.</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="n">prod</span><span class="o">.</span><span class="n">_lhs</span>
+            <span class="k">if</span> <span class="n">lhs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="c"># First item in right hand side.</span>
+                <span class="n">rhs0</span> <span class="o">=</span> <span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">rhs0</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">[</span><span class="n">rhs0</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">[</span><span class="n">rhs0</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># The right hand side is empty.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">[</span><span class="n">prod</span><span class="o">.</span><span class="n">lhs</span><span class="p">()]</span> <span class="o">=</span> <span class="n">prod</span>
+            <span class="c"># Lexical tokens in the right hand side.</span>
+            <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">is_terminal</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_lexical_index</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_calculate_leftcorners</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Calculate leftcorner relations, for use in optimized parsing.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_categories</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">cat</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="n">cat</span><span class="p">]))</span> <span class="k">for</span> <span class="n">cat</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_words</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">cat</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span> <span class="k">for</span> <span class="n">cat</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">productions</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">cat</span><span class="p">,</span> <span class="n">left</span> <span class="o">=</span> <span class="n">prod</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span> <span class="n">prod</span><span class="o">.</span><span class="n">rhs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">is_nonterminal</span><span class="p">(</span><span class="n">left</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_categories</span><span class="p">[</span><span class="n">cat</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">left</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_words</span><span class="p">[</span><span class="n">cat</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">left</span><span class="p">)</span>
+        
+        <span class="n">lc</span> <span class="o">=</span> <span class="n">transitive_closure</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_categories</span><span class="p">,</span> <span class="n">reflexive</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorners</span> <span class="o">=</span> <span class="n">lc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_parents</span> <span class="o">=</span> <span class="n">invert_graph</span><span class="p">(</span><span class="n">lc</span><span class="p">)</span>
+        
+        <span class="n">nr_leftcorner_categories</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_categories</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+        <span class="n">nr_leftcorner_words</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_words</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+        <span class="k">if</span> <span class="n">nr_leftcorner_words</span> <span class="o">&gt;</span> <span class="n">nr_leftcorner_categories</span> <span class="o">&gt;</span> <span class="mi">10000</span><span class="p">:</span>
+            <span class="c"># If the grammar is big, the leftcorner-word dictionary will be too large.</span>
+            <span class="c"># In that case it is better to calculate the relation on demand.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_words</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">return</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_words</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">cat</span><span class="p">,</span> <span class="n">lefts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorners</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="n">lc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_words</span><span class="p">[</span><span class="n">cat</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">left</span> <span class="ow">in</span> <span class="n">lefts</span><span class="p">:</span>
+                <span class="n">lc</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_immediate_leftcorner_words</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="nb">set</span><span class="p">()))</span>
+        
+    
+<div class="viewcode-block" id="ContextFreeGrammar.start"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.start">[docs]</a>    <span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The start symbol of the grammar</span>
+<span class="sd">        @rtype: L{Nonterminal}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start</span>
+
+    <span class="c"># tricky to balance readability and efficiency here!</span>
+    <span class="c"># can&#39;t use set operations as they don&#39;t preserve ordering</span></div>
+<div class="viewcode-block" id="ContextFreeGrammar.productions"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.productions">[docs]</a>    <span class="k">def</span> <span class="nf">productions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">rhs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">empty</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the grammar productions, filtered by the left-hand side</span>
+<span class="sd">        or the first item in the right-hand side.</span>
+<span class="sd">        </span>
+<span class="sd">        @param lhs: Only return productions with the given left-hand side.</span>
+<span class="sd">        @param rhs: Only return productions with the given first item </span>
+<span class="sd">        in the right-hand side.</span>
+<span class="sd">        @param empty: Only return productions with an empty right-hand side.</span>
+<span class="sd">        @return: A list of productions matching the given constraints.</span>
+<span class="sd">        @rtype: C{list} of C{Production}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">rhs</span> <span class="ow">and</span> <span class="n">empty</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;You cannot select empty and non-empty &quot;</span>
+                             <span class="s">&quot;productions at the same time.&quot;</span><span class="p">)</span>
+        
+        <span class="c"># no constraints so return everything</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">lhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rhs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">empty</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+
+        <span class="c"># only lhs specified so look up its index</span>
+        <span class="k">elif</span> <span class="n">lhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rhs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">empty</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="k">elif</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c"># only rhs specified so look up its index</span>
+        <span class="k">elif</span> <span class="n">rhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">lhs</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="p">[])</span>
+
+        <span class="c"># intersect</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">prod</span> <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="p">[])</span>
+                    <span class="k">if</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="p">[])]</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.leftcorners"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.leftcorners">[docs]</a>    <span class="k">def</span> <span class="nf">leftcorners</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cat</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the set of all nonterminals that the given nonterminal </span>
+<span class="sd">        can start with, including itself.</span>
+<span class="sd">        </span>
+<span class="sd">        This is the reflexive, transitive closure of the immediate</span>
+<span class="sd">        leftcorner relation:  (A &gt; B)  iff  (A -&gt; B beta)</span>
+<span class="sd">        </span>
+<span class="sd">        @param cat: the parent of the leftcorners</span>
+<span class="sd">        @type cat: C{Nonterminal}</span>
+<span class="sd">        @return: the set of all leftcorners</span>
+<span class="sd">        @rtype: C{set} of C{Nonterminal}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorners</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cat</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="n">cat</span><span class="p">]))</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_leftcorner"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_leftcorner">[docs]</a>    <span class="k">def</span> <span class="nf">is_leftcorner</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cat</span><span class="p">,</span> <span class="n">left</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if left is a leftcorner of cat, where left can be a</span>
+<span class="sd">        terminal or a nonterminal. </span>
+<span class="sd">        </span>
+<span class="sd">        @param cat: the parent of the leftcorner</span>
+<span class="sd">        @type cat: C{Nonterminal}</span>
+<span class="sd">        @param left: the suggested leftcorner</span>
+<span class="sd">        @type left: C{Terminal} or C{Nonterminal}</span>
+<span class="sd">        @rtype: C{bool}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">is_nonterminal</span><span class="p">(</span><span class="n">left</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">left</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">leftcorners</span><span class="p">(</span><span class="n">cat</span><span class="p">)</span>            
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_words</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">left</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_words</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cat</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">any</span><span class="p">([</span><span class="n">left</span> <span class="ow">in</span> <span class="n">_immediate_leftcorner_words</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span>
+                        <span class="k">for</span> <span class="n">parent</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">leftcorners</span><span class="p">(</span><span class="n">cat</span><span class="p">)])</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.leftcorner_parents"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.leftcorner_parents">[docs]</a>    <span class="k">def</span> <span class="nf">leftcorner_parents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cat</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the set of all nonterminals for which the given category</span>
+<span class="sd">        is a left corner. This is the inverse of the leftcorner relation.</span>
+
+<span class="sd">        @param cat: the suggested leftcorner</span>
+<span class="sd">        @type cat: C{Nonterminal}</span>
+<span class="sd">        @return: the set of all parents to the leftcorner</span>
+<span class="sd">        @rtype: C{set} of C{Nonterminal}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_leftcorner_parents</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cat</span><span class="p">,</span> <span class="nb">set</span><span class="p">([</span><span class="n">cat</span><span class="p">]))</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.check_coverage"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.check_coverage">[docs]</a>    <span class="k">def</span> <span class="nf">check_coverage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check whether the grammar rules cover the given list of tokens.</span>
+<span class="sd">        If not, then raise an exception.</span>
+<span class="sd">        </span>
+<span class="sd">        @type tokens: C{list} of C{str}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">tok</span> <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">tokens</span> 
+                   <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lexical_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tok</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="n">missing</span> <span class="o">=</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">w</span><span class="p">,)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">missing</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Grammar does not cover some of the &quot;</span>
+                             <span class="s">&quot;input words: </span><span class="si">%r</span><span class="s">.&quot;</span> <span class="o">%</span> <span class="n">missing</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_calculate_grammar_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Pre-calculate of which form(s) the grammar is.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prods</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_is_lexical</span> <span class="o">=</span> <span class="nb">all</span><span class="p">([</span><span class="n">p</span><span class="o">.</span><span class="n">is_lexical</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">prods</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_is_nonlexical</span> <span class="o">=</span> <span class="nb">all</span><span class="p">([</span><span class="n">p</span><span class="o">.</span><span class="n">is_nonlexical</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">prods</span> 
+                                  <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_min_len</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">prods</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">prods</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_all_unary_are_lexical</span> <span class="o">=</span> <span class="nb">all</span><span class="p">([</span><span class="n">p</span><span class="o">.</span><span class="n">is_lexical</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">prods</span> 
+                                          <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>
+    
+<div class="viewcode-block" id="ContextFreeGrammar.is_lexical"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_lexical">[docs]</a>    <span class="k">def</span> <span class="nf">is_lexical</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if all productions are lexicalised.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_lexical</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_nonlexical"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_nonlexical">[docs]</a>    <span class="k">def</span> <span class="nf">is_nonlexical</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if all lexical rules are &quot;preterminals&quot;, that is,</span>
+<span class="sd">        unary rules which can be separated in a preprocessing step.</span>
+<span class="sd">        </span>
+<span class="sd">        This means that all productions are of the forms</span>
+<span class="sd">        A -&gt; B1 ... Bn (n&gt;=0), or A -&gt; &quot;s&quot;.</span>
+<span class="sd">        </span>
+<span class="sd">        Note: is_lexical() and is_nonlexical() are not opposites.</span>
+<span class="sd">        There are grammars which are neither, and grammars which are both.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_nonlexical</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.min_len"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.min_len">[docs]</a>    <span class="k">def</span> <span class="nf">min_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The right-hand side length of the shortest grammar production.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_min_len</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.max_len"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.max_len">[docs]</a>    <span class="k">def</span> <span class="nf">max_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The right-hand side length of the longest grammar production.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_len</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_nonempty"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_nonempty">[docs]</a>    <span class="k">def</span> <span class="nf">is_nonempty</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if there are no empty productions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_min_len</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_binarised"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_binarised">[docs]</a>    <span class="k">def</span> <span class="nf">is_binarised</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if all productions are at most binary.</span>
+<span class="sd">        Note that there can still be empty and unary productions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_len</span> <span class="o">&lt;=</span> <span class="mi">2</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_flexible_chomsky_normal_form"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_flexible_chomsky_normal_form">[docs]</a>    <span class="k">def</span> <span class="nf">is_flexible_chomsky_normal_form</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        True if all productions are of the forms</span>
+<span class="sd">        A -&gt; B C, A -&gt; B, or A -&gt; &quot;s&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_nonempty</span><span class="p">()</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_nonlexical</span><span class="p">()</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_binarised</span><span class="p">()</span>
+    </div>
+<div class="viewcode-block" id="ContextFreeGrammar.is_chomsky_normal_form"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.ContextFreeGrammar.is_chomsky_normal_form">[docs]</a>    <span class="k">def</span> <span class="nf">is_chomsky_normal_form</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A grammar is of Chomsky normal form if all productions</span>
+<span class="sd">        are of the forms A -&gt; B C, or A -&gt; &quot;s&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">is_flexible_chomsky_normal_form</span><span class="p">()</span> <span class="ow">and</span> 
+                <span class="bp">self</span><span class="o">.</span><span class="n">_all_unary_are_lexical</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;Grammar with </span><span class="si">%d</span><span class="s"> productions&gt;&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;Grammar with </span><span class="si">%d</span><span class="s"> productions&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+        <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39; (start state = </span><span class="si">%r</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">    </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">production</span>
+        <span class="k">return</span> <span class="nb">str</span>
+
+</div>
+<span class="k">class</span> <span class="nc">FeatureGrammar</span><span class="p">(</span><span class="n">ContextFreeGrammar</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A feature-based grammar.  This is equivalent to a </span>
+<span class="sd">    L{ContextFreeGrammar} whose nonterminals are</span>
+<span class="sd">    L{FeatStructNonterminal}s.</span>
+
+<span class="sd">    A grammar consists of a start state and a set of </span>
+<span class="sd">    productions.  The set of terminals and nonterminals </span>
+<span class="sd">    is implicitly specified by the productions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new feature-based grammar, from the given start </span>
+<span class="sd">        state and set of C{Production}s.</span>
+<span class="sd">        </span>
+<span class="sd">        @param start: The start symbol</span>
+<span class="sd">        @type start: L{FeatStructNonterminal}</span>
+<span class="sd">        @param productions: The list of productions that defines the grammar</span>
+<span class="sd">        @type productions: C{list} of L{Production}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ContextFreeGrammar</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+    
+    <span class="c"># The difference with CFG is that the productions are</span>
+    <span class="c"># indexed on the TYPE feature of the nonterminals.</span>
+    <span class="c"># This is calculated by the method _get_type_if_possible().</span>
+    
+    <span class="k">def</span> <span class="nf">_calculate_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_empty_productions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lexical_index</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="c"># Left hand side.</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">prod</span><span class="o">.</span><span class="n">_lhs</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">lhs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="c"># First item in right hand side.</span>
+                <span class="n">rhs0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">rhs0</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">[</span><span class="n">rhs0</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="p">[</span><span class="n">rhs0</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># The right hand side is empty.</span>
+                <span class="k">if</span> <span class="n">lhs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="p">[</span><span class="n">lhs</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_empty_productions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+            <span class="c"># Lexical tokens in the right hand side.</span>
+            <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">prod</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">is_terminal</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_lexical_index</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">prod</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">productions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">rhs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">empty</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the grammar productions, filtered by the left-hand side</span>
+<span class="sd">        or the first item in the right-hand side.</span>
+<span class="sd">        </span>
+<span class="sd">        @param lhs: Only return productions with the given left-hand side.</span>
+<span class="sd">        @param rhs: Only return productions with the given first item </span>
+<span class="sd">        in the right-hand side.</span>
+<span class="sd">        @param empty: Only return productions with an empty right-hand side.</span>
+<span class="sd">        @return: A list of productions matching the given constraints.</span>
+<span class="sd">        @rtype: C{list} of C{Production}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">rhs</span> <span class="ow">and</span> <span class="n">empty</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;You cannot select empty and non-empty &quot;</span>
+                             <span class="s">&quot;productions at the same time.&quot;</span><span class="p">)</span>
+        
+        <span class="c"># no constraints so return everything</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">lhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rhs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">empty</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_empty_productions</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span>
+
+        <span class="c"># only lhs specified so look up its index</span>
+        <span class="k">elif</span> <span class="n">lhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rhs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">empty</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_empty_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="p">[])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="p">[])</span>
+
+        <span class="c"># only rhs specified so look up its index</span>
+        <span class="k">elif</span> <span class="n">rhs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">lhs</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">rhs</span><span class="p">),</span> <span class="p">[])</span>
+
+        <span class="c"># intersect</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">prod</span> <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="p">[])</span>
+                    <span class="k">if</span> <span class="n">prod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_index</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_type_if_possible</span><span class="p">(</span><span class="n">rhs</span><span class="p">),</span> <span class="p">[])]</span>
+    
+    <span class="k">def</span> <span class="nf">leftcorners</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cat</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the set of all words that the given category can start with.</span>
+<span class="sd">        Also called the I{first set} in compiler construction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&quot;Not implemented yet&quot;</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">leftcorner_parents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cat</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the set of all categories for which the given category</span>
+<span class="sd">        is a left corner.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&quot;Not implemented yet&quot;</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_get_type_if_possible</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function which returns the C{TYPE} feature of the C{item}, </span>
+<span class="sd">        if it exists, otherwise it returns the C{item} itself</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">TYPE</span> <span class="ow">in</span> <span class="n">item</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">FeatureValueType</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="n">TYPE</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">item</span>
+
+<span class="k">class</span> <span class="nc">FeatureValueType</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A helper class for L{FeatureGrammar}s, designed to be different</span>
+<span class="sd">    from ordinary strings.  This is to stop the C{FeatStruct}</span>
+<span class="sd">    C{FOO[]} from being compare equal to the terminal &quot;FOO&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_value</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span> <span class="o">=</span> <span class="nb">hash</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span>
+    <span class="k">def</span> <span class="nf">__cmp__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">cmp</span><span class="p">(</span><span class="n">FeatureValueType</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">other</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">cmp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">_value</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hash</span>
+
+<div class="viewcode-block" id="DependencyGrammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.DependencyGrammar">[docs]</a><span class="k">class</span> <span class="nc">DependencyGrammar</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dependency grammar.  A DependencyGrammar consists of a set of</span>
+<span class="sd">    productions.  Each production specifies a head/modifier relationship</span>
+<span class="sd">    between a pair of words.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">productions</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new dependency grammar, from the set of C{Production}s.</span>
+<span class="sd">        </span>
+<span class="sd">        @param productions: The list of productions that defines the grammar</span>
+<span class="sd">        @type productions: C{list} of L{Production}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span> <span class="o">=</span> <span class="n">productions</span>
+
+<div class="viewcode-block" id="DependencyGrammar.contains"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.DependencyGrammar.contains">[docs]</a>    <span class="k">def</span> <span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">mod</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param head: A head word.</span>
+<span class="sd">        @type head: C{string}.</span>
+<span class="sd">        @param mod: A mod word, to test as a modifier of &#39;head&#39;.</span>
+<span class="sd">        @type mod: C{string}.</span>
+
+<span class="sd">        @return: true if this C{DependencyGrammar} contains a </span>
+<span class="sd">            C{DependencyProduction} mapping &#39;head&#39; to &#39;mod&#39;.</span>
+<span class="sd">        @rtype: C{boolean}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">possibleMod</span> <span class="ow">in</span> <span class="n">production</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">==</span> <span class="n">head</span> <span class="ow">and</span> <span class="n">possibleMod</span> <span class="o">==</span> <span class="n">mod</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+    <span class="k">def</span> <span class="nf">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">mod</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param head: A head word.</span>
+<span class="sd">        @type head: C{string}.</span>
+<span class="sd">        @param mod: A mod word, to test as a modifier of &#39;head&#39;.</span>
+<span class="sd">        @type mod: C{string}.</span>
+
+<span class="sd">        @return: true if this C{DependencyGrammar} contains a </span>
+<span class="sd">            C{DependencyProduction} mapping &#39;head&#39; to &#39;mod&#39;.</span>
+<span class="sd">        @rtype: C{boolean}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">possibleMod</span> <span class="ow">in</span> <span class="n">production</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">==</span> <span class="n">head</span> <span class="ow">and</span> <span class="n">possibleMod</span> <span class="o">==</span> <span class="n">mod</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="c">#   # should be rewritten, the set comp won&#39;t work in all comparisons</span>
+    <span class="c"># def contains_exactly(self, head, modlist):</span>
+    <span class="c">#   for production in self._productions:</span>
+    <span class="c">#       if(len(production._rhs) == len(modlist)):</span>
+    <span class="c">#           if(production._lhs == head):</span>
+    <span class="c">#               set1 = Set(production._rhs)</span>
+    <span class="c">#               set2 = Set(modlist)</span>
+    <span class="c">#               if(set1 == set2):</span>
+    <span class="c">#                   return True</span>
+    <span class="c">#   return False</span>
+
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A verbose string representation of the</span>
+<span class="sd">            C{DependencyGrammar}</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;Dependency grammar with </span><span class="si">%d</span><span class="s"> productions&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">production</span>
+        <span class="k">return</span> <span class="nb">str</span>
+            
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A concise string representation of the</span>
+<span class="sd">            C{DependencyGrammar}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;Dependency grammar with </span><span class="si">%d</span><span class="s"> productions&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+    
+</div>
+<div class="viewcode-block" id="StatisticalDependencyGrammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.StatisticalDependencyGrammar">[docs]</a><span class="k">class</span> <span class="nc">StatisticalDependencyGrammar</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">productions</span><span class="p">,</span> <span class="n">events</span><span class="p">,</span> <span class="n">tags</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span> <span class="o">=</span> <span class="n">productions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_events</span> <span class="o">=</span> <span class="n">events</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tags</span> <span class="o">=</span> <span class="n">tags</span>
+
+<div class="viewcode-block" id="StatisticalDependencyGrammar.contains"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.StatisticalDependencyGrammar.contains">[docs]</a>    <span class="k">def</span> <span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">head</span><span class="p">,</span> <span class="n">mod</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param head: A head word.</span>
+<span class="sd">        @type head: C{string}.</span>
+<span class="sd">        @param mod: A mod word, to test as a modifier of &#39;head&#39;.</span>
+<span class="sd">        @type mod: C{string}.</span>
+
+<span class="sd">        @return: true if this C{DependencyGrammar} contains a </span>
+<span class="sd">            C{DependencyProduction} mapping &#39;head&#39; to &#39;mod&#39;.</span>
+<span class="sd">        @rtype: C{boolean}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">possibleMod</span> <span class="ow">in</span> <span class="n">production</span><span class="o">.</span><span class="n">_rhs</span><span class="p">:</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">==</span> <span class="n">head</span> <span class="ow">and</span> <span class="n">possibleMod</span> <span class="o">==</span> <span class="n">mod</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A verbose string representation of the</span>
+<span class="sd">            C{StatisticalDependencyGrammar}</span>
+<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;Statistical dependency grammar with </span><span class="si">%d</span><span class="s"> productions&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">production</span>
+        <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">Events:&#39;</span>
+        <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_events</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">  </span><span class="si">%d</span><span class="s">:</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_events</span><span class="p">[</span><span class="n">event</span><span class="p">],</span> <span class="n">event</span><span class="p">)</span>
+        <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">Tags:&#39;</span>
+        <span class="k">for</span> <span class="n">tag_word</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tags</span><span class="p">:</span>
+            <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s"> </span><span class="si">%s</span><span class="s">:</span><span class="se">\t</span><span class="s">(</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tag_word</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tags</span><span class="p">[</span><span class="n">tag_word</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">str</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A concise string representation of the</span>
+<span class="sd">            C{StatisticalDependencyGrammar}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&#39;Statistical Dependency grammar with </span><span class="si">%d</span><span class="s"> productions&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_productions</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="WeightedGrammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.WeightedGrammar">[docs]</a><span class="k">class</span> <span class="nc">WeightedGrammar</span><span class="p">(</span><span class="n">ContextFreeGrammar</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A probabilistic context-free grammar.  A Weighted Grammar consists</span>
+<span class="sd">    of a start state and a set of weighted productions.  The set of</span>
+<span class="sd">    terminals and nonterminals is implicitly specified by the</span>
+<span class="sd">    productions.</span>
+
+<span class="sd">    PCFG productions should be C{WeightedProduction}s.</span>
+<span class="sd">    C{WeightedGrammar}s impose the constraint that the set of</span>
+<span class="sd">    productions with any given left-hand-side must have probabilities</span>
+<span class="sd">    that sum to 1.</span>
+
+<span class="sd">    If you need efficient key-based access to productions, you can use</span>
+<span class="sd">    a subclass to implement it.</span>
+
+<span class="sd">    @type EPSILON: C{float}</span>
+<span class="sd">    @cvar EPSILON: The acceptable margin of error for checking that</span>
+<span class="sd">        productions with a given left-hand side have probabilities</span>
+<span class="sd">        that sum to 1.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">EPSILON</span> <span class="o">=</span> <span class="mf">0.01</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">,</span> <span class="n">calculate_leftcorners</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new context-free grammar, from the given start state</span>
+<span class="sd">        and set of C{WeightedProduction}s.</span>
+
+<span class="sd">        @param start: The start symbol</span>
+<span class="sd">        @type start: L{Nonterminal}</span>
+<span class="sd">        @param productions: The list of productions that defines the grammar</span>
+<span class="sd">        @type productions: C{list} of C{Production}</span>
+<span class="sd">        @raise ValueError: if the set of productions with any left-hand-side</span>
+<span class="sd">            do not have probabilities that sum to a value within</span>
+<span class="sd">            EPSILON of 1.</span>
+<span class="sd">        @param calculate_leftcorners: False if we don&#39;t want to calculate the </span>
+<span class="sd">        leftcorner relation. In that case, some optimized chart parsers won&#39;t work.</span>
+<span class="sd">        @type calculate_leftcorners: C{bool}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ContextFreeGrammar</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">,</span> <span class="n">calculate_leftcorners</span><span class="p">)</span>
+
+        <span class="c"># Make sure that the probabilities sum to one.</span>
+        <span class="n">probs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="n">productions</span><span class="p">:</span>
+            <span class="n">probs</span><span class="p">[</span><span class="n">production</span><span class="o">.</span><span class="n">lhs</span><span class="p">()]</span> <span class="o">=</span> <span class="p">(</span><span class="n">probs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span>
+                                       <span class="n">production</span><span class="o">.</span><span class="n">prob</span><span class="p">())</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="ow">in</span> <span class="n">probs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="p">((</span><span class="mi">1</span><span class="o">-</span><span class="n">WeightedGrammar</span><span class="o">.</span><span class="n">EPSILON</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">p</span> <span class="o">&lt;</span>
+                    <span class="p">(</span><span class="mi">1</span><span class="o">+</span><span class="n">WeightedGrammar</span><span class="o">.</span><span class="n">EPSILON</span><span class="p">)):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Productions for </span><span class="si">%r</span><span class="s"> do not sum to 1&quot;</span> <span class="o">%</span> <span class="n">lhs</span><span class="p">)</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Inducing Grammars</span>
+<span class="c">#################################################################</span>
+
+<span class="c"># Contributed by Nathan Bodenstab &lt;bodenstab@cslu.ogi.edu&gt;</span>
+</div>
+<div class="viewcode-block" id="induce_pcfg"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.induce_pcfg">[docs]</a><span class="k">def</span> <span class="nf">induce_pcfg</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Induce a PCFG grammar from a list of productions.</span>
+
+<span class="sd">    The probability of a production A -&gt; B C in a PCFG is:</span>
+
+<span class="sd">    |                count(A -&gt; B C)</span>
+<span class="sd">    |  P(B, C | A) = ---------------       where * is any right hand side</span>
+<span class="sd">    |                 count(A -&gt; *)</span>
+
+<span class="sd">    @param start: The start symbol</span>
+<span class="sd">    @type start: L{Nonterminal}</span>
+<span class="sd">    @param productions: The list of productions that defines the grammar</span>
+<span class="sd">    @type productions: C{list} of L{Production}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># Production count: the number of times a given production occurs</span>
+    <span class="n">pcount</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="c"># LHS-count: counts the number of times a given lhs occurs</span>
+    <span class="n">lcount</span> <span class="o">=</span> <span class="p">{}</span> 
+
+    <span class="k">for</span> <span class="n">prod</span> <span class="ow">in</span> <span class="n">productions</span><span class="p">:</span>
+        <span class="n">lcount</span><span class="p">[</span><span class="n">prod</span><span class="o">.</span><span class="n">lhs</span><span class="p">()]</span> <span class="o">=</span> <span class="n">lcount</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">prod</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">pcount</span><span class="p">[</span><span class="n">prod</span><span class="p">]</span>       <span class="o">=</span> <span class="n">pcount</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">prod</span><span class="p">,</span>       <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="n">prods</span> <span class="o">=</span> <span class="p">[</span><span class="n">WeightedProduction</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span> <span class="n">p</span><span class="o">.</span><span class="n">rhs</span><span class="p">(),</span>
+                                <span class="n">prob</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">pcount</span><span class="p">[</span><span class="n">p</span><span class="p">])</span> <span class="o">/</span> <span class="n">lcount</span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">lhs</span><span class="p">()])</span>
+             <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pcount</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">WeightedGrammar</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">prods</span><span class="p">)</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Parsing Grammars</span>
+<span class="c">#################################################################</span>
+
+<span class="c"># Parsing CFGs</span>
+</div>
+<div class="viewcode-block" id="parse_cfg_production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_cfg_production">[docs]</a><span class="k">def</span> <span class="nf">parse_cfg_production</span><span class="p">(</span><span class="nb">input</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a C{list} of context-free L{Production}s.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">parse_production</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">standard_nonterm_parser</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="parse_cfg"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_cfg">[docs]</a><span class="k">def</span> <span class="nf">parse_cfg</span><span class="p">(</span><span class="nb">input</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a L{ContextFreeGrammar}.</span>
+<span class="sd">    </span>
+<span class="sd">    @param input: a grammar, either in the form of a string or else </span>
+<span class="sd">    as a list of strings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">start</span><span class="p">,</span> <span class="n">productions</span> <span class="o">=</span> <span class="n">parse_grammar</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">standard_nonterm_parser</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ContextFreeGrammar</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+
+<span class="c"># Parsing Probabilistic CFGs</span>
+</div>
+<div class="viewcode-block" id="parse_pcfg_production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_pcfg_production">[docs]</a><span class="k">def</span> <span class="nf">parse_pcfg_production</span><span class="p">(</span><span class="nb">input</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a C{list} of PCFG L{WeightedProduction}s.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">parse_production</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">standard_nonterm_parser</span><span class="p">,</span> <span class="n">probabilistic</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="parse_pcfg"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_pcfg">[docs]</a><span class="k">def</span> <span class="nf">parse_pcfg</span><span class="p">(</span><span class="nb">input</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a probabilistic L{WeightedGrammar}.</span>
+<span class="sd">    </span>
+<span class="sd">    @param input: a grammar, either in the form of a string or else </span>
+<span class="sd">    as a list of strings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">start</span><span class="p">,</span> <span class="n">productions</span> <span class="o">=</span> <span class="n">parse_grammar</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">standard_nonterm_parser</span><span class="p">,</span> 
+                                       <span class="n">probabilistic</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">WeightedGrammar</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+
+<span class="c"># Parsing Feature-based CFGs</span>
+</div>
+<div class="viewcode-block" id="parse_fcfg_production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_fcfg_production">[docs]</a><span class="k">def</span> <span class="nf">parse_fcfg_production</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a C{list} of feature-based L{Production}s.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">parse_production</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="parse_fcfg"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_fcfg">[docs]</a><span class="k">def</span> <span class="nf">parse_fcfg</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">features</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a feature structure based L{FeatureGrammar}.</span>
+<span class="sd">    </span>
+<span class="sd">    @param input: a grammar, either in the form of a string or else </span>
+<span class="sd">    as a list of strings.</span>
+<span class="sd">    @param features: a tuple of features (default: SLASH, TYPE)</span>
+<span class="sd">    @param logic_parser: a parser for lambda-expressions </span>
+<span class="sd">                         (default: LogicParser())</span>
+<span class="sd">    @param fstruct_parser: a feature structure parser </span>
+<span class="sd">                           (only if features and logic_parser is None)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">features</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">features</span> <span class="o">=</span> <span class="p">(</span><span class="n">SLASH</span><span class="p">,</span> <span class="n">TYPE</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">fstruct_parser</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">fstruct_parser</span> <span class="o">=</span> <span class="n">FeatStructParser</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">FeatStructNonterminal</span><span class="p">,</span> 
+                                          <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">logic_parser</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\&#39;</span><span class="s">logic_parser</span><span class="se">\&#39;</span><span class="s"> and </span><span class="se">\&#39;</span><span class="s">fstruct_parser</span><span class="se">\&#39;</span><span class="s"> must &#39;</span>
+                        <span class="s">&#39;not both be set&#39;</span><span class="p">)</span>
+
+    <span class="n">start</span><span class="p">,</span> <span class="n">productions</span> <span class="o">=</span> <span class="n">parse_grammar</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="o">.</span><span class="n">partial_parse</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">FeatureGrammar</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+
+<span class="c"># Parsing generic grammars</span>
+</div>
+<span class="n">_ARROW_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s* -&gt; \s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+<span class="n">_PROBABILITY_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;( \[ [\d\.]+ \] ) \s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+<span class="n">_TERMINAL_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;( &quot;[^&quot;]+&quot; | </span><span class="se">\&#39;</span><span class="s">[^</span><span class="se">\&#39;</span><span class="s">]+</span><span class="se">\&#39;</span><span class="s"> ) \s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+<span class="n">_DISJUNCTION_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\| \s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+<div class="viewcode-block" id="parse_production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_production">[docs]</a><span class="k">def</span> <span class="nf">parse_production</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">nonterm_parser</span><span class="p">,</span> <span class="n">probabilistic</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse a grammar rule, given as a string, and return</span>
+<span class="sd">    a list of productions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="mi">0</span>
+    
+    <span class="c"># Parse the left-hand side.</span>
+    <span class="n">lhs</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="n">nonterm_parser</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+
+    <span class="c"># Skip over the arrow.</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_ARROW_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Expected an arrow&#39;</span><span class="p">)</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+    <span class="c"># Parse the right hand side.</span>
+    <span class="n">probabilities</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">rhsides</span> <span class="o">=</span> <span class="p">[[]]</span>
+    <span class="k">while</span> <span class="n">pos</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+        <span class="c"># Probability.</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">_PROBABILITY_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> 
+        <span class="k">if</span> <span class="n">probabilistic</span> <span class="ow">and</span> <span class="n">m</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+            <span class="n">probabilities</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">probabilities</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Production probability </span><span class="si">%f</span><span class="s">, &#39;</span>
+                                 <span class="s">&#39;should not be greater than 1.0&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">probabilities</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],))</span>
+
+        <span class="c"># String -- add terminal.</span>
+        <span class="k">elif</span> <span class="n">line</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="ow">in</span> <span class="s">&quot;</span><span class="se">\&#39;\&quot;</span><span class="s">&quot;</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">_TERMINAL_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unterminated string&#39;</span><span class="p">)</span>
+            <span class="n">rhsides</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+        <span class="c"># Vertical bar -- start new rhside.</span>
+        <span class="k">elif</span> <span class="n">line</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;|&#39;</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">_DISJUNCTION_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+            <span class="n">probabilities</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">rhsides</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+        <span class="c"># Anything else -- nonterminal.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nonterm</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="n">nonterm_parser</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+            <span class="n">rhsides</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nonterm</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">probabilistic</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">WeightedProduction</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">prob</span><span class="o">=</span><span class="n">probability</span><span class="p">)</span> 
+                <span class="k">for</span> <span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">probability</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">rhsides</span><span class="p">,</span> <span class="n">probabilities</span><span class="p">)]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">Production</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span> <span class="k">for</span> <span class="n">rhs</span> <span class="ow">in</span> <span class="n">rhsides</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="parse_grammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_grammar">[docs]</a><span class="k">def</span> <span class="nf">parse_grammar</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">nonterm_parser</span><span class="p">,</span> <span class="n">probabilistic</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @return: a pair of </span>
+<span class="sd">      - a starting category </span>
+<span class="sd">      - a list of C{Production}s</span>
+<span class="sd">    </span>
+<span class="sd">    @param input: a grammar, either in the form of a string or else </span>
+<span class="sd">        as a list of strings.</span>
+<span class="sd">    @param nonterm_parser: a function for parsing nonterminals.</span>
+<span class="sd">        It should take a C{(string,position)} as argument and </span>
+<span class="sd">        return a C{(nonterminal,position)} as result. </span>
+<span class="sd">    @param probabilistic: are the grammar rules probabilistic?</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="nb">input</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="nb">input</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="n">productions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">continue_line</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">continue_line</span> <span class="o">+</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">):</span>
+            <span class="n">continue_line</span> <span class="o">=</span> <span class="n">line</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span><span class="o">+</span><span class="s">&#39; &#39;</span>
+            <span class="k">continue</span>
+        <span class="n">continue_line</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;%&#39;</span><span class="p">:</span>
+                <span class="n">directive</span><span class="p">,</span> <span class="n">args</span> <span class="o">=</span> <span class="n">line</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">directive</span> <span class="o">==</span> <span class="s">&#39;start&#39;</span><span class="p">:</span>
+                    <span class="n">start</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="n">nonterm_parser</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">pos</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad argument to start directive&#39;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad directive&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># expand out the disjunctions on the RHS</span>
+                <span class="n">productions</span> <span class="o">+=</span> <span class="n">parse_production</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">nonterm_parser</span><span class="p">,</span> <span class="n">probabilistic</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="n">linenum</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">productions</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;No productions found!&#39;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">start</span><span class="p">:</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">productions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lhs</span><span class="p">()</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+</div>
+<span class="n">_STANDARD_NONTERM_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;( [\w/][\w/^&lt;&gt;-]* ) \s*&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">standard_nonterm_parser</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_STANDARD_NONTERM_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Expected a nonterminal, found: &#39;</span> 
+                               <span class="o">+</span> <span class="n">string</span><span class="p">[</span><span class="n">pos</span><span class="p">:])</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">Nonterminal</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">())</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Parsing Dependency Grammars</span>
+<span class="c">#################################################################</span>
+
+<span class="n">_PARSE_DG_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;^\s*                # leading whitespace</span>
+<span class="s">                              (&#39;[^&#39;]+&#39;)\s*        # single-quoted lhs</span>
+<span class="s">                              (?:[-=]+&gt;)\s*        # arrow</span>
+<span class="s">                              (?:(                 # rhs:</span>
+<span class="s">                                   &quot;[^&quot;]+&quot;         # doubled-quoted terminal</span>
+<span class="s">                                 | &#39;[^&#39;]+&#39;         # single-quoted terminal</span>
+<span class="s">                                 | \|              # disjunction</span>
+<span class="s">                                 )</span>
+<span class="s">                                 \s*)              # trailing space</span>
+<span class="s">                                 *$&#39;&#39;&#39;</span><span class="p">,</span>            <span class="c"># zero or more copies</span>
+                             <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+<span class="n">_SPLIT_DG_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;(&#39;[^&#39;]&#39;|[-=]+&gt;|&quot;[^&quot;]+&quot;|&#39;[^&#39;]+&#39;|\|)&#39;&#39;&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="parse_dependency_grammar"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_dependency_grammar">[docs]</a><span class="k">def</span> <span class="nf">parse_dependency_grammar</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="n">productions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span> <span class="n">productions</span> <span class="o">+=</span> <span class="n">parse_dependency_production</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">productions</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;No productions found!&#39;</span>
+    <span class="k">return</span> <span class="n">DependencyGrammar</span><span class="p">(</span><span class="n">productions</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="parse_dependency_production"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.parse_dependency_production">[docs]</a><span class="k">def</span> <span class="nf">parse_dependency_production</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_PARSE_DG_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="s">&#39;Bad production string&#39;</span>
+    <span class="n">pieces</span> <span class="o">=</span> <span class="n">_SPLIT_DG_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">pieces</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="k">if</span> <span class="n">i</span><span class="o">%</span><span class="mi">2</span><span class="o">==</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">lhside</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\&#39;\&quot;</span><span class="s">&#39;</span><span class="p">)</span>
+    <span class="n">rhsides</span> <span class="o">=</span> <span class="p">[[]]</span>
+    <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">2</span><span class="p">:]:</span>
+        <span class="k">if</span> <span class="n">piece</span> <span class="o">==</span> <span class="s">&#39;|&#39;</span><span class="p">:</span>
+            <span class="n">rhsides</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">rhsides</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">piece</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\&#39;\&quot;</span><span class="s">&#39;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">DependencyProduction</span><span class="p">(</span><span class="n">lhside</span><span class="p">,</span> <span class="n">rhside</span><span class="p">)</span> <span class="k">for</span> <span class="n">rhside</span> <span class="ow">in</span> <span class="n">rhsides</span><span class="p">]</span>
+
+
+<span class="c">#################################################################</span>
+<span class="c"># Demonstration</span>
+<span class="c">#################################################################</span>
+</div>
+<div class="viewcode-block" id="cfg_demo"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.cfg_demo">[docs]</a><span class="k">def</span> <span class="nf">cfg_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration showing how C{ContextFreeGrammar}s can be created and used.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">nonterminals</span><span class="p">,</span> <span class="n">Production</span><span class="p">,</span> <span class="n">parse_cfg</span>
+
+    <span class="c"># Create some nonterminals</span>
+    <span class="n">S</span><span class="p">,</span> <span class="n">NP</span><span class="p">,</span> <span class="n">VP</span><span class="p">,</span> <span class="n">PP</span> <span class="o">=</span> <span class="n">nonterminals</span><span class="p">(</span><span class="s">&#39;S, NP, VP, PP&#39;</span><span class="p">)</span>
+    <span class="n">N</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">Det</span> <span class="o">=</span> <span class="n">nonterminals</span><span class="p">(</span><span class="s">&#39;N, V, P, Det&#39;</span><span class="p">)</span>
+    <span class="n">VP_slash_NP</span> <span class="o">=</span> <span class="n">VP</span><span class="o">/</span><span class="n">NP</span>
+
+    <span class="k">print</span> <span class="s">&#39;Some nonterminals:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">S</span><span class="p">,</span> <span class="n">NP</span><span class="p">,</span> <span class="n">VP</span><span class="p">,</span> <span class="n">PP</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">Det</span><span class="p">,</span> <span class="n">VP</span><span class="o">/</span><span class="n">NP</span><span class="p">]</span>
+    <span class="k">print</span> <span class="s">&#39;    S.symbol() =&gt;&#39;</span><span class="p">,</span> <span class="sb">`S.symbol()`</span>
+    <span class="k">print</span>
+
+    <span class="k">print</span> <span class="n">Production</span><span class="p">(</span><span class="n">S</span><span class="p">,</span> <span class="p">[</span><span class="n">NP</span><span class="p">])</span>
+
+    <span class="c"># Create some Grammar Productions</span>
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">parse_cfg</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">      S -&gt; NP VP</span>
+<span class="s">      PP -&gt; P NP</span>
+<span class="s">      NP -&gt; Det N | NP PP</span>
+<span class="s">      VP -&gt; V NP | VP PP</span>
+<span class="s">      Det -&gt; &#39;a&#39; | &#39;the&#39;</span>
+<span class="s">      N -&gt; &#39;dog&#39; | &#39;cat&#39;</span>
+<span class="s">      V -&gt; &#39;chased&#39; | &#39;sat&#39;</span>
+<span class="s">      P -&gt; &#39;on&#39; | &#39;in&#39;</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">print</span> <span class="s">&#39;A Grammar:&#39;</span><span class="p">,</span> <span class="sb">`grammar`</span>
+    <span class="k">print</span> <span class="s">&#39;    grammar.start()       =&gt;&#39;</span><span class="p">,</span> <span class="sb">`grammar.start()`</span>
+    <span class="k">print</span> <span class="s">&#39;    grammar.productions() =&gt;&#39;</span><span class="p">,</span>
+    <span class="c"># Use string.replace(...) is to line-wrap the output.</span>
+    <span class="k">print</span> <span class="sb">`grammar.productions()`</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">,</span> <span class="s">&#39;,</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">+</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">25</span><span class="p">)</span>
+    <span class="k">print</span>
+    
+    <span class="k">print</span> <span class="s">&#39;Coverage of input words by a grammar:&#39;</span>
+    <span class="k">print</span> <span class="n">grammar</span><span class="o">.</span><span class="n">covers</span><span class="p">([</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;dog&#39;</span><span class="p">])</span>
+    <span class="k">print</span> <span class="n">grammar</span><span class="o">.</span><span class="n">covers</span><span class="p">([</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;toy&#39;</span><span class="p">])</span>
+</div>
+<span class="n">toy_pcfg1</span> <span class="o">=</span> <span class="n">parse_pcfg</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    S -&gt; NP VP [1.0]</span>
+<span class="s">    NP -&gt; Det N [0.5] | NP PP [0.25] | &#39;John&#39; [0.1] | &#39;I&#39; [0.15]</span>
+<span class="s">    Det -&gt; &#39;the&#39; [0.8] | &#39;my&#39; [0.2]</span>
+<span class="s">    N -&gt; &#39;man&#39; [0.5] | &#39;telescope&#39; [0.5]</span>
+<span class="s">    VP -&gt; VP PP [0.1] | V NP [0.7] | V [0.2]</span>
+<span class="s">    V -&gt; &#39;ate&#39; [0.35] | &#39;saw&#39; [0.65]</span>
+<span class="s">    PP -&gt; P NP [1.0]</span>
+<span class="s">    P -&gt; &#39;with&#39; [0.61] | &#39;under&#39; [0.39]</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+
+<span class="n">toy_pcfg2</span> <span class="o">=</span> <span class="n">parse_pcfg</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    S    -&gt; NP VP         [1.0]</span>
+<span class="s">    VP   -&gt; V NP          [.59]</span>
+<span class="s">    VP   -&gt; V             [.40]</span>
+<span class="s">    VP   -&gt; VP PP         [.01]</span>
+<span class="s">    NP   -&gt; Det N         [.41]</span>
+<span class="s">    NP   -&gt; Name          [.28]</span>
+<span class="s">    NP   -&gt; NP PP         [.31]</span>
+<span class="s">    PP   -&gt; P NP          [1.0]</span>
+<span class="s">    V    -&gt; &#39;saw&#39;         [.21]</span>
+<span class="s">    V    -&gt; &#39;ate&#39;         [.51]</span>
+<span class="s">    V    -&gt; &#39;ran&#39;         [.28]</span>
+<span class="s">    N    -&gt; &#39;boy&#39;         [.11]</span>
+<span class="s">    N    -&gt; &#39;cookie&#39;      [.12]</span>
+<span class="s">    N    -&gt; &#39;table&#39;       [.13]</span>
+<span class="s">    N    -&gt; &#39;telescope&#39;   [.14]</span>
+<span class="s">    N    -&gt; &#39;hill&#39;        [.5]</span>
+<span class="s">    Name -&gt; &#39;Jack&#39;        [.52]</span>
+<span class="s">    Name -&gt; &#39;Bob&#39;         [.48]</span>
+<span class="s">    P    -&gt; &#39;with&#39;        [.61]</span>
+<span class="s">    P    -&gt; &#39;under&#39;       [.39]</span>
+<span class="s">    Det  -&gt; &#39;the&#39;         [.41]</span>
+<span class="s">    Det  -&gt; &#39;a&#39;           [.31]</span>
+<span class="s">    Det  -&gt; &#39;my&#39;          [.28]</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="pcfg_demo"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.pcfg_demo">[docs]</a><span class="k">def</span> <span class="nf">pcfg_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration showing how C{WeightedGrammar}s can be created and used.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">treetransforms</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">induce_pcfg</span>
+    <span class="kn">from</span> <span class="nn">nltk.parse</span> <span class="kn">import</span> <span class="n">pchart</span>
+
+    <span class="n">pcfg_prods</span> <span class="o">=</span> <span class="n">toy_pcfg1</span><span class="o">.</span><span class="n">productions</span><span class="p">()</span>
+
+    <span class="n">pcfg_prod</span> <span class="o">=</span> <span class="n">pcfg_prods</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">print</span> <span class="s">&#39;A PCFG production:&#39;</span><span class="p">,</span> <span class="sb">`pcfg_prod`</span>
+    <span class="k">print</span> <span class="s">&#39;    pcfg_prod.lhs()  =&gt;&#39;</span><span class="p">,</span> <span class="sb">`pcfg_prod.lhs()`</span>
+    <span class="k">print</span> <span class="s">&#39;    pcfg_prod.rhs()  =&gt;&#39;</span><span class="p">,</span> <span class="sb">`pcfg_prod.rhs()`</span>
+    <span class="k">print</span> <span class="s">&#39;    pcfg_prod.prob() =&gt;&#39;</span><span class="p">,</span> <span class="sb">`pcfg_prod.prob()`</span>
+    <span class="k">print</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">toy_pcfg2</span>
+    <span class="k">print</span> <span class="s">&#39;A PCFG grammar:&#39;</span><span class="p">,</span> <span class="sb">`grammar`</span>
+    <span class="k">print</span> <span class="s">&#39;    grammar.start()       =&gt;&#39;</span><span class="p">,</span> <span class="sb">`grammar.start()`</span>
+    <span class="k">print</span> <span class="s">&#39;    grammar.productions() =&gt;&#39;</span><span class="p">,</span>
+    <span class="c"># Use string.replace(...) is to line-wrap the output.</span>
+    <span class="k">print</span> <span class="sb">`grammar.productions()`</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">,</span> <span class="s">&#39;,</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">+</span><span class="s">&#39; &#39;</span><span class="o">*</span><span class="mi">26</span><span class="p">)</span>
+    <span class="k">print</span>
+
+    <span class="k">print</span> <span class="s">&#39;Coverage of input words by a grammar:&#39;</span>
+    <span class="k">print</span> <span class="n">grammar</span><span class="o">.</span><span class="n">covers</span><span class="p">([</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;boy&#39;</span><span class="p">])</span>
+    <span class="k">print</span> <span class="n">grammar</span><span class="o">.</span><span class="n">covers</span><span class="p">([</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;girl&#39;</span><span class="p">])</span>
+
+    <span class="c"># extract productions from three trees and induce the PCFG</span>
+    <span class="k">print</span> <span class="s">&quot;Induce PCFG grammar from treebank data:&quot;</span>
+
+    <span class="n">productions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">treebank</span><span class="o">.</span><span class="n">items</span><span class="p">[:</span><span class="mi">2</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">treebank</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+            <span class="c"># perform optional tree transformations, e.g.:</span>
+            <span class="n">tree</span><span class="o">.</span><span class="n">collapse_unary</span><span class="p">(</span><span class="n">collapsePOS</span> <span class="o">=</span> <span class="bp">False</span><span class="p">)</span>
+            <span class="n">tree</span><span class="o">.</span><span class="n">chomsky_normal_form</span><span class="p">(</span><span class="n">horzMarkov</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">productions</span> <span class="o">+=</span> <span class="n">tree</span><span class="o">.</span><span class="n">productions</span><span class="p">()</span>
+
+    <span class="n">S</span> <span class="o">=</span> <span class="n">Nonterminal</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">)</span>
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">induce_pcfg</span><span class="p">(</span><span class="n">S</span><span class="p">,</span> <span class="n">productions</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">grammar</span>
+    <span class="k">print</span>
+
+    <span class="k">print</span> <span class="s">&quot;Parse sentence using induced grammar:&quot;</span>
+
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">pchart</span><span class="o">.</span><span class="n">InsideChartParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+
+    <span class="c"># doesn&#39;t work as tokens are different:</span>
+    <span class="c">#sent = treebank.tokenized(&#39;wsj_0001.mrg&#39;)[0]</span>
+
+    <span class="n">sent</span> <span class="o">=</span> <span class="n">treebank</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">(</span><span class="s">&#39;wsj_0001.mrg&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">sent</span>
+    <span class="k">for</span> <span class="n">parse</span> <span class="ow">in</span> <span class="n">parser</span><span class="o">.</span><span class="n">nbest_parse</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
+        <span class="k">print</span> <span class="n">parse</span>
+</div>
+<span class="k">def</span> <span class="nf">fcfg_demo</span><span class="p">():</span>
+    <span class="kn">import</span> <span class="nn">nltk.data</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s">&#39;grammars/book_grammars/feat0.fcfg&#39;</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">g</span>
+    <span class="k">print</span> 
+    
+<div class="viewcode-block" id="dg_demo"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.dg_demo">[docs]</a><span class="k">def</span> <span class="nf">dg_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration showing the creation and inspection of a </span>
+<span class="sd">    C{DependencyGrammar}.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">parse_dependency_grammar</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    &#39;scratch&#39; -&gt; &#39;cats&#39; | &#39;walls&#39;</span>
+<span class="s">    &#39;walls&#39; -&gt; &#39;the&#39;</span>
+<span class="s">    &#39;cats&#39; -&gt; &#39;the&#39;</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">grammar</span>
+    </div>
+<div class="viewcode-block" id="sdg_demo"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.sdg_demo">[docs]</a><span class="k">def</span> <span class="nf">sdg_demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration of how to read a string representation of </span>
+<span class="sd">    a CoNLL format dependency tree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dg</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    1   Ze                ze                Pron  Pron  per|3|evofmv|nom                 2   su      _  _</span>
+<span class="s">    2   had               heb               V     V     trans|ovt|1of2of3|ev             0   ROOT    _  _</span>
+<span class="s">    3   met               met               Prep  Prep  voor                             8   mod     _  _</span>
+<span class="s">    4   haar              haar              Pron  Pron  bez|3|ev|neut|attr               5   det     _  _</span>
+<span class="s">    5   moeder            moeder            N     N     soort|ev|neut                    3   obj1    _  _</span>
+<span class="s">    6   kunnen            kan               V     V     hulp|ott|1of2of3|mv              2   vc      _  _</span>
+<span class="s">    7   gaan              ga                V     V     hulp|inf                         6   vc      _  _</span>
+<span class="s">    8   winkelen          winkel            V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">    9   ,                 ,                 Punc  Punc  komma                            8   punct   _  _</span>
+<span class="s">    10  zwemmen           zwem              V     V     intrans|inf                      11  cnj     _  _</span>
+<span class="s">    11  of                of                Conj  Conj  neven                            7   vc      _  _</span>
+<span class="s">    12  terrassen         terras            N     N     soort|mv|neut                    11  cnj     _  _</span>
+<span class="s">    13  .                 .                 Punc  Punc  punt                             12  punct   _  _</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="n">dg</span><span class="o">.</span><span class="n">tree</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">tree</span><span class="o">.</span><span class="n">pprint</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../api/nltk.html#nltk.grammar.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="n">cfg_demo</span><span class="p">()</span>
+    <span class="n">pcfg_demo</span><span class="p">()</span>
+    <span class="n">fcfg_demo</span><span class="p">()</span>
+    <span class="n">dg_demo</span><span class="p">()</span>
+    <span class="n">sdg_demo</span><span class="p">()</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;Nonterminal&#39;</span><span class="p">,</span> <span class="s">&#39;nonterminals&#39;</span><span class="p">,</span>
+           <span class="s">&#39;Production&#39;</span><span class="p">,</span> <span class="s">&#39;DependencyProduction&#39;</span><span class="p">,</span> <span class="s">&#39;WeightedProduction&#39;</span><span class="p">,</span>
+           <span class="s">&#39;ContextFreeGrammar&#39;</span><span class="p">,</span> <span class="s">&#39;WeightedGrammar&#39;</span><span class="p">,</span> <span class="s">&#39;DependencyGrammar&#39;</span><span class="p">,</span>
+           <span class="s">&#39;StatisticalDependencyGrammar&#39;</span><span class="p">,</span> 
+           <span class="s">&#39;induce_pcfg&#39;</span><span class="p">,</span> <span class="s">&#39;parse_cfg&#39;</span><span class="p">,</span> <span class="s">&#39;parse_cfg_production&#39;</span><span class="p">,</span>
+           <span class="s">&#39;parse_pcfg&#39;</span><span class="p">,</span> <span class="s">&#39;parse_pcfg_production&#39;</span><span class="p">,</span>
+           <span class="s">&#39;parse_fcfg&#39;</span><span class="p">,</span> <span class="s">&#39;parse_fcfg_production&#39;</span><span class="p">,</span>
+           <span class="s">&#39;parse_grammar&#39;</span><span class="p">,</span> <span class="s">&#39;parse_production&#39;</span><span class="p">,</span>
+           <span class="s">&#39;parse_dependency_grammar&#39;</span><span class="p">,</span> <span class="s">&#39;parse_dependency_production&#39;</span><span class="p">,</span>
+           <span class="s">&#39;demo&#39;</span><span class="p">,</span> <span class="s">&#39;cfg_demo&#39;</span><span class="p">,</span> <span class="s">&#39;pcfg_demo&#39;</span><span class="p">,</span> <span class="s">&#39;dg_demo&#39;</span><span class="p">,</span> <span class="s">&#39;sdg_demo&#39;</span><span class="p">,</span>
+           <span class="s">&#39;toy_pcfg1&#39;</span><span class="p">,</span> <span class="s">&#39;toy_pcfg2&#39;</span><span class="p">]</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>

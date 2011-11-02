@@ -1,0 +1,557 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.parse.sr &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.parse" href="../parse.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" accesskey="U">nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.parse.sr</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Shift-Reduce Parser</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
+<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">string</span>
+
+<span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">Nonterminal</span><span class="p">,</span> <span class="n">parse_cfg</span>
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Shift/Reduce Parser</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+<div class="viewcode-block" id="ShiftReduceParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.ShiftReduceParser">[docs]</a><span class="k">class</span> <span class="nc">ShiftReduceParser</span><span class="p">(</span><span class="n">ParserI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A simple bottom-up CFG parser that uses two operations, &quot;shift&quot;</span>
+<span class="sd">    and &quot;reduce&quot;, to find a single parse for a text.</span>
+
+<span class="sd">    C{ShiftReduceParser} maintains a stack, which records the</span>
+<span class="sd">    structure of a portion of the text.  This stack is a list of</span>
+<span class="sd">    C{String}s and C{Tree}s that collectively cover a portion of</span>
+<span class="sd">    the text.  For example, while parsing the sentence &quot;the dog saw</span>
+<span class="sd">    the man&quot; with a typical grammar, C{ShiftReduceParser} will produce</span>
+<span class="sd">    the following stack, which covers &quot;the dog saw&quot;::</span>
+
+<span class="sd">       [(NP: (Det: &#39;the&#39;) (N: &#39;dog&#39;)), (V: &#39;saw&#39;)]</span>
+
+<span class="sd">    C{ShiftReduceParser} attempts to extend the stack to cover the</span>
+<span class="sd">    entire text, and to combine the stack elements into a single tree,</span>
+<span class="sd">    producing a complete parse for the sentence.</span>
+
+<span class="sd">    Initially, the stack is empty.  It is extended to cover the text,</span>
+<span class="sd">    from left to right, by repeatedly applying two operations:</span>
+
+<span class="sd">      - X{shift} moves a token from the beginning of the text to the</span>
+<span class="sd">        end of the stack.</span>
+<span class="sd">      - X{reduce} uses a CFG production to combine the rightmost stack</span>
+<span class="sd">        elements into a single C{Tree}.</span>
+
+<span class="sd">    Often, more than one operation can be performed on a given stack.</span>
+<span class="sd">    In this case, C{ShiftReduceParser} uses the following heuristics</span>
+<span class="sd">    to decide which operation to perform:</span>
+
+<span class="sd">      - Only shift if no reductions are available.</span>
+<span class="sd">      - If multiple reductions are available, then apply the reduction</span>
+<span class="sd">        whose CFG production is listed earliest in the grammar.</span>
+
+<span class="sd">    Note that these heuristics are not guaranteed to choose an</span>
+<span class="sd">    operation that leads to a parse of the text.  Also, if multiple</span>
+<span class="sd">    parses exists, C{ShiftReduceParser} will return at most one of</span>
+<span class="sd">    them.</span>
+
+<span class="sd">    @see: C{nltk.grammar}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a new C{ShiftReduceParser}, that uses C{grammar} to</span>
+<span class="sd">        parse texts.</span>
+
+<span class="sd">        @type grammar: C{Grammar}</span>
+<span class="sd">        @param grammar: The grammar used to parse texts.</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">            and higher numbers will produce more verbose tracing</span>
+<span class="sd">            output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_grammar</span><span class="p">()</span>
+
+<div class="viewcode-block" id="ShiftReduceParser.grammar"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.ShiftReduceParser.grammar">[docs]</a>    <span class="k">def</span> <span class="nf">grammar</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span>
+</div>
+<div class="viewcode-block" id="ShiftReduceParser.parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.ShiftReduceParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">check_coverage</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+
+        <span class="c"># initialize the stack.</span>
+        <span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">remaining_text</span> <span class="o">=</span> <span class="n">tokens</span>
+        
+        <span class="c"># Trace output.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;Parsing </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">string</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_trace_stack</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+
+        <span class="c"># iterate through the text, pushing the token onto</span>
+        <span class="c"># the stack, then reducing the stack.</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">remaining_text</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_shift</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+            <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reduce</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">):</span> <span class="k">pass</span>
+
+        <span class="c"># Did we reduce everything?</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span> <span class="k">return</span> <span class="bp">None</span>
+
+        <span class="c"># Did we end up with the right category?</span>
+        <span class="k">if</span> <span class="n">stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">node</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">start</span><span class="p">()</span><span class="o">.</span><span class="n">symbol</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">None</span>
+        
+        <span class="c"># We parsed successfully!</span>
+        <span class="k">return</span> <span class="n">stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">_shift</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Move a token from the beginning of C{remaining_text} to the</span>
+<span class="sd">        end of C{stack}.</span>
+
+<span class="sd">        @type stack: C{list} of C{String} and C{Tree}</span>
+<span class="sd">        @param stack: A list of C{String}s and C{Tree}s, encoding</span>
+<span class="sd">            the structure of the text that has been parsed so far.</span>
+<span class="sd">        @type remaining_text: C{list} of C{String}</span>
+<span class="sd">        @param remaining_text: The portion of the text that is not yet</span>
+<span class="sd">            covered by C{stack}.</span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">remaining_text</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">remaining_text</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">remaining_text</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_shift</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_match_rhs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">rightmost_stack</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        @return: true if the right hand side of a CFG production</span>
+<span class="sd">            matches the rightmost elements of the stack.  C{rhs}</span>
+<span class="sd">            matches C{rightmost_stack} if they are the same length,</span>
+<span class="sd">            and each element of C{rhs} matches the corresponding</span>
+<span class="sd">            element of C{rightmost_stack}.  A nonterminal element of</span>
+<span class="sd">            C{rhs} matches any C{Tree} whose node value is equal</span>
+<span class="sd">            to the nonterminal&#39;s symbol.  A terminal element of C{rhs}</span>
+<span class="sd">            matches any C{String} whose type is equal to the terminal.</span>
+<span class="sd">        @type rhs: C{list} of (terminal and C{Nonterminal})</span>
+<span class="sd">        @param rhs: The right hand side of a CFG production.</span>
+<span class="sd">        @type rightmost_stack: C{list} of (C{String} and C{Tree})</span>
+<span class="sd">        @param rightmost_stack: The rightmost elements of the parser&#39;s</span>
+<span class="sd">            stack.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rightmost_stack</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rhs</span><span class="p">):</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">rightmost_stack</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rightmost_stack</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Tree</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Nonterminal</span><span class="p">):</span> <span class="k">return</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="n">rightmost_stack</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">node</span> <span class="o">!=</span> <span class="n">rhs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">symbol</span><span class="p">():</span> <span class="k">return</span> <span class="mi">0</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Nonterminal</span><span class="p">):</span> <span class="k">return</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="n">rightmost_stack</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">!=</span> <span class="n">rhs</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">_reduce</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">,</span> <span class="n">production</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find a CFG production whose right hand side matches the</span>
+<span class="sd">        rightmost stack elements; and combine those stack elements</span>
+<span class="sd">        into a single C{Tree}, with the node specified by the</span>
+<span class="sd">        production&#39;s left-hand side.  If more than one CFG production</span>
+<span class="sd">        matches the stack, then use the production that is listed</span>
+<span class="sd">        earliest in the grammar.  The new C{Tree} replaces the</span>
+<span class="sd">        elements in the stack.</span>
+
+<span class="sd">        @rtype: C{Production} or C{None}</span>
+<span class="sd">        @return: If a reduction is performed, then return the CFG</span>
+<span class="sd">            production that the reduction is based on; otherwise,</span>
+<span class="sd">            return false.</span>
+<span class="sd">        @type stack: C{list} of C{String} and C{Tree}</span>
+<span class="sd">        @param stack: A list of C{String}s and C{Tree}s, encoding</span>
+<span class="sd">            the structure of the text that has been parsed so far.</span>
+<span class="sd">        @type remaining_text: C{list} of C{String}</span>
+<span class="sd">        @param remaining_text: The portion of the text that is not yet</span>
+<span class="sd">            covered by C{stack}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">production</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">productions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">productions</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span> <span class="n">productions</span> <span class="o">=</span> <span class="p">[</span><span class="n">production</span><span class="p">]</span>
+        
+        <span class="c"># Try each production, in order.</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="n">productions</span><span class="p">:</span>
+            <span class="n">rhslen</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">())</span>
+                
+            <span class="c"># check if the RHS of a production matches the top of the stack</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_match_rhs</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">(),</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="n">rhslen</span><span class="p">:]):</span>
+
+                <span class="c"># combine the tree to reflect the reduction</span>
+                <span class="n">tree</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">lhs</span><span class="p">()</span><span class="o">.</span><span class="n">symbol</span><span class="p">(),</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="n">rhslen</span><span class="p">:])</span>
+                <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="n">rhslen</span><span class="p">:]</span> <span class="o">=</span> <span class="p">[</span><span class="n">tree</span><span class="p">]</span>
+
+                <span class="c"># We reduced something</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_trace_reduce</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">production</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">production</span>
+
+        <span class="c"># We didn&#39;t reduce anything</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="ShiftReduceParser.trace"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.ShiftReduceParser.trace">[docs]</a>    <span class="k">def</span> <span class="nf">trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set the level of tracing output that should be generated when</span>
+<span class="sd">        parsing a text.</span>
+
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The trace level.  A trace level of C{0} will</span>
+<span class="sd">            generate no tracing output; and higher trace levels will</span>
+<span class="sd">            produce more verbose tracing output.</span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># 1: just show shifts.</span>
+        <span class="c"># 2: show shifts &amp; reduces</span>
+        <span class="c"># 3: display which tokens &amp; productions are shifed/reduced</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+</div>
+    <span class="k">def</span> <span class="nf">_trace_stack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">,</span> <span class="n">marker</span><span class="o">=</span><span class="s">&#39; &#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Print trace output displaying the given stack and text.</span>
+<span class="sd">        </span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        @param marker: A character that is printed to the left of the</span>
+<span class="sd">            stack.  This is used with trace level 2 to print &#39;S&#39;</span>
+<span class="sd">            before shifted stacks and &#39;R&#39; before reduced stacks.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">str</span> <span class="o">=</span> <span class="s">&#39;  &#39;</span><span class="o">+</span><span class="n">marker</span><span class="o">+</span><span class="s">&#39; [ &#39;</span>
+        <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">stack</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+                <span class="nb">str</span> <span class="o">+=</span> <span class="sb">`Nonterminal(elt.node)`</span> <span class="o">+</span> <span class="s">&#39; &#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">str</span> <span class="o">+=</span> <span class="sb">`elt`</span> <span class="o">+</span> <span class="s">&#39; &#39;</span>
+        <span class="nb">str</span> <span class="o">+=</span> <span class="s">&#39;* &#39;</span> <span class="o">+</span> <span class="n">string</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">remaining_text</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;]&#39;</span>
+        <span class="k">print</span> <span class="nb">str</span>
+
+    <span class="k">def</span> <span class="nf">_trace_shift</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Print trace output displaying that a token has been shifted.</span>
+<span class="sd">        </span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span> <span class="k">print</span> <span class="s">&#39;Shift </span><span class="si">%r</span><span class="s">:&#39;</span> <span class="o">%</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_stack</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">,</span> <span class="s">&#39;S&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_stack</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_trace_reduce</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stack</span><span class="p">,</span> <span class="n">production</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Print trace output displaying that C{production} was used to</span>
+<span class="sd">        reduce C{stack}.</span>
+<span class="sd">        </span>
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">rhs</span> <span class="o">=</span> <span class="n">string</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">())</span>
+            <span class="k">print</span> <span class="s">&#39;Reduce </span><span class="si">%r</span><span class="s"> &lt;- </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span> <span class="n">rhs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_stack</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">,</span> <span class="s">&#39;R&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_stack</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">remaining_text</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_check_grammar</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check to make sure that all of the CFG productions are</span>
+<span class="sd">        potentially useful.  If any productions can never be used,</span>
+<span class="sd">        then print a warning.</span>
+
+<span class="sd">        @rtype: C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">productions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">productions</span><span class="p">()</span>
+
+        <span class="c"># Any production whose RHS is an extension of another production&#39;s RHS</span>
+        <span class="c"># will never be used. </span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">productions</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">productions</span><span class="p">)):</span>
+                <span class="n">rhs1</span> <span class="o">=</span> <span class="n">productions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">rhs</span><span class="p">()</span>
+                <span class="n">rhs2</span> <span class="o">=</span> <span class="n">productions</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">rhs</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">rhs1</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">rhs2</span><span class="p">)]</span> <span class="o">==</span> <span class="n">rhs2</span><span class="p">:</span>
+                    <span class="k">print</span> <span class="s">&#39;Warning: </span><span class="si">%r</span><span class="s"> will never be used&#39;</span> <span class="o">%</span> <span class="n">productions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Stepping Shift/Reduce Parser</span>
+<span class="c">##//////////////////////////////////////////////////////</span></div>
+<div class="viewcode-block" id="SteppingShiftReduceParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser">[docs]</a><span class="k">class</span> <span class="nc">SteppingShiftReduceParser</span><span class="p">(</span><span class="n">ShiftReduceParser</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A C{ShiftReduceParser} that allows you to setp through the parsing</span>
+<span class="sd">    process, performing a single operation at a time.  It also allows</span>
+<span class="sd">    you to change the parser&#39;s grammar midway through parsing a text.</span>
+
+<span class="sd">    The C{initialize} method is used to start parsing a text.</span>
+<span class="sd">    C{shift} performs a single shift operation, and C{reduce} performs</span>
+<span class="sd">    a single reduce operation.  C{step} will perform a single reduce</span>
+<span class="sd">    operation if possible; otherwise, it will perform a single shift</span>
+<span class="sd">    operation.  C{parses} returns the set of parses that have been</span>
+<span class="sd">    found by the parser.</span>
+
+<span class="sd">    @ivar _history: A list of C{(stack, remaining_text)} pairs,</span>
+<span class="sd">        containing all of the previous states of the parser.  This</span>
+<span class="sd">        history is used to implement the C{undo} operation.</span>
+<span class="sd">    @see: C{nltk.grammar}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">=</span> <span class="n">trace</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_history</span> <span class="o">=</span> <span class="p">[]</span>
+
+<div class="viewcode-block" id="SteppingShiftReduceParser.nbest_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.nbest_parse">[docs]</a>    <span class="k">def</span> <span class="nf">nbest_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">step</span><span class="p">():</span> <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parses</span><span class="p">()[:</span><span class="n">n</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.stack"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.stack">[docs]</a>    <span class="k">def</span> <span class="nf">stack</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The parser&#39;s stack.</span>
+<span class="sd">        @rtype: C{list} of C{String} and C{Tree}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.remaining_text"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.remaining_text">[docs]</a>    <span class="k">def</span> <span class="nf">remaining_text</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: The portion of the text that is not yet covered by the</span>
+<span class="sd">            stack.</span>
+<span class="sd">        @rtype: C{list} of C{String}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span>
+        </div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.initialize"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.initialize">[docs]</a>    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Start parsing a given text.  This sets the parser&#39;s stack to</span>
+<span class="sd">        C{[]} and sets its remaining text to C{tokens}.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span> <span class="o">=</span> <span class="n">tokens</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_history</span> <span class="o">=</span> <span class="p">[]</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.step"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.step">[docs]</a>    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Perform a single parsing operation.  If a reduction is</span>
+<span class="sd">        possible, then perform that reduction, and return the</span>
+<span class="sd">        production that it is based on.  Otherwise, if a shift is</span>
+<span class="sd">        possible, then perform it, and return 1.  Otherwise,</span>
+<span class="sd">        return 0. </span>
+
+<span class="sd">        @return: 0 if no operation was performed; 1 if a shift was</span>
+<span class="sd">            performed; and the CFG production used to reduce if a</span>
+<span class="sd">            reduction was performed.</span>
+<span class="sd">        @rtype: C{Production} or C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">reduce</span><span class="p">()</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">shift</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.shift"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.shift">[docs]</a>    <span class="k">def</span> <span class="nf">shift</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Move a token from the beginning of the remaining text to the</span>
+<span class="sd">        end of the stack.  If there are no more tokens in the</span>
+<span class="sd">        remaining text, then do nothing.</span>
+
+<span class="sd">        @return: True if the shift operation was successful.</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">[:],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">[:])</span> <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_shift</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+        </div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.reduce"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.reduce">[docs]</a>    <span class="k">def</span> <span class="nf">reduce</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">production</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use C{production} to combine the rightmost stack elements into</span>
+<span class="sd">        a single C{Tree}.  If C{production} does not match the</span>
+<span class="sd">        rightmost stack elements, then do nothing.</span>
+
+<span class="sd">        @return: The production used to reduce the stack, if a</span>
+<span class="sd">            reduction was performed.  If no reduction was performed,</span>
+<span class="sd">            return C{None}.</span>
+<span class="sd">        </span>
+<span class="sd">        @rtype: C{Production} or C{None}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">[:],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">[:])</span> <span class="p">)</span>
+        <span class="n">return_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reduce</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">,</span>
+                                  <span class="n">production</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">return_val</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">return_val</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.undo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.undo">[docs]</a>    <span class="k">def</span> <span class="nf">undo</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the parser to its state before the most recent</span>
+<span class="sd">        shift or reduce operation.  Calling C{undo} repeatedly return</span>
+<span class="sd">        the parser to successively earlier states.  If no shift or</span>
+<span class="sd">        reduce operations have been performed, C{undo} will make no</span>
+<span class="sd">        changes.</span>
+
+<span class="sd">        @return: true if an operation was successfully undone.</span>
+<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="mi">0</span>
+        <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">return</span> <span class="mi">1</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.reducible_productions"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.reducible_productions">[docs]</a>    <span class="k">def</span> <span class="nf">reducible_productions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A list of the productions for which reductions are</span>
+<span class="sd">            available for the current parser state.</span>
+<span class="sd">        @rtype: C{list} of C{Production}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">productions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">production</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">productions</span><span class="p">():</span>
+            <span class="n">rhslen</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">())</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_match_rhs</span><span class="p">(</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">[</span><span class="o">-</span><span class="n">rhslen</span><span class="p">:]):</span>
+                <span class="n">productions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">production</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">productions</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.parses"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.parses">[docs]</a>    <span class="k">def</span> <span class="nf">parses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @return: A list of the parses that have been found by this</span>
+<span class="sd">            parser so far.</span>
+<span class="sd">        @rtype: C{list} of C{Tree}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_remaining_text</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span> <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">node</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">start</span><span class="p">()</span><span class="o">.</span><span class="n">symbol</span><span class="p">():</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stack</span>
+
+<span class="c"># copied from nltk.parser</span>
+</div>
+<div class="viewcode-block" id="SteppingShiftReduceParser.set_grammar"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.SteppingShiftReduceParser.set_grammar">[docs]</a>    <span class="k">def</span> <span class="nf">set_grammar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Change the grammar used to parse texts.</span>
+<span class="sd">        </span>
+<span class="sd">        @param grammar: The new grammar.</span>
+<span class="sd">        @type grammar: C{CFG}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
+    
+<span class="c">##//////////////////////////////////////////////////////</span>
+<span class="c">##  Demonstration Code</span>
+<span class="c">##//////////////////////////////////////////////////////</span>
+</div></div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.sr.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A demonstration of the shift-reduce parser.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">parse</span><span class="p">,</span> <span class="n">parse_cfg</span>
+
+    <span class="n">grammar</span> <span class="o">=</span> <span class="n">parse_cfg</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
+<span class="s">    S -&gt; NP VP</span>
+<span class="s">    NP -&gt; Det N | Det N PP</span>
+<span class="s">    VP -&gt; V NP | V NP PP</span>
+<span class="s">    PP -&gt; P NP</span>
+<span class="s">    NP -&gt; &#39;I&#39;</span>
+<span class="s">    N -&gt; &#39;man&#39; | &#39;park&#39; | &#39;telescope&#39; | &#39;dog&#39;</span>
+<span class="s">    Det -&gt; &#39;the&#39; | &#39;a&#39;</span>
+<span class="s">    P -&gt; &#39;in&#39; | &#39;with&#39;</span>
+<span class="s">    V -&gt; &#39;saw&#39;</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
+
+    <span class="n">sent</span> <span class="o">=</span> <span class="s">&#39;I saw a man in the park&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">parse</span><span class="o">.</span><span class="n">ShiftReduceParser</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">parser</span><span class="o">.</span><span class="n">nbest_parse</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
+        <span class="k">print</span> <span class="n">p</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../parse.html" >nltk.parse</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+    </div>
+  </body>
+</html>
