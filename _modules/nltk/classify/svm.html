@@ -1,0 +1,376 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.classify.svm &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.classify" href="../classify.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" accesskey="U">nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.classify.svm</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: SVM-based classifier</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Author: Leon Derczynski &lt;leon@dcs.shef.ac.uk&gt;</span>
+<span class="c">#</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A classifier based on a support vector machine. This code uses Thorsten Joachims&#39;</span>
+<span class="sd">SVM^light implementation (http://svmlight.joachims.org/), wrapped using</span>
+<span class="sd">PySVMLight (https://bitbucket.org/wcauchois/pysvmlight). The default settings are to </span>
+<span class="sd">train a linear classification kernel, though through minor modification, full SVMlight</span>
+<span class="sd">capabilities should be accessible if needed. Only binary classification is possible at present.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c">#</span>
+<span class="c"># Interface to Support Vector Machine</span>
+<span class="c">#</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">svmlight</span>
+<span class="k">except</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n\n</span><span class="s">===========================================================================</span><span class="se">\n</span><span class="s">  NLTK was unable to import SVMlight!</span><span class="se">\n\n</span><span class="s">  For more information, see &lt;https://bitbucket.org/wcauchois/pysvmlight&gt;</span><span class="se">\n</span><span class="s">===========================================================================&quot;</span><span class="p">)</span>
+
+<span class="c"># create a boolean feature name for the SVM from a feature/value pair,</span>
+<span class="c"># that&#39;ll take on a 1.0 value if the original feature:value is asserted.</span>
+<div class="viewcode-block" id="featurename"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.featurename">[docs]</a><span class="k">def</span> <span class="nf">featurename</span><span class="p">(</span><span class="n">feature</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @param feature: a string denoting a feature name</span>
+<span class="sd">    @param value: the value of the feature</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">feature</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)])</span>
+
+<span class="c"># convert a set of NLTK classifier features to SVMlight format</span></div>
+<div class="viewcode-block" id="map_features_to_svm"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.map_features_to_svm">[docs]</a><span class="k">def</span> <span class="nf">map_features_to_svm</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">svmfeatureindex</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @param features: a dict of features in the format {&#39;feature&#39;:value}</span>
+<span class="sd">    @param svmfeatureindex: a mapping from feature:value pairs to integer SVMlight feature labels</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">instancefeatures</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c"># svmlight supports sparse feature sets and so we simply omit features that we don&#39;t include</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+        <span class="c"># each feature is represented as an (int, float) tuple where the int is the SVMlight feature label and the float is the value; as we either have or have not a feature, this is 1.0</span>
+        <span class="c"># this does not support scalar features - rather, each value that a feature may take on is a discrete independent label</span>
+        <span class="c"># use 1.0 as the feature value to specify the presence of a feature:value couple</span>
+        <span class="n">svmfeaturename</span> <span class="o">=</span> <span class="n">featurename</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">svmfeaturename</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">svmfeatureindex</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="c"># skip over feature:value pairs that were not in the training data and so not included in our mappings</span>
+            <span class="k">continue</span>
+        <span class="n">instancefeatures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">svmfeatureindex</span><span class="p">[</span><span class="n">svmfeaturename</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">)</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">instancefeatures</span>
+
+
+<span class="c"># convert a whole instance (including label) from NLTK to SVMlight format</span>
+</div>
+<div class="viewcode-block" id="map_instance_to_svm"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.map_instance_to_svm">[docs]</a><span class="k">def</span> <span class="nf">map_instance_to_svm</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">labelmapping</span><span class="p">,</span> <span class="n">svmfeatureindex</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    @param instance: an NLTK format instance, which is in the tuple format (dict(), label), where the dict contains feature:value pairs, and the label signifies the target attribute&#39;s value for this instance (e.g. its class)</span>
+<span class="sd">    @param labelmapping: a previously-defined dict mapping from text labels in the NLTK instance format to SVMlight labels of either +1 or -1</span>
+<span class="sd">    @svmfeatureindex: a mapping from feature:value pairs to integer SVMlight feature labels</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="o">=</span> <span class="n">instance</span>
+    <span class="n">instancefeatures</span> <span class="o">=</span> <span class="n">map_features_to_svm</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">svmfeatureindex</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">labelmapping</span><span class="p">[</span><span class="n">label</span><span class="p">],</span> <span class="n">instancefeatures</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="SvmClassifier"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier">[docs]</a><span class="k">class</span> <span class="nc">SvmClassifier</span><span class="p">(</span><span class="n">ClassifierI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A Support Vector Machine classifier. To explain briefly, support</span>
+<span class="sd">    vector machines (SVM) treat each feature as a dimension, and</span>
+<span class="sd">    position features in n-dimensional feature space.  An optimal</span>
+<span class="sd">    hyperplane is then determined that best divides feature space into</span>
+<span class="sd">    classes, and future instances classified based on which side of</span>
+<span class="sd">    the hyperplane they lie on, and their proximity to it.</span>
+<span class="sd">    </span>
+<span class="sd">    This implementation is for a binary SVM - that is, only two</span>
+<span class="sd">    classes are supported. You may achieve perform classification with</span>
+<span class="sd">    more classes by training an SVM per class and then picking a best</span>
+<span class="sd">    option for new instances given results from each binary class-SVM.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">labelmapping</span><span class="p">,</span> <span class="n">svmfeatures</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        @param labels: a list of text labels for classes</span>
+<span class="sd">        @param labelmapping: a mapping from labels to SVM classes (-1,+1)</span>
+<span class="sd">        @param svmfeatures: a list of svm features, where the index is the integer feature number and the value an feature/value pair</span>
+<span class="sd">        @param model: the model generated by svmlight.learn()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_labels</span> <span class="o">=</span> <span class="n">labels</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_labelmapping</span> <span class="o">=</span> <span class="n">labelmapping</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_svmfeatures</span> <span class="o">=</span> <span class="n">svmfeatures</span>
+        <span class="c"># _svmfeatureindex is the inverse of svmfeatures, allowing us</span>
+        <span class="c"># to find an SVM feature name (int) given a feature/value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_svmfeatureindex</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">svmfeatures</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">svmfeatures</span><span class="p">))))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span> <span class="o">=</span> <span class="bp">False</span>
+
+<div class="viewcode-block" id="SvmClassifier.labels"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.labels">[docs]</a>    <span class="k">def</span> <span class="nf">labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the list of class labels.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_labels</span>
+</div>
+<div class="viewcode-block" id="SvmClassifier.svm_label_name"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.svm_label_name">[docs]</a>    <span class="k">def</span> <span class="nf">svm_label_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        searches values of _labelmapping to resolve +1 or -1 to a string</span>
+
+<span class="sd">        @param label: the string label to look up</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">labelname</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_labelmapping</span><span class="o">.</span><span class="n">iteritems</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="n">label</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">labelname</span>
+</div>
+<div class="viewcode-block" id="SvmClassifier.resolve_prediction"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.resolve_prediction">[docs]</a>    <span class="k">def</span> <span class="nf">resolve_prediction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prediction</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        resolve a float (in this case, probably from</span>
+<span class="sd">        svmlight.learn().classify()) to either -1 or +1, and then look</span>
+<span class="sd">        up the label for that class in _labelmapping, and return the</span>
+<span class="sd">        text label</span>
+
+<span class="sd">        @param prediction: a signed float describing classifier confidence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">classification</span> <span class="o">=</span> <span class="nb">cmp</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">svm_label_name</span><span class="p">(</span><span class="n">classification</span><span class="p">)</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_get_svm_classification</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featureset</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        given a set of features, classify them with our trained model</span>
+<span class="sd">        and return a signed float</span>
+
+<span class="sd">        @param featureset: a dict of feature/value pairs in NLTK format, representing a single instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">instance_to_classify</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">map_features_to_svm</span><span class="p">(</span><span class="n">featureset</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_svmfeatureindex</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;instance&#39;</span><span class="p">,</span> <span class="n">instance_to_classify</span>
+        <span class="c"># svmlight.classify expects a list; this should be taken advantage of when writing SvmClassifier.batch_classify / .batch_prob_classify.</span>
+        <span class="c"># it returns a list of floats, too.</span>
+        <span class="p">[</span><span class="n">prediction</span><span class="p">]</span> <span class="o">=</span> <span class="n">svmlight</span><span class="o">.</span><span class="n">classify</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span> <span class="p">[</span><span class="n">instance_to_classify</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">prediction</span>
+    
+<div class="viewcode-block" id="SvmClassifier.prob_classify"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.prob_classify">[docs]</a>    <span class="k">def</span> <span class="nf">prob_classify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featureset</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a probability distribution of classifications</span>
+
+<span class="sd">        @param featureset: a dict of feature/value pairs in NLTK format, representing a single instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;This classifier is not yet trained&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+        <span class="c"># do the classification</span>
+        <span class="n">prediction</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_svm_classification</span><span class="p">(</span><span class="n">featureset</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;prediction&#39;</span><span class="p">,</span> <span class="n">prediction</span>
+
+        <span class="c"># lump it into a boolean class, -1 or +1</span>
+        <span class="n">predicted_label</span> <span class="o">=</span> <span class="nb">cmp</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        
+        <span class="c"># sometimes the result is not within -1 ... +1; clip it so</span>
+        <span class="c"># that it is, and we get a sane-looking probability</span>
+        <span class="c"># distribution.  this will upset some results with non-linear</span>
+        <span class="c"># partitioning where instance-hyperplane distance can be many</span>
+        <span class="c"># orders of magnitude larger; I don&#39;t have a fix for that</span>
+        <span class="k">if</span> <span class="n">prediction</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">:</span>
+            <span class="n">prediction</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+        <span class="k">if</span> <span class="n">prediction</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="n">prediction</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+        <span class="c"># if the prediction is negative, then we will maximise the</span>
+        <span class="c"># value of the -1 class; otherwise, that of the 1 class will</span>
+        <span class="c"># be greater.</span>
+        <span class="k">if</span> <span class="n">predicted_label</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">distribution</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span> <span class="n">prediction</span><span class="p">,</span>
+                            <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)):</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">prediction</span><span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">distribution</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span> <span class="n">prediction</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                            <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)):</span> <span class="o">-</span><span class="n">prediction</span><span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">DictionaryProbDist</span><span class="p">(</span><span class="n">distribution</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="SvmClassifier.classify"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.classify">[docs]</a>    <span class="k">def</span> <span class="nf">classify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featureset</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use a trained SVM to predict a label given for an unlabelled instance</span>
+
+<span class="sd">        @param featureset: a dict of feature/value pairs in NLTK format, representing a single instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prediction</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_svm_classification</span><span class="p">(</span><span class="n">featureset</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="k">print</span> <span class="s">&#39;prediction&#39;</span><span class="p">,</span> <span class="n">prediction</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolve_prediction</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="SvmClassifier.train"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.SvmClassifier.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">featuresets</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        given a set of training instances in nltk format:</span>
+<span class="sd">        [ ( {feature:value, ..}, str(label) ) ]</span>
+<span class="sd">        train a support vector machine</span>
+
+<span class="sd">        @param featuresets: training instances</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="c"># build a unique list of labels</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="n">featuresets</span><span class="p">:</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+        
+        <span class="c"># this is a binary classifier only</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Can only do boolean classification (labels: &#39;</span><span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        
+        <span class="c"># we need ordering, so a set&#39;s no good</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+        
+        <span class="c"># next, assign -1 and 1</span>
+        <span class="n">labelmapping</span> <span class="o">=</span> <span class="p">{</span><span class="n">labels</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">labels</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span><span class="mi">1</span><span class="p">}</span>
+        
+        <span class="c"># now for feature conversion</span>
+        <span class="c"># iter through instances, building a set of feature:type:str(value) triples</span>
+        <span class="n">svmfeatures</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="n">featuresets</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+                <span class="n">svmfeatures</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">featurename</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>
+        <span class="c"># svmfeatures is indexable by integer svm feature number</span>
+        <span class="c"># svmfeatureindex is the inverse (svm feature name -&gt; number)</span>
+        <span class="n">svmfeatures</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">svmfeatures</span><span class="p">)</span>
+        <span class="n">svmfeatureindex</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">svmfeatures</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">svmfeatures</span><span class="p">))))</span>
+
+        <span class="c"># build svm feature set case by case</span>
+        <span class="n">svmfeatureset</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">featuresets</span><span class="p">:</span>
+            <span class="n">svmfeatureset</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">map_instance_to_svm</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="n">labelmapping</span><span class="p">,</span> <span class="n">svmfeatureindex</span><span class="p">))</span>
+
+        <span class="c"># train the svm</span>
+        <span class="c"># TODO: implement passing of SVMlight parameters from train() to learn()</span>
+        <span class="k">return</span> <span class="n">SvmClassifier</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">labelmapping</span><span class="p">,</span> <span class="n">svmfeatures</span><span class="p">,</span> <span class="n">svmlight</span><span class="o">.</span><span class="n">learn</span><span class="p">(</span><span class="n">svmfeatureset</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s">&#39;classification&#39;</span><span class="p">))</span>
+
+</div></div>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../web/api/nltk.classify.html#nltk.classify.svm.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
+
+    <span class="k">def</span> <span class="nf">gender_features</span><span class="p">(</span><span class="n">word</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s">&#39;last_letter&#39;</span><span class="p">:</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="s">&#39;penultimate_letter&#39;</span><span class="p">:</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]}</span>
+
+    <span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">accuracy</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">names</span>
+    
+    
+    <span class="kn">import</span> <span class="nn">random</span>
+    <span class="n">names</span> <span class="o">=</span> <span class="p">([(</span><span class="n">name</span><span class="p">,</span> <span class="s">&#39;male&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;male.txt&#39;</span><span class="p">)]</span> <span class="o">+</span>
+             <span class="p">[(</span><span class="n">name</span><span class="p">,</span> <span class="s">&#39;female&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;female.txt&#39;</span><span class="p">)])</span>
+    <span class="kn">import</span> <span class="nn">random</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">60221023</span><span class="p">)</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+
+    <span class="n">featuresets</span> <span class="o">=</span> <span class="p">[(</span><span class="n">gender_features</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">g</span><span class="p">)</span> <span class="ow">in</span> <span class="n">names</span><span class="p">]</span>
+    <span class="n">train_set</span><span class="p">,</span> <span class="n">test_set</span> <span class="o">=</span> <span class="n">featuresets</span><span class="p">[</span><span class="mi">500</span><span class="p">:],</span> <span class="n">featuresets</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span>
+
+    <span class="k">print</span> <span class="s">&#39;--- nltk.classify.svm demo ---&#39;</span>
+    <span class="k">print</span> <span class="s">&#39;Number of training examples:&#39;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_set</span><span class="p">)</span>
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">SvmClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">train_set</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;Total SVM dimensions:&#39;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">classifier</span><span class="o">.</span><span class="n">_svmfeatureindex</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&#39;Label mapping:&#39;</span><span class="p">,</span> <span class="n">classifier</span><span class="o">.</span><span class="n">_labelmapping</span>
+    <span class="k">print</span> <span class="s">&#39;--- Processing an example instance ---&#39;</span>
+    <span class="k">print</span> <span class="s">&#39;Reference instance:&#39;</span><span class="p">,</span> <span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">print</span> <span class="s">&#39;NLTK-format features:</span><span class="se">\n</span><span class="s">    &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;SVMlight-format features:</span><span class="se">\n</span><span class="s">    &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">map_instance_to_svm</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">classifier</span><span class="o">.</span><span class="n">_labelmapping</span><span class="p">,</span> <span class="n">classifier</span><span class="o">.</span><span class="n">_svmfeatureindex</span><span class="p">))</span>
+    <span class="n">distr</span> <span class="o">=</span> <span class="n">classifier</span><span class="o">.</span><span class="n">prob_classify</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">print</span> <span class="s">&#39;Instance classification and confidence:&#39;</span><span class="p">,</span> <span class="n">distr</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">distr</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">distr</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+    <span class="k">print</span> <span class="s">&#39;--- Measuring classifier performance ---&#39;</span>
+    <span class="k">print</span> <span class="s">&#39;Overall accuracy:&#39;</span><span class="p">,</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">test_set</span><span class="p">)</span>
+
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">demo</span><span class="p">()</span>
+    
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">NLTK 2.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../classify.html" >nltk.classify</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2011, Steven Bird.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
+    </div>
+  </body>
+</html>
