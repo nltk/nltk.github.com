@@ -34,8 +34,6 @@
         <div class="headertitle"><a
           href="../../../index.html">NLTK 2.0 documentation</a></div>
         <div class="rel">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              accesskey="I">index</a>
         </div>
@@ -53,7 +51,7 @@
   <h1>Source code for nltk.chunk.named_entity</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Chunk parsing API</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -64,28 +62,38 @@
 
 <span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">re</span><span class="o">,</span> <span class="nn">pickle</span>
 <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span> <span class="k">as</span> <span class="n">ET</span>
-<span class="kn">from</span> <span class="nn">nltk.chunk.api</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nltk.chunk.util</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">import</span> <span class="nn">nltk</span>
 
-<span class="c"># This really shouldn&#39;t be loaded at import time.  But it&#39;s used by a</span>
-<span class="c"># static method.  Do a lazy loading?</span>
-<span class="n">_short_en_wordlist</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">corpus</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;en-basic&#39;</span><span class="p">))</span>
+<span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">ClassifierBasedTagger</span><span class="p">,</span> <span class="n">pos_tag</span>
+<span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">MaxentClassifier</span>
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">word_tokenize</span>
+<span class="kn">from</span> <span class="nn">nltk.data</span> <span class="kn">import</span> <span class="n">find</span>
 
+<span class="kn">from</span> <span class="nn">nltk.chunk.api</span> <span class="kn">import</span> <span class="n">ChunkParserI</span>
+<span class="kn">from</span> <span class="nn">nltk.chunk.util</span> <span class="kn">import</span> <span class="n">ChunkScore</span>
 
-<div class="viewcode-block" id="NEChunkParserTagger"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.named_entity.NEChunkParserTagger">[docs]</a><span class="k">class</span> <span class="nc">NEChunkParserTagger</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">tag</span><span class="o">.</span><span class="n">ClassifierBasedTagger</span><span class="p">):</span>
+<div class="viewcode-block" id="NEChunkParserTagger"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.named_entity.NEChunkParserTagger">[docs]</a><span class="k">class</span> <span class="nc">NEChunkParserTagger</span><span class="p">(</span><span class="n">ClassifierBasedTagger</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The IOB tagger used by the chunk parser.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train</span><span class="p">):</span>
-        <span class="n">nltk</span><span class="o">.</span><span class="n">tag</span><span class="o">.</span><span class="n">ClassifierBasedTagger</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
+        <span class="n">ClassifierBasedTagger</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span> <span class="n">train</span><span class="o">=</span><span class="n">train</span><span class="p">,</span>
             <span class="n">classifier_builder</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_classifier_builder</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">_classifier_builder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">nltk</span><span class="o">.</span><span class="n">MaxentClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">train</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s">&#39;megam&#39;</span><span class="p">,</span>
+        <span class="k">return</span> <span class="n">MaxentClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">train</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s">&#39;megam&#39;</span><span class="p">,</span>
                                            <span class="n">gaussian_prior_sigma</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
                                            <span class="n">trace</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_english_wordlist</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">wl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_en_wordlist</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">words</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_en_wordlist</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">words</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;en-basic&#39;</span><span class="p">))</span>
+            <span class="n">wl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_en_wordlist</span>
+        <span class="k">return</span> <span class="n">wl</span>
     
     <span class="k">def</span> <span class="nf">_feature_detector</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">history</span><span class="p">):</span>
         <span class="n">word</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
@@ -132,7 +140,7 @@
             <span class="s">&#39;suffix3&#39;</span><span class="p">:</span> <span class="n">word</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
             <span class="s">&#39;pos&#39;</span><span class="p">:</span> <span class="n">pos</span><span class="p">,</span>
             <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">word</span><span class="p">,</span>
-            <span class="s">&#39;en-wordlist&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">word</span> <span class="ow">in</span> <span class="n">_short_en_wordlist</span><span class="p">),</span> <span class="c"># xx!</span>
+            <span class="s">&#39;en-wordlist&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">word</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_english_wordlist</span><span class="p">()),</span>
             <span class="s">&#39;prevtag&#39;</span><span class="p">:</span> <span class="n">prevtag</span><span class="p">,</span>
             <span class="s">&#39;prevpos&#39;</span><span class="p">:</span> <span class="n">prevpos</span><span class="p">,</span>
             <span class="s">&#39;nextpos&#39;</span><span class="p">:</span> <span class="n">nextpos</span><span class="p">,</span>
@@ -170,19 +178,19 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Convert a list of tagged tokens to a chunk-parse tree.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">sent</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">sent</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
         
         <span class="k">for</span> <span class="p">(</span><span class="n">tok</span><span class="p">,</span><span class="n">tag</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tagged_tokens</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">tag</span> <span class="o">==</span> <span class="s">&#39;O&#39;</span><span class="p">:</span>
                 <span class="n">sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
             <span class="k">elif</span> <span class="n">tag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;B-&#39;</span><span class="p">):</span>
-                <span class="n">sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">tag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[</span><span class="n">tok</span><span class="p">]))</span>
+                <span class="n">sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="n">tag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[</span><span class="n">tok</span><span class="p">]))</span>
             <span class="k">elif</span> <span class="n">tag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;I-&#39;</span><span class="p">):</span>
                 <span class="k">if</span> <span class="p">(</span><span class="n">sent</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sent</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">Tree</span><span class="p">)</span> <span class="ow">and</span>
                     <span class="n">sent</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">node</span> <span class="o">==</span> <span class="n">tag</span><span class="p">[</span><span class="mi">2</span><span class="p">:]):</span>
                     <span class="n">sent</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">tag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[</span><span class="n">tok</span><span class="p">]))</span>
+                    <span class="n">sent</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="n">tag</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="p">[</span><span class="n">tok</span><span class="p">]))</span>
         <span class="k">return</span> <span class="n">sent</span>
 
     <span class="nd">@staticmethod</span>
@@ -192,7 +200,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">toks</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">sent</span><span class="p">:</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
                 <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">child</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="k">print</span> <span class="s">&quot;Warning -- empty chunk in sentence&quot;</span>
                     <span class="k">continue</span>
@@ -224,10 +232,10 @@
 <div class="viewcode-block" id="postag_tree"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.named_entity.postag_tree">[docs]</a><span class="k">def</span> <span class="nf">postag_tree</span><span class="p">(</span><span class="n">tree</span><span class="p">):</span>
     <span class="c"># Part-of-speech tagging.</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
-    <span class="n">tag_iter</span> <span class="o">=</span> <span class="p">(</span><span class="n">pos</span> <span class="k">for</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> <span class="ow">in</span> <span class="n">nltk</span><span class="o">.</span><span class="n">pos_tag</span><span class="p">(</span><span class="n">words</span><span class="p">))</span>
+    <span class="n">tag_iter</span> <span class="o">=</span> <span class="p">(</span><span class="n">pos</span> <span class="k">for</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pos_tag</span><span class="p">(</span><span class="n">words</span><span class="p">))</span>
     <span class="n">newtree</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
     <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">tree</span><span class="p">:</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
             <span class="n">newtree</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">node</span><span class="p">,</span> <span class="p">[]))</span>
             <span class="k">for</span> <span class="n">subchild</span> <span class="ow">in</span> <span class="n">child</span><span class="p">:</span>
                 <span class="n">newtree</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">subchild</span><span class="p">,</span> <span class="n">tag_iter</span><span class="o">.</span><span class="n">next</span><span class="p">())</span> <span class="p">)</span>
@@ -280,27 +288,27 @@
     <span class="c"># Binary distinction (NE or not NE)</span>
     <span class="k">if</span> <span class="n">fmt</span> <span class="o">==</span> <span class="s">&#39;binary&#39;</span><span class="p">:</span>
         <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">toks</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">toks</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
         <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">typ</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">entities</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">s</span> <span class="o">&lt;</span> <span class="n">i</span><span class="p">:</span> <span class="n">s</span> <span class="o">=</span> <span class="n">i</span> <span class="c"># Overlapping!  Deal with this better?</span>
             <span class="k">if</span> <span class="n">e</span> <span class="o">&lt;=</span> <span class="n">s</span><span class="p">:</span> <span class="k">continue</span>
-            <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">s</span><span class="p">]))</span>
-            <span class="n">toks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;NE&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()))</span>
+            <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">s</span><span class="p">]))</span>
+            <span class="n">toks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;NE&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()))</span>
             <span class="n">i</span> <span class="o">=</span> <span class="n">e</span>
-        <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:]))</span>
+        <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:]))</span>
         <span class="k">yield</span> <span class="n">toks</span>
 
     <span class="c"># Multiclass distinction (NE type)</span>
     <span class="k">elif</span> <span class="n">fmt</span> <span class="o">==</span> <span class="s">&#39;multiclass&#39;</span><span class="p">:</span>
         <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">toks</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">toks</span> <span class="o">=</span> <span class="n">Tree</span><span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="p">[])</span>
         <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">typ</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">entities</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">s</span> <span class="o">&lt;</span> <span class="n">i</span><span class="p">:</span> <span class="n">s</span> <span class="o">=</span> <span class="n">i</span> <span class="c"># Overlapping!  Deal with this better?</span>
             <span class="k">if</span> <span class="n">e</span> <span class="o">&lt;=</span> <span class="n">s</span><span class="p">:</span> <span class="k">continue</span>
-            <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">s</span><span class="p">]))</span>
-            <span class="n">toks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">Tree</span><span class="p">(</span><span class="n">typ</span><span class="p">,</span> <span class="n">text</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()))</span>
+            <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">s</span><span class="p">]))</span>
+            <span class="n">toks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tree</span><span class="p">(</span><span class="n">typ</span><span class="p">,</span> <span class="n">text</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()))</span>
             <span class="n">i</span> <span class="o">=</span> <span class="n">e</span>
-        <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:]))</span>
+        <span class="n">toks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">word_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:]))</span>
         <span class="k">yield</span> <span class="n">toks</span>
 
     <span class="k">else</span><span class="p">:</span>
@@ -324,10 +332,10 @@
 </div>
 <div class="viewcode-block" id="build_model"><a class="viewcode-back" href="../../../api/nltk.chunk.html#nltk.chunk.named_entity.build_model">[docs]</a><span class="k">def</span> <span class="nf">build_model</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s">&#39;binary&#39;</span><span class="p">):</span>
     <span class="k">print</span> <span class="s">&#39;Loading training data...&#39;</span>
-    <span class="n">train_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.dev&#39;</span><span class="p">),</span>
-                   <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.heldout&#39;</span><span class="p">),</span>
-                   <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/bbn.dev&#39;</span><span class="p">),</span>
-                   <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/muc.dev&#39;</span><span class="p">)]</span>
+    <span class="n">train_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.dev&#39;</span><span class="p">),</span>
+                   <span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.heldout&#39;</span><span class="p">),</span>
+                   <span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/bbn.dev&#39;</span><span class="p">),</span>
+                   <span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/muc.dev&#39;</span><span class="p">)]</span>
     <span class="n">train_trees</span> <span class="o">=</span> <span class="n">load_ace_data</span><span class="p">(</span><span class="n">train_paths</span><span class="p">,</span> <span class="n">fmt</span><span class="p">)</span>
     <span class="n">train_data</span> <span class="o">=</span> <span class="p">[</span><span class="n">postag_tree</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">train_trees</span><span class="p">]</span>
     <span class="k">print</span> <span class="s">&#39;Training...&#39;</span>
@@ -335,7 +343,7 @@
     <span class="k">del</span> <span class="n">train_data</span>
 
     <span class="k">print</span> <span class="s">&#39;Loading eval data...&#39;</span>
-    <span class="n">eval_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.eval&#39;</span><span class="p">)]</span>
+    <span class="n">eval_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;corpora/ace_data/ace.eval&#39;</span><span class="p">)]</span>
     <span class="n">eval_trees</span> <span class="o">=</span> <span class="n">load_ace_data</span><span class="p">(</span><span class="n">eval_paths</span><span class="p">,</span> <span class="n">fmt</span><span class="p">)</span>
     <span class="n">eval_data</span> <span class="o">=</span> <span class="p">[</span><span class="n">postag_tree</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">eval_trees</span><span class="p">]</span>
     
@@ -392,8 +400,6 @@
     <div class="footer-wrapper">
       <div class="footer">
         <div class="left">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              >index</a>
         </div>

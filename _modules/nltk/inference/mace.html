@@ -26,7 +26,7 @@
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
     <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
-    <link rel="up" title="nltk.inference" href="../inference.html" /> 
+    <link rel="up" title="Module code" href="../../index.html" /> 
   </head>
   <body>
     <div class="header-wrapper">
@@ -34,8 +34,6 @@
         <div class="headertitle"><a
           href="../../../index.html">NLTK 2.0 documentation</a></div>
         <div class="rel">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              accesskey="I">index</a>
         </div>
@@ -62,10 +60,11 @@
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">tempfile</span>
 
-<span class="kn">from</span> <span class="nn">nltk.sem.logic</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">Valuation</span>
-<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="n">ModelBuilder</span><span class="p">,</span> <span class="n">BaseModelBuilderCommand</span>
-<span class="kn">from</span> <span class="nn">prover9</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.sem.logic</span> <span class="kn">import</span> <span class="n">is_indvar</span>
+<span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">Valuation</span><span class="p">,</span> <span class="n">LogicParser</span>
+
+<span class="kn">from</span> <span class="nn">nltk.inference.api</span> <span class="kn">import</span> <span class="n">ModelBuilder</span><span class="p">,</span> <span class="n">BaseModelBuilderCommand</span>
+<span class="kn">from</span> <span class="nn">nltk.inference.prover9</span> <span class="kn">import</span> <span class="n">Prover9CommandParent</span><span class="p">,</span> <span class="n">Prover9Parent</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">A model builder that makes use of the external &#39;Mace4&#39; package.</span>
@@ -81,14 +80,14 @@
     
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">assumptions</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">max_models</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">model_builder</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param goal: Input expression to prove</span>
-<span class="sd">        @type goal: L{logic.Expression}</span>
-<span class="sd">        @param assumptions: Input expressions to use as assumptions in</span>
+<span class="sd">        :param goal: Input expression to prove</span>
+<span class="sd">        :type goal: L{logic.Expression}</span>
+<span class="sd">        :param assumptions: Input expressions to use as assumptions in</span>
 <span class="sd">            the proof.</span>
-<span class="sd">        @type assumptions: C{list} of L{logic.Expression}</span>
-<span class="sd">        @param max_models: The maximum number of models that Mace will try before</span>
+<span class="sd">        :type assumptions: list of L{logic.Expression}</span>
+<span class="sd">        :param max_models: The maximum number of models that Mace will try before</span>
 <span class="sd">            simply returning false. (Use 0 for no maximum.)</span>
-<span class="sd">        @type max_models: C{int}</span>
+<span class="sd">        :type max_models: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">model_builder</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
             <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_builder</span><span class="p">,</span> <span class="n">Mace</span><span class="p">)</span>
@@ -103,8 +102,8 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Transform the output file into an NLTK-style Valuation. </span>
 <span class="sd">        </span>
-<span class="sd">        @return: A model if one is generated; None otherwise.</span>
-<span class="sd">        @rtype: L{nltk.sem.Valuation} </span>
+<span class="sd">        :return: A model if one is generated; None otherwise.</span>
+<span class="sd">        :rtype: L{nltk.sem.Valuation} </span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">valuation_standard_format</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform_output</span><span class="p">(</span><span class="n">valuation_str</span><span class="p">,</span> <span class="s">&#39;standard&#39;</span><span class="p">)</span>
         
@@ -144,10 +143,10 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Convert a Mace4-style relation table into a dictionary.</span>
 <span class="sd">        </span>
-<span class="sd">        @parameter num_entities: the number of entities in the model; determines the row length in the table.</span>
-<span class="sd">        @type num_entities: C{int}</span>
-<span class="sd">        @parameter values: a list of 1&#39;s and 0&#39;s that represent whether a relation holds in a Mace4 model.</span>
-<span class="sd">        @type values: C{list} of C{int}</span>
+<span class="sd">        :param num_entities: the number of entities in the model; determines the row length in the table.</span>
+<span class="sd">        :type num_entities: int</span>
+<span class="sd">        :param values: a list of 1&#39;s and 0&#39;s that represent whether a relation holds in a Mace4 model.</span>
+<span class="sd">        :type values: list of int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">r</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">position</span> <span class="ow">in</span> <span class="p">[</span><span class="n">pos</span> <span class="k">for</span> <span class="p">(</span><span class="n">pos</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]:</span>
@@ -174,8 +173,8 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Pick an alphabetic character as identifier for an entity in the model.</span>
 <span class="sd">        </span>
-<span class="sd">        @parameter value: where to index into the list of characters</span>
-<span class="sd">        @type value: C{int}</span>
+<span class="sd">        :param value: where to index into the list of characters</span>
+<span class="sd">        :type value: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">letter</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;a&#39;</span><span class="p">,</span><span class="s">&#39;b&#39;</span><span class="p">,</span><span class="s">&#39;c&#39;</span><span class="p">,</span><span class="s">&#39;d&#39;</span><span class="p">,</span><span class="s">&#39;e&#39;</span><span class="p">,</span><span class="s">&#39;f&#39;</span><span class="p">,</span><span class="s">&#39;g&#39;</span><span class="p">,</span><span class="s">&#39;h&#39;</span><span class="p">,</span><span class="s">&#39;i&#39;</span><span class="p">,</span><span class="s">&#39;j&#39;</span><span class="p">,</span><span class="s">&#39;k&#39;</span><span class="p">,</span><span class="s">&#39;l&#39;</span><span class="p">,</span><span class="s">&#39;m&#39;</span><span class="p">,</span><span class="s">&#39;n&#39;</span><span class="p">,</span>
                   <span class="s">&#39;o&#39;</span><span class="p">,</span><span class="s">&#39;p&#39;</span><span class="p">,</span><span class="s">&#39;q&#39;</span><span class="p">,</span><span class="s">&#39;r&#39;</span><span class="p">,</span><span class="s">&#39;s&#39;</span><span class="p">,</span><span class="s">&#39;t&#39;</span><span class="p">,</span><span class="s">&#39;u&#39;</span><span class="p">,</span><span class="s">&#39;v&#39;</span><span class="p">,</span><span class="s">&#39;w&#39;</span><span class="p">,</span><span class="s">&#39;x&#39;</span><span class="p">,</span><span class="s">&#39;y&#39;</span><span class="p">,</span><span class="s">&#39;z&#39;</span><span class="p">][</span><span class="n">value</span><span class="p">]</span>
@@ -190,10 +189,10 @@
 <span class="sd">        Print out a Mace4 model using any Mace4 C{interpformat} format. </span>
 <span class="sd">        See U{http://www.cs.unm.edu/~mccune/mace4/manual/} for details.</span>
 <span class="sd">        </span>
-<span class="sd">        @param valuation_str: C{str} with the model builder&#39;s output </span>
-<span class="sd">        @param format: C{str} indicating the format for displaying</span>
+<span class="sd">        :param valuation_str: str with the model builder&#39;s output </span>
+<span class="sd">        :param format: str indicating the format for displaying</span>
 <span class="sd">        models. Defaults to &#39;standard&#39; format.</span>
-<span class="sd">        @return: C{str}</span>
+<span class="sd">        :return: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">format</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">valuation_str</span>
@@ -206,8 +205,8 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Transform the output file into any Mace4 C{interpformat} format. </span>
 <span class="sd">        </span>
-<span class="sd">        @parameter format: Output format for displaying models. </span>
-<span class="sd">        @type format: C{str}</span>
+<span class="sd">        :param format: Output format for displaying models. </span>
+<span class="sd">        :type format: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="s">&#39;standard2&#39;</span><span class="p">,</span> <span class="s">&#39;portable&#39;</span><span class="p">,</span> <span class="s">&#39;tabular&#39;</span><span class="p">,</span> 
                       <span class="s">&#39;raw&#39;</span><span class="p">,</span> <span class="s">&#39;cooked&#39;</span><span class="p">,</span> <span class="s">&#39;xml&#39;</span><span class="p">,</span> <span class="s">&#39;tex&#39;</span><span class="p">]:</span>
@@ -219,10 +218,10 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Call the C{interpformat} binary with the given input.</span>
 <span class="sd">    </span>
-<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
-<span class="sd">        @param args: A list of command-line arguments.</span>
-<span class="sd">        @return: A tuple (stdout, returncode)</span>
-<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        :param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        :param args: A list of command-line arguments.</span>
+<span class="sd">        :return: A tuple (stdout, returncode)</span>
+<span class="sd">        :see: L{config_prover9}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_interpformat_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_interpformat_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modelbuilder</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span>
@@ -244,7 +243,7 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Use Mace4 to build a first order model.</span>
 <span class="sd">        </span>
-<span class="sd">        @return: C{True} if a model was found (i.e. Mace returns value of 0),</span>
+<span class="sd">        :return: C{True} if a model was found (i.e. Mace returns value of 0),</span>
 <span class="sd">        else C{False}        </span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">assumptions</span><span class="p">:</span>
@@ -258,10 +257,10 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Call the C{mace4} binary with the given input.</span>
 <span class="sd">    </span>
-<span class="sd">        @param input_str: A string whose contents are used as stdin.</span>
-<span class="sd">        @param args: A list of command-line arguments.</span>
-<span class="sd">        @return: A tuple (stdout, returncode)</span>
-<span class="sd">        @see: L{config_prover9}</span>
+<span class="sd">        :param input_str: A string whose contents are used as stdin.</span>
+<span class="sd">        :param args: A list of command-line arguments.</span>
+<span class="sd">        :return: A tuple (stdout, returncode)</span>
+<span class="sd">        :see: L{config_prover9}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mace4_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_mace4_bin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_binary</span><span class="p">(</span><span class="s">&#39;mace4&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
@@ -281,8 +280,8 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Decode the result of model_found() </span>
 <span class="sd">    </span>
-<span class="sd">    @parameter found: The output of model_found() </span>
-<span class="sd">    @type found: C{boolean}</span>
+<span class="sd">    :param found: The output of model_found() </span>
+<span class="sd">    :type found: bool</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="p">{</span><span class="bp">True</span><span class="p">:</span> <span class="s">&#39;Countermodel found&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">:</span> <span class="s">&#39;No countermodel found&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">:</span> <span class="s">&#39;None&#39;</span><span class="p">}[</span><span class="n">found</span><span class="p">]</span>
 </div>
@@ -394,8 +393,6 @@
     <div class="footer-wrapper">
       <div class="footer">
         <div class="left">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              >index</a>
         </div>
