@@ -26,7 +26,7 @@
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
     <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
-    <link rel="up" title="Module code" href="../../index.html" /> 
+    <link rel="up" title="nltk.classify" href="../classify.html" /> 
   </head>
   <body>
     <div class="header-wrapper">
@@ -34,6 +34,8 @@
         <div class="headertitle"><a
           href="../../../index.html">NLTK 2.0 documentation</a></div>
         <div class="rel">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              accesskey="I">index</a>
         </div>
@@ -51,7 +53,7 @@
   <h1>Source code for nltk.classify.maxent</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Maximum Entropy Classifiers</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#         Dmitry Chichkov &lt;dchichkov@gmail.com&gt; (TypedMaxentFeatureEncoding)</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
@@ -109,15 +111,16 @@
 <span class="kn">import</span> <span class="nn">tempfile</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">gzip</span>
-<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">OrderedDict</span>
-<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">DictionaryProbDist</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="o">*</span>
 
-<span class="kn">from</span> <span class="nn">nltk.classify.api</span> <span class="kn">import</span> <span class="n">ClassifierI</span>
-<span class="kn">from</span> <span class="nn">nltk.classify.util</span> <span class="kn">import</span> <span class="n">attested_labels</span><span class="p">,</span> <span class="n">CutoffChecker</span><span class="p">,</span> <span class="n">accuracy</span><span class="p">,</span> <span class="n">log_likelihood</span>
-<span class="kn">from</span> <span class="nn">nltk.classify.megam</span> <span class="kn">import</span> <span class="n">call_megam</span><span class="p">,</span> <span class="n">write_megam_file</span><span class="p">,</span> <span class="n">parse_megam_weights</span>
-<span class="kn">from</span> <span class="nn">nltk.classify.tadm</span> <span class="kn">import</span> <span class="n">call_tadm</span><span class="p">,</span> <span class="n">write_tadm_file</span><span class="p">,</span> <span class="n">parse_tadm_weights</span>
+<span class="kn">import</span> <span class="nn">nltk.classify.util</span> <span class="c"># for accuracy &amp; log_likelihood</span>
+<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">attested_labels</span><span class="p">,</span> <span class="n">CutoffChecker</span>
+<span class="kn">from</span> <span class="nn">megam</span> <span class="kn">import</span> <span class="n">call_megam</span><span class="p">,</span> <span class="n">write_megam_file</span><span class="p">,</span> <span class="n">parse_megam_weights</span>
+<span class="kn">from</span> <span class="nn">tadm</span> <span class="kn">import</span> <span class="n">call_tadm</span><span class="p">,</span> <span class="n">write_tadm_file</span><span class="p">,</span> <span class="n">parse_tadm_weights</span>
 
 <span class="c">######################################################################</span>
 <span class="c">#{ Classifier Model</span>
@@ -146,17 +149,17 @@
 <span class="sd">        Construct a new maxent classifier model.  Typically, new</span>
 <span class="sd">        classifier models are created using the L{train()} method.</span>
 
-<span class="sd">        :type encoding: L{MaxentFeatureEncodingI}</span>
-<span class="sd">        :param encoding: An encoding that is used to convert the</span>
+<span class="sd">        @type encoding: L{MaxentFeatureEncodingI}</span>
+<span class="sd">        @param encoding: An encoding that is used to convert the</span>
 <span class="sd">            featuresets that are given to the C{classify} method into</span>
 <span class="sd">            joint-feature vectors, which are used by the maxent</span>
 <span class="sd">            classifier model.</span>
 
-<span class="sd">        :type weights: list of float</span>
-<span class="sd">        :param weights:  The feature weight vector for this classifier.</span>
+<span class="sd">        @type weights: C{list} of C{float}</span>
+<span class="sd">        @param weights:  The feature weight vector for this classifier.</span>
 
-<span class="sd">        :type logarithmic: bool</span>
-<span class="sd">        :param logarithmic: If false, then use non-logarithmic weights.</span>
+<span class="sd">        @type logarithmic: C{bool}</span>
+<span class="sd">        @param logarithmic: If false, then use non-logarithmic weights.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">encoding</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_weights</span> <span class="o">=</span> <span class="n">weights</span>
@@ -170,16 +173,16 @@
 <div class="viewcode-block" id="MaxentClassifier.set_weights"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.set_weights">[docs]</a>    <span class="k">def</span> <span class="nf">set_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_weights</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Set the feature weight vector for this classifier.  </span>
-<span class="sd">        :param new_weights: The new feature weight vector.</span>
-<span class="sd">        :type new_weights: list of float</span>
+<span class="sd">        @param new_weights: The new feature weight vector.</span>
+<span class="sd">        @type new_weights: C{list} of C{float}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_weights</span> <span class="o">=</span> <span class="n">new_weights</span>
         <span class="k">assert</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="o">.</span><span class="n">length</span><span class="p">()</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_weights</span><span class="p">))</span>
 </div>
 <div class="viewcode-block" id="MaxentClassifier.weights"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.weights">[docs]</a>    <span class="k">def</span> <span class="nf">weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :return: The feature weight vector for this classifier.</span>
-<span class="sd">        :rtype: list of float</span>
+<span class="sd">        @return: The feature weight vector for this classifier.</span>
+<span class="sd">        @rtype: C{list} of C{float}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weights</span>
 </div>
@@ -244,7 +247,7 @@
 </div>
 <div class="viewcode-block" id="MaxentClassifier.show_most_informative_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.show_most_informative_features">[docs]</a>    <span class="k">def</span> <span class="nf">show_most_informative_features</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="s">&#39;all&#39;</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param show: all, neg, or pos (for negative-only or positive-only)</span>
+<span class="sd">        @param show: all, neg, or pos (for negative-only or positive-only)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">fids</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">)),</span>
                       <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">fid</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">[</span><span class="n">fid</span><span class="p">]),</span>
@@ -275,16 +278,16 @@
 <span class="sd">        chosen to maximize entropy while remaining empirically</span>
 <span class="sd">        consistent with the training corpus.</span>
 
-<span class="sd">        :rtype: L{MaxentClassifier}</span>
-<span class="sd">        :return: The new maxent classifier</span>
+<span class="sd">        @rtype: L{MaxentClassifier}</span>
+<span class="sd">        @return: The new maxent classifier</span>
 
-<span class="sd">        :type train_toks: list</span>
-<span class="sd">        :param train_toks: Training data, represented as a list of</span>
+<span class="sd">        @type train_toks: C{list}</span>
+<span class="sd">        @param train_toks: Training data, represented as a list of</span>
 <span class="sd">            pairs, the first member of which is a featureset,</span>
 <span class="sd">            and the second of which is a classification label.</span>
 
-<span class="sd">        :type algorithm: str</span>
-<span class="sd">        :param algorithm: A case-insensitive string, specifying which</span>
+<span class="sd">        @type algorithm: C{str}</span>
+<span class="sd">        @param algorithm: A case-insensitive string, specifying which</span>
 <span class="sd">            algorithm should be used to train the classifier.  The</span>
 <span class="sd">            following algorithms are currently available.</span>
 <span class="sd">            </span>
@@ -307,32 +310,32 @@
 <span class="sd">            The default algorithm is C{&#39;CG&#39;} if C{&#39;scipy&#39;} is</span>
 <span class="sd">            installed; and C{&#39;iis&#39;} otherwise.</span>
 
-<span class="sd">        :type trace: int</span>
-<span class="sd">        :param trace: The level of diagnostic tracing output to produce.</span>
+<span class="sd">        @type trace: C{int}</span>
+<span class="sd">        @param trace: The level of diagnostic tracing output to produce.</span>
 <span class="sd">            Higher values produce more verbose output.</span>
 
-<span class="sd">        :type encoding: L{MaxentFeatureEncodingI}</span>
-<span class="sd">        :param encoding: A feature encoding, used to convert featuresets</span>
+<span class="sd">        @type encoding: L{MaxentFeatureEncodingI}</span>
+<span class="sd">        @param encoding: A feature encoding, used to convert featuresets</span>
 <span class="sd">            into feature vectors.  If none is specified, then a</span>
 <span class="sd">            L{BinaryMaxentFeatureEncoding} will be built based on the</span>
 <span class="sd">            features that are attested in the training corpus.</span>
 
-<span class="sd">        :type labels: list of str</span>
-<span class="sd">        :param labels: The set of possible labels.  If none is given, then</span>
+<span class="sd">        @type labels: C{list} of C{str}</span>
+<span class="sd">        @param labels: The set of possible labels.  If none is given, then</span>
 <span class="sd">            the set of all labels attested in the training data will be</span>
 <span class="sd">            used instead.</span>
 
-<span class="sd">        :param sparse: If true, then use sparse matrices instead of</span>
+<span class="sd">        @param sparse: If true, then use sparse matrices instead of</span>
 <span class="sd">            dense matrices.  Currently, this is only supported by</span>
 <span class="sd">            the scipy (optimization method) algorithms.  For other</span>
 <span class="sd">            algorithms, its value is ignored.</span>
 <span class="sd">        </span>
-<span class="sd">        :param gaussian_prior_sigma: The sigma value for a gaussian</span>
+<span class="sd">        @param gaussian_prior_sigma: The sigma value for a gaussian</span>
 <span class="sd">            prior on model weights.  Currently, this is supported by</span>
 <span class="sd">            the scipy (optimization method) algorithms and C{megam}.</span>
 <span class="sd">            For other algorithms, its value is ignored.</span>
 <span class="sd">            </span>
-<span class="sd">        :param cutoffs: Arguments specifying various conditions under</span>
+<span class="sd">        @param cutoffs: Arguments specifying various conditions under</span>
 <span class="sd">            which the training should be halted.  (Some of the cutoff</span>
 <span class="sd">            conditions are not supported by some algorithms.)</span>
 <span class="sd">            </span>
@@ -426,33 +429,33 @@
 <span class="sd">        a list of C{(index, value)} tuples, specifying the value of</span>
 <span class="sd">        each non-zero joint-feature.</span>
 <span class="sd">        </span>
-<span class="sd">        :type featureset: dict</span>
-<span class="sd">        :rtype: list of C{(int, number)}</span>
+<span class="sd">        @type featureset: C{dict}</span>
+<span class="sd">        @rtype: C{list} of C{(int, number)}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Not implemented&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="MaxentFeatureEncodingI.length"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentFeatureEncodingI.length">[docs]</a>    <span class="k">def</span> <span class="nf">length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :return: The size of the fixed-length joint-feature vectors</span>
+<span class="sd">        @return: The size of the fixed-length joint-feature vectors</span>
 <span class="sd">            that are generated by this encoding.</span>
-<span class="sd">        :rtype: int</span>
+<span class="sd">        @rtype: C{int}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Not implemented&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="MaxentFeatureEncodingI.labels"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentFeatureEncodingI.labels">[docs]</a>    <span class="k">def</span> <span class="nf">labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :return: A list of the \&quot;known labels\&quot; -- i.e., all labels</span>
+<span class="sd">        @return: A list of the \&quot;known labels\&quot; -- i.e., all labels</span>
 <span class="sd">            C{l} such that C{self.encode(fs,l)} can be a nonzero</span>
 <span class="sd">            joint-feature vector for some value of C{fs}.</span>
-<span class="sd">        :rtype: list</span>
+<span class="sd">        @rtype: C{list}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Not implemented&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="MaxentFeatureEncodingI.describe"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentFeatureEncodingI.describe">[docs]</a>    <span class="k">def</span> <span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fid</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :return: A string describing the value of the joint-feature</span>
+<span class="sd">        @return: A string describing the value of the joint-feature</span>
 <span class="sd">            whose index in the generated feature vectors is C{fid}.</span>
-<span class="sd">        :rtype: str</span>
+<span class="sd">        @rtype: C{str}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Not implemented&#39;</span><span class="p">)</span>
 </div>
@@ -461,8 +464,8 @@
 <span class="sd">        Construct and return new feature encoding, based on a given</span>
 <span class="sd">        training corpus C{train_toks}.</span>
 
-<span class="sd">        :type train_toks: list of C{tuples} of (dict, str)</span>
-<span class="sd">        :param train_toks: Training data, represented as a list of</span>
+<span class="sd">        @type train_toks: C{list} of C{tuples} of (C{dict}, C{str})</span>
+<span class="sd">        @param train_toks: Training data, represented as a list of</span>
 <span class="sd">            pairs, the first member of which is a feature dictionary,</span>
 <span class="sd">            and the second of which is a classification label.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -477,8 +480,8 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Construct a new feature encoding based on the given function.</span>
 
-<span class="sd">        :type func: (callable)</span>
-<span class="sd">        :param func: A function that takes two arguments, a featureset</span>
+<span class="sd">        @type func: (callable)</span>
+<span class="sd">        @param func: A function that takes two arguments, a featureset</span>
 <span class="sd">             and a label, and returns the sparse joint feature vector</span>
 <span class="sd">             that encodes them:</span>
 
@@ -487,12 +490,12 @@
 <span class="sd">             This sparse joint feature vector (C{feature_vector}) is a</span>
 <span class="sd">             list of C{(index,value)} tuples.</span>
 
-<span class="sd">        :type length: int</span>
-<span class="sd">        :param length: The size of the fixed-length joint-feature</span>
+<span class="sd">        @type length: C{int}</span>
+<span class="sd">        @param length: The size of the fixed-length joint-feature</span>
 <span class="sd">            vectors that are generated by this encoding.</span>
 
-<span class="sd">        :type labels: list</span>
-<span class="sd">        :param labels: A list of the \&quot;known labels\&quot; for this</span>
+<span class="sd">        @type labels: C{list}</span>
+<span class="sd">        @param labels: A list of the \&quot;known labels\&quot; for this</span>
 <span class="sd">            encoding -- i.e., all labels C{l} such that</span>
 <span class="sd">            C{self.encode(fs,l)} can be a nonzero joint-feature vector</span>
 <span class="sd">            for some value of C{fs}.</span>
@@ -556,19 +559,19 @@
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">mapping</span><span class="p">,</span> <span class="n">unseen_features</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
                  <span class="n">alwayson_features</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param labels: A list of the \&quot;known labels\&quot; for this encoding.</span>
+<span class="sd">        @param labels: A list of the \&quot;known labels\&quot; for this encoding.</span>
 <span class="sd">        </span>
-<span class="sd">        :param mapping: A dictionary mapping from C{(fname,fval,label)}</span>
+<span class="sd">        @param mapping: A dictionary mapping from C{(fname,fval,label)}</span>
 <span class="sd">            tuples to corresponding joint-feature indexes.  These</span>
 <span class="sd">            indexes must be the set of integers from 0...len(mapping).</span>
 <span class="sd">            If C{mapping[fname,fval,label]=id}, then</span>
 <span class="sd">            C{self.encode({..., fname:fval, ...}, label)[id]} is 1;</span>
 <span class="sd">            otherwise, it is 0.</span>
 <span class="sd">            </span>
-<span class="sd">        :param unseen_features: If true, then include unseen value</span>
+<span class="sd">        @param unseen_features: If true, then include unseen value</span>
 <span class="sd">           features in the generated joint-feature vectors.</span>
 <span class="sd">           </span>
-<span class="sd">        :param alwayson_features: If true, then include always-on</span>
+<span class="sd">        @param alwayson_features: If true, then include always-on</span>
 <span class="sd">           features in the generated joint-feature vectors.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">mapping</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">!=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mapping</span><span class="p">))):</span>
@@ -667,24 +670,24 @@
 <span class="sd">        &lt;BinaryMaxentFeatureEncoding&gt;} for a description of the</span>
 <span class="sd">        joint-features that will be included in this encoding.</span>
 
-<span class="sd">        :type train_toks: list of C{tuples} of (dict, str)</span>
-<span class="sd">        :param train_toks: Training data, represented as a list of</span>
+<span class="sd">        @type train_toks: C{list} of C{tuples} of (C{dict}, C{str})</span>
+<span class="sd">        @param train_toks: Training data, represented as a list of</span>
 <span class="sd">            pairs, the first member of which is a feature dictionary,</span>
 <span class="sd">            and the second of which is a classification label.</span>
 
-<span class="sd">        :type count_cutoff: int</span>
-<span class="sd">        :param count_cutoff: A cutoff value that is used to discard</span>
+<span class="sd">        @type count_cutoff: C{int}</span>
+<span class="sd">        @param count_cutoff: A cutoff value that is used to discard</span>
 <span class="sd">            rare joint-features.  If a joint-feature&#39;s value is 1</span>
 <span class="sd">            fewer than C{count_cutoff} times in the training corpus,</span>
 <span class="sd">            then that joint-feature is not included in the generated</span>
 <span class="sd">            encoding.</span>
 
-<span class="sd">        :type labels: list</span>
-<span class="sd">        :param labels: A list of labels that should be used by the</span>
+<span class="sd">        @type labels: C{list}</span>
+<span class="sd">        @param labels: A list of labels that should be used by the</span>
 <span class="sd">            classifier.  If not specified, then the set of labels</span>
 <span class="sd">            attested in C{train_toks} will be used.</span>
 
-<span class="sd">        :param options: Extra parameters for the constructor, such as</span>
+<span class="sd">        @param options: Extra parameters for the constructor, such as</span>
 <span class="sd">            C{unseen_features} and C{alwayson_features}.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">mapping</span> <span class="o">=</span> <span class="p">{}</span>              <span class="c"># maps (fname, fval, label) -&gt; fid</span>
@@ -726,10 +729,10 @@
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">mapping</span><span class="p">,</span> <span class="n">unseen_features</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
                  <span class="n">alwayson_features</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param C: The correction constant.  The value of the correction</span>
+<span class="sd">        @param C: The correction constant.  The value of the correction</span>
 <span class="sd">            feature is based on this value.  In particular, its value is</span>
 <span class="sd">            C{C - sum([v for (f,v) in encoding])}.</span>
-<span class="sd">        :seealso: L{BinaryMaxentFeatureEncoding.__init__}</span>
+<span class="sd">        @seealso: L{BinaryMaxentFeatureEncoding.__init__}</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">BinaryMaxentFeatureEncoding</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">mapping</span><span class="p">,</span> <span class="n">unseen_features</span><span class="p">,</span> <span class="n">alwayson_features</span><span class="p">)</span>
@@ -880,19 +883,19 @@
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">mapping</span><span class="p">,</span> <span class="n">unseen_features</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
                  <span class="n">alwayson_features</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param labels: A list of the \&quot;known labels\&quot; for this encoding.</span>
+<span class="sd">        @param labels: A list of the \&quot;known labels\&quot; for this encoding.</span>
 
-<span class="sd">        :param mapping: A dictionary mapping from C{(fname,fval,label)}</span>
+<span class="sd">        @param mapping: A dictionary mapping from C{(fname,fval,label)}</span>
 <span class="sd">            tuples to corresponding joint-feature indexes.  These</span>
 <span class="sd">            indexes must be the set of integers from 0...len(mapping).</span>
 <span class="sd">            If C{mapping[fname,fval,label]=id}, then</span>
 <span class="sd">            C{self.encode({..., fname:fval, ...}, label)[id]} is 1;</span>
 <span class="sd">            otherwise, it is 0.</span>
 
-<span class="sd">        :param unseen_features: If true, then include unseen value</span>
+<span class="sd">        @param unseen_features: If true, then include unseen value</span>
 <span class="sd">           features in the generated joint-feature vectors.</span>
 
-<span class="sd">        :param alwayson_features: If true, then include always-on</span>
+<span class="sd">        @param alwayson_features: If true, then include always-on</span>
 <span class="sd">           features in the generated joint-feature vectors.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">mapping</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">!=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mapping</span><span class="p">))):</span>
@@ -1000,24 +1003,24 @@
 <span class="sd">        Note: recognized feature values types are (int, float), over</span>
 <span class="sd">        types are interpreted as regular binary features.</span>
 
-<span class="sd">        :type train_toks: list of C{tuples} of (dict, str)</span>
-<span class="sd">        :param train_toks: Training data, represented as a list of</span>
+<span class="sd">        @type train_toks: C{list} of C{tuples} of (C{dict}, C{str})</span>
+<span class="sd">        @param train_toks: Training data, represented as a list of</span>
 <span class="sd">            pairs, the first member of which is a feature dictionary,</span>
 <span class="sd">            and the second of which is a classification label.</span>
 
-<span class="sd">        :type count_cutoff: int</span>
-<span class="sd">        :param count_cutoff: A cutoff value that is used to discard</span>
+<span class="sd">        @type count_cutoff: C{int}</span>
+<span class="sd">        @param count_cutoff: A cutoff value that is used to discard</span>
 <span class="sd">            rare joint-features.  If a joint-feature&#39;s value is 1</span>
 <span class="sd">            fewer than C{count_cutoff} times in the training corpus,</span>
 <span class="sd">            then that joint-feature is not included in the generated</span>
 <span class="sd">            encoding.</span>
 
-<span class="sd">        :type labels: list</span>
-<span class="sd">        :param labels: A list of labels that should be used by the</span>
+<span class="sd">        @type labels: C{list}</span>
+<span class="sd">        @param labels: A list of labels that should be used by the</span>
 <span class="sd">            classifier.  If not specified, then the set of labels</span>
 <span class="sd">            attested in C{train_toks} will be used.</span>
 
-<span class="sd">        :param options: Extra parameters for the constructor, such as</span>
+<span class="sd">        @param options: Extra parameters for the constructor, such as</span>
 <span class="sd">            C{unseen_features} and C{alwayson_features}.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">mapping</span> <span class="o">=</span> <span class="p">{}</span>              <span class="c"># maps (fname, fval, label) -&gt; fid</span>
@@ -1059,7 +1062,7 @@
 <span class="sd">    the model that maximizes entropy from all the models that are</span>
 <span class="sd">    empirically consistent with C{train_toks}.</span>
 
-<span class="sd">    :see: L{train_maxent_classifier()} for parameter descriptions.</span>
+<span class="sd">    @see: L{train_maxent_classifier()} for parameter descriptions.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cutoffs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&#39;max_iter&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
     <span class="n">cutoffchecker</span> <span class="o">=</span> <span class="n">CutoffChecker</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">)</span>
@@ -1108,8 +1111,10 @@
     <span class="k">try</span><span class="p">:</span>
         <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="n">ll</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">ll</span> <span class="ow">or</span> <span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
-                <span class="n">acc</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">acc</span> <span class="ow">or</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+                <span class="n">ll</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">ll</span> <span class="ow">or</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span>
+                                                <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+                <span class="n">acc</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">acc</span> <span class="ow">or</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span>
+                                                <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
                 <span class="n">iternum</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">iter</span>
                 <span class="k">print</span> <span class="s">&#39;     </span><span class="si">%9d</span><span class="s">    </span><span class="si">%14.5f</span><span class="s">    </span><span class="si">%9.3f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">iternum</span><span class="p">,</span> <span class="n">ll</span><span class="p">,</span> <span class="n">acc</span><span class="p">)</span>
             
@@ -1138,8 +1143,8 @@
         <span class="k">raise</span>
 
     <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="n">ll</span> <span class="o">=</span> <span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
-        <span class="n">acc</span> <span class="o">=</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+        <span class="n">acc</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
         <span class="k">print</span> <span class="s">&#39;         Final    </span><span class="si">%14.5f</span><span class="s">    </span><span class="si">%9.3f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">ll</span><span class="p">,</span> <span class="n">acc</span><span class="p">)</span>
 
 <span class="c"># Return the classifier.</span>
@@ -1180,7 +1185,7 @@
 <span class="sd">    that maximizes entropy from all the models that are empirically</span>
 <span class="sd">    consistent with C{train_toks}.</span>
 
-<span class="sd">    :see: L{train_maxent_classifier()} for parameter descriptions.</span>
+<span class="sd">    @see: L{train_maxent_classifier()} for parameter descriptions.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cutoffs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&#39;max_iter&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
     <span class="n">cutoffchecker</span> <span class="o">=</span> <span class="n">CutoffChecker</span><span class="p">(</span><span class="n">cutoffs</span><span class="p">)</span>
@@ -1226,8 +1231,10 @@
     <span class="k">try</span><span class="p">:</span>
         <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="n">ll</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">ll</span> <span class="ow">or</span> <span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
-                <span class="n">acc</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">acc</span> <span class="ow">or</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+                <span class="n">ll</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">ll</span> <span class="ow">or</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span>
+                                                <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+                <span class="n">acc</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">acc</span> <span class="ow">or</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span>
+                                                <span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
                 <span class="n">iternum</span> <span class="o">=</span> <span class="n">cutoffchecker</span><span class="o">.</span><span class="n">iter</span>
                 <span class="k">print</span> <span class="s">&#39;     </span><span class="si">%9d</span><span class="s">    </span><span class="si">%14.5f</span><span class="s">    </span><span class="si">%9.3f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">iternum</span><span class="p">,</span> <span class="n">ll</span><span class="p">,</span> <span class="n">acc</span><span class="p">)</span>
     
@@ -1252,8 +1259,8 @@
             
 
     <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="n">ll</span> <span class="o">=</span> <span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
-        <span class="n">acc</span> <span class="o">=</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
+        <span class="n">acc</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">classifier</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">)</span>
         <span class="k">print</span> <span class="s">&#39;         Final    </span><span class="si">%14.5f</span><span class="s">    </span><span class="si">%9.3f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">ll</span><span class="p">,</span> <span class="n">acc</span><span class="p">)</span>
                
     <span class="c"># Return the classifier.</span>
@@ -1276,9 +1283,9 @@
 <span class="sd">    and 7, then C{_nfmap} might return the dictionary {3:0, 5:1,</span>
 <span class="sd">    7:2}.</span>
 
-<span class="sd">    :return: A map that can be used to compress C{nf} to a dense</span>
+<span class="sd">    @return: A map that can be used to compress C{nf} to a dense</span>
 <span class="sd">        vector.</span>
-<span class="sd">    :rtype: C{dictionary} from int to int</span>
+<span class="sd">    @rtype: C{dictionary} from C{int} to C{int}</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c"># Map from nf to indices.  This allows us to use smaller arrays.</span>
     <span class="n">nfset</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -1330,27 +1337,27 @@
 <span class="sd">    allows C{_deltas} to calculate M{sum1} and M{sum2} using</span>
 <span class="sd">    matrices, which yields a signifigant performance improvement. </span>
 
-<span class="sd">    :param train_toks: The set of training tokens.</span>
-<span class="sd">    :type train_toks: list of C{tuples} of (dict, str)</span>
-<span class="sd">    :param classifier: The current classifier.</span>
-<span class="sd">    :type classifier: C{ClassifierI}</span>
-<span class="sd">    :param ffreq_empirical: An array containing the empirical</span>
+<span class="sd">    @param train_toks: The set of training tokens.</span>
+<span class="sd">    @type train_toks: C{list} of C{tuples} of (C{dict}, C{str})</span>
+<span class="sd">    @param classifier: The current classifier.</span>
+<span class="sd">    @type classifier: C{ClassifierI}</span>
+<span class="sd">    @param ffreq_empirical: An array containing the empirical</span>
 <span class="sd">        frequency for each feature.  The M{i}th element of this</span>
 <span class="sd">        array is the empirical frequency for feature M{i}.</span>
-<span class="sd">    :type ffreq_empirical: sequence of float</span>
-<span class="sd">    :param unattested: An array that is 1 for features that are</span>
+<span class="sd">    @type ffreq_empirical: C{sequence} of C{float}</span>
+<span class="sd">    @param unattested: An array that is 1 for features that are</span>
 <span class="sd">        not attested in the training data; and 0 for features that</span>
 <span class="sd">        are attested.  In other words, C{unattested[i]==0} iff</span>
 <span class="sd">        C{ffreq_empirical[i]==0}. </span>
-<span class="sd">    :type unattested: sequence of int</span>
-<span class="sd">    :param nfmap: A map that can be used to compress C{nf} to a dense</span>
+<span class="sd">    @type unattested: C{sequence} of C{int}</span>
+<span class="sd">    @param nfmap: A map that can be used to compress C{nf} to a dense</span>
 <span class="sd">        vector.</span>
-<span class="sd">    :type nfmap: C{dictionary} from int to int</span>
-<span class="sd">    :param nfarray: An array that can be used to uncompress C{nf}</span>
+<span class="sd">    @type nfmap: C{dictionary} from C{int} to C{int}</span>
+<span class="sd">    @param nfarray: An array that can be used to uncompress C{nf}</span>
 <span class="sd">        from a dense vector.</span>
-<span class="sd">    :type nfarray: C{array} of float</span>
-<span class="sd">    :param nftranspose: C{array} of float</span>
-<span class="sd">    :type nftranspose: The transpose of C{nfarray}</span>
+<span class="sd">    @type nfarray: C{array} of C{float}</span>
+<span class="sd">    @param nftranspose: C{array} of C{float}</span>
+<span class="sd">    @type nftranspose: The transpose of C{nfarray}</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c"># These parameters control when we decide that we&#39;ve</span>
     <span class="c"># converged.  It probably should be possible to set these</span>
@@ -1424,8 +1431,8 @@
 <span class="sd">    the model that maximizes entropy from all the models that are</span>
 <span class="sd">    empirically consistent with C{train_toks}.</span>
 
-<span class="sd">    :see: L{train_maxent_classifier()} for parameter descriptions.</span>
-<span class="sd">    :require: The C{scipy} package must be installed.</span>
+<span class="sd">    @see: L{train_maxent_classifier()} for parameter descriptions.</span>
+<span class="sd">    @require: The C{scipy} package must be installed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="kn">import</span> <span class="nn">scipy</span>
@@ -1522,8 +1529,8 @@
 <span class="sd">    maximizes entropy from all the models that are empirically</span>
 <span class="sd">    consistent with C{train_toks}.</span>
 
-<span class="sd">    :see: L{train_maxent_classifier()} for parameter descriptions.</span>
-<span class="sd">    :see: L{nltk.classify.megam}</span>
+<span class="sd">    @see: L{train_maxent_classifier()} for parameter descriptions.</span>
+<span class="sd">    @see: L{nltk.classify.megam}</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     
     <span class="n">explicit</span> <span class="o">=</span> <span class="bp">True</span>
@@ -1575,8 +1582,6 @@
         <span class="c"># [xx] this is actually a perplexity delta, not a log</span>
         <span class="c"># likelihood delta</span>
         <span class="n">options</span> <span class="o">+=</span> <span class="p">[</span><span class="s">&#39;-dpp&#39;</span><span class="p">,</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">abs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="s">&#39;ll_delta&#39;</span><span class="p">])]</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">encoding</span><span class="p">,</span> <span class="s">&#39;cost&#39;</span><span class="p">):</span>
-        <span class="n">options</span> <span class="o">+=</span> <span class="p">[</span><span class="s">&#39;-multilabel&#39;</span><span class="p">]</span>  <span class="c"># each possible la</span>
     <span class="n">options</span> <span class="o">+=</span> <span class="p">[</span><span class="s">&#39;multiclass&#39;</span><span class="p">,</span> <span class="n">trainfile_name</span><span class="p">]</span>
     <span class="n">stdout</span> <span class="o">=</span> <span class="n">call_megam</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
     <span class="c"># print &#39;./megam_i686.opt &#39;, &#39; &#39;.join(options)</span>
@@ -1695,6 +1700,8 @@
     <div class="footer-wrapper">
       <div class="footer">
         <div class="left">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
           <a href="../../../genindex.html" title="General Index"
              >index</a>
         </div>
@@ -1703,7 +1710,7 @@
           
     <div class="footer">
         &copy; Copyright 2011, Steven Bird.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
     </div>
         </div>
         <div class="clearer"></div>
