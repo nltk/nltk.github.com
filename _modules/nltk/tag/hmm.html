@@ -53,7 +53,7 @@
   <h1>Source code for nltk.tag.hmm</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Hidden Markov Model</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Trevor Cohn &lt;tacohn@csse.unimelb.edu.au&gt;</span>
 <span class="c">#         Philip Blunsom &lt;pcbl@csse.unimelb.edu.au&gt;</span>
 <span class="c">#         Tiago Tresoldi &lt;tiago@tresoldi.pro.br&gt; (fixes)</span>
@@ -62,7 +62,7 @@
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 <span class="c">#</span>
-<span class="c"># $Id: hmm.py 8777 2011-04-10 07:13:40Z StevenBird1 $</span>
+<span class="c"># $Id$</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Hidden Markov Models (HMMs) largely used to assign the correct label sequence</span>
@@ -118,19 +118,24 @@
 <span class="sd">most difficult task with the model, and requires either MLE estimates of the</span>
 <span class="sd">parameters or unsupervised learning using the Baum-Welch algorithm, a variant</span>
 <span class="sd">of EM.</span>
+
+<span class="sd">For more information, please consult the source code for this module,</span>
+<span class="sd">which includes extensive demonstration code.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">types</span>
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="kn">import</span> <span class="n">zeros</span><span class="p">,</span> <span class="n">ones</span><span class="p">,</span> <span class="n">float32</span><span class="p">,</span> <span class="n">float64</span><span class="p">,</span> <span class="n">log2</span><span class="p">,</span> <span class="n">hstack</span><span class="p">,</span> <span class="n">array</span><span class="p">,</span> <span class="n">argmax</span>
 
-<span class="kn">from</span> <span class="nn">numpy</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">FreqDist</span><span class="p">,</span> <span class="n">ConditionalFreqDist</span><span class="p">,</span> \
-     <span class="n">ConditionalProbDist</span><span class="p">,</span> <span class="n">DictionaryProbDist</span><span class="p">,</span> <span class="n">DictionaryConditionalProbDist</span><span class="p">,</span> \
-     <span class="n">LidstoneProbDist</span><span class="p">,</span> <span class="n">MutableProbDist</span><span class="p">,</span> <span class="n">MLEProbDist</span>
-<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">accuracy</span> <span class="k">as</span> <span class="n">_accuracy</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="n">ConditionalFreqDist</span><span class="p">,</span>
+                              <span class="n">ConditionalProbDist</span><span class="p">,</span> <span class="n">DictionaryProbDist</span><span class="p">,</span>
+                              <span class="n">DictionaryConditionalProbDist</span><span class="p">,</span>
+                              <span class="n">LidstoneProbDist</span><span class="p">,</span> <span class="n">MutableProbDist</span><span class="p">,</span>
+                              <span class="n">MLEProbDist</span><span class="p">,</span> <span class="n">UniformProbDist</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">accuracy</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">LazyMap</span><span class="p">,</span> <span class="n">LazyConcatenation</span><span class="p">,</span> <span class="n">LazyZip</span>
 
-<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.tag.api</span> <span class="kn">import</span> <span class="n">TaggerI</span><span class="p">,</span> <span class="n">HiddenMarkovModelTaggerTransformI</span>
 
 <span class="c"># _NINF = float(&#39;-inf&#39;)  # won&#39;t work on Windows</span>
 <span class="n">_NINF</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s">&#39;-1e300&#39;</span><span class="p">)</span>
@@ -154,30 +159,26 @@
 <span class="sd">    specialization function to create a new training set that is more</span>
 <span class="sd">    appropriate for sequential tagging with an HMM.  A typical use case is </span>
 <span class="sd">    chunking.</span>
+
+<span class="sd">    :param symbols: the set of output symbols (alphabet)</span>
+<span class="sd">    :type symbols: seq of any</span>
+<span class="sd">    :param states: a set of states representing state space</span>
+<span class="sd">    :type states: seq of any</span>
+<span class="sd">    :param transitions: transition probabilities; Pr(s_i | s_j) is the</span>
+<span class="sd">        probability of transition from state i given the model is in</span>
+<span class="sd">        state_j</span>
+<span class="sd">    :type transitions: ConditionalProbDistI</span>
+<span class="sd">    :param outputs: output probabilities; Pr(o_k | s_i) is the probability</span>
+<span class="sd">        of emitting symbol k when entering state i</span>
+<span class="sd">    :type outputs: ConditionalProbDistI</span>
+<span class="sd">    :param priors: initial state distribution; Pr(s_i) is the probability</span>
+<span class="sd">        of starting in state i</span>
+<span class="sd">    :type priors: ProbDistI</span>
+<span class="sd">    :param transform: an optional function for transforming training</span>
+<span class="sd">        instances, defaults to the identity function.         </span>
+<span class="sd">    :type transform: function or HiddenMarkovModelTaggerTransform</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">symbols</span><span class="p">,</span> <span class="n">states</span><span class="p">,</span> <span class="n">transitions</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">priors</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Creates a hidden markov model parametised by the the states,</span>
-<span class="sd">        transition probabilities, output probabilities and priors.</span>
-
-<span class="sd">        @param symbols: the set of output symbols (alphabet)</span>
-<span class="sd">        @type symbols: seq of any</span>
-<span class="sd">        @param states: a set of states representing state space</span>
-<span class="sd">        @type states: seq of any</span>
-<span class="sd">        @param transitions: transition probabilities; Pr(s_i | s_j) is the</span>
-<span class="sd">            probability of transition from state i given the model is in</span>
-<span class="sd">            state_j</span>
-<span class="sd">        @type transitions: C{ConditionalProbDistI}</span>
-<span class="sd">        @param outputs: output probabilities; Pr(o_k | s_i) is the probability</span>
-<span class="sd">            of emitting symbol k when entering state i</span>
-<span class="sd">        @type outputs: C{ConditionalProbDistI}</span>
-<span class="sd">        @param priors: initial state distribution; Pr(s_i) is the probability</span>
-<span class="sd">            of starting in state i</span>
-<span class="sd">        @type priors: C{ProbDistI}</span>
-<span class="sd">        @kwparam transform: an optional function for transforming training</span>
-<span class="sd">            instances, defaults to the identity function.         </span>
-<span class="sd">        @type transform: C{function} or C{HiddenMarkovModelTaggerTransform}</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_states</span> <span class="o">=</span> <span class="n">states</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_transitions</span> <span class="o">=</span> <span class="n">transitions</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_symbols</span> <span class="o">=</span> <span class="n">symbols</span>
@@ -232,32 +233,32 @@
 <div class="viewcode-block" id="HiddenMarkovModelTagger.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.HiddenMarkovModelTagger.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">labeled_sequence</span><span class="p">,</span> <span class="n">test_sequence</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
     		       <span class="n">unlabeled_sequence</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
     	<span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    	Train a new C{HiddenMarkovModelTagger} using the given labeled and</span>
+<span class="sd">    	Train a new HiddenMarkovModelTagger using the given labeled and</span>
 <span class="sd">    	unlabeled training instances. Testing will be performed if test</span>
 <span class="sd">    	instances are provided.</span>
 <span class="sd">    	</span>
-<span class="sd">    	@return: a hidden markov model tagger</span>
-<span class="sd">    	@rtype: C{HiddenMarkovModelTagger}</span>
-<span class="sd">    	@param labeled_sequence: a sequence of labeled training instances,</span>
+<span class="sd">    	:return: a hidden markov model tagger</span>
+<span class="sd">    	:rtype: HiddenMarkovModelTagger</span>
+<span class="sd">    	:param labeled_sequence: a sequence of labeled training instances,</span>
 <span class="sd">    	    i.e. a list of sentences represented as tuples</span>
-<span class="sd">    	@type labeled_sequence: C{list} of C{list}</span>
-<span class="sd">    	@param test_sequence: a sequence of labeled test instances</span>
-<span class="sd">    	@type test_sequence: C{list} of C{list}</span>
-<span class="sd">    	@param unlabeled_sequence: a sequence of unlabeled training instances,</span>
+<span class="sd">    	:type labeled_sequence: list(list)</span>
+<span class="sd">    	:param test_sequence: a sequence of labeled test instances</span>
+<span class="sd">    	:type test_sequence: list(list)</span>
+<span class="sd">    	:param unlabeled_sequence: a sequence of unlabeled training instances,</span>
 <span class="sd">    	    i.e. a list of sentences represented as words</span>
-<span class="sd">    	@type unlabeled_sequence: C{list} of C{list}</span>
-<span class="sd">        @kwparam transform: an optional function for transforming training</span>
+<span class="sd">    	:type unlabeled_sequence: list(list)</span>
+<span class="sd">        :param transform: an optional function for transforming training</span>
 <span class="sd">            instances, defaults to the identity function, see L{transform()}</span>
-<span class="sd">        @type transform: C{function}</span>
-<span class="sd">        @kwparam estimator: an optional function or class that maps a</span>
+<span class="sd">        :type transform: function</span>
+<span class="sd">        :param estimator: an optional function or class that maps a</span>
 <span class="sd">            condition&#39;s frequency distribution to its probability</span>
 <span class="sd">            distribution, defaults to a Lidstone distribution with gamma = 0.1</span>
-<span class="sd">        @type estimator: C{class} or C{function}</span>
-<span class="sd">        @kwparam verbose: boolean flag indicating whether training should be</span>
+<span class="sd">        :type estimator: class or function</span>
+<span class="sd">        :param verbose: boolean flag indicating whether training should be</span>
 <span class="sd">            verbose or include printed output</span>
-<span class="sd">        @type verbose: C{bool}</span>
-<span class="sd">        @kwparam max_iterations: number of Baum-Welch interations to perform</span>
-<span class="sd">        @type max_iterations: C{int}</span>
+<span class="sd">        :type verbose: bool</span>
+<span class="sd">        :param max_iterations: number of Baum-Welch interations to perform</span>
+<span class="sd">        :type max_iterations: int</span>
 <span class="sd">    	&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">_train</span><span class="p">(</span><span class="n">labeled_sequence</span><span class="p">,</span> <span class="n">test_sequence</span><span class="p">,</span>
     		              <span class="n">unlabeled_sequence</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
@@ -269,11 +270,11 @@
 <span class="sd">        sequence. Otherwise, uses the forward algorithm to find the</span>
 <span class="sd">        probability over all label sequences.</span>
 
-<span class="sd">        @return: the probability of the sequence</span>
-<span class="sd">        @rtype: float</span>
-<span class="sd">        @param sequence: the sequence of symbols which must contain the TEXT</span>
+<span class="sd">        :return: the probability of the sequence</span>
+<span class="sd">        :rtype: float</span>
+<span class="sd">        :param sequence: the sequence of symbols which must contain the TEXT</span>
 <span class="sd">            property, and optionally the TAG property</span>
-<span class="sd">        @type sequence:  Token</span>
+<span class="sd">        :type sequence:  Token</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="mi">2</span><span class="o">**</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_probability</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_transform</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">sequence</span><span class="p">)))</span>
 </div>
@@ -284,11 +285,11 @@
 <span class="sd">        symbol, state sequence. Otherwise, uses the forward algorithm to find</span>
 <span class="sd">        the log-probability over all label sequences.</span>
 
-<span class="sd">        @return: the log-probability of the sequence</span>
-<span class="sd">        @rtype: float</span>
-<span class="sd">        @param sequence: the sequence of symbols which must contain the TEXT</span>
+<span class="sd">        :return: the log-probability of the sequence</span>
+<span class="sd">        :rtype: float</span>
+<span class="sd">        :param sequence: the sequence of symbols which must contain the TEXT</span>
 <span class="sd">            property, and optionally the TAG property</span>
-<span class="sd">        @type sequence:  Token</span>
+<span class="sd">        :type sequence:  Token</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">sequence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span>
         
@@ -315,10 +316,10 @@
 <span class="sd">        Tags the sequence with the highest probability state sequence. This</span>
 <span class="sd">        uses the best_path method to find the Viterbi path.</span>
 
-<span class="sd">        @return: a labelled sequence of symbols</span>
-<span class="sd">        @rtype: list</span>
-<span class="sd">        @param unlabeled_sequence: the sequence of unlabeled symbols </span>
-<span class="sd">        @type unlabeled_sequence: list</span>
+<span class="sd">        :return: a labelled sequence of symbols</span>
+<span class="sd">        :rtype: list</span>
+<span class="sd">        :param unlabeled_sequence: the sequence of unlabeled symbols </span>
+<span class="sd">        :type unlabeled_sequence: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">unlabeled_sequence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tag</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
@@ -329,9 +330,9 @@
 
     <span class="k">def</span> <span class="nf">_output_logprob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">symbol</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: the log probability of the symbol being observed in the given</span>
+<span class="sd">        :return: the log probability of the symbol being observed in the given</span>
 <span class="sd">            state</span>
-<span class="sd">        @rtype: float</span>
+<span class="sd">        :rtype: float</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outputs</span><span class="p">[</span><span class="n">state</span><span class="p">]</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
 
@@ -409,10 +410,10 @@
 <span class="sd">        the HMM. Uses the Viterbi algorithm to calculate this part by dynamic</span>
 <span class="sd">        programming.</span>
 
-<span class="sd">        @return: the state sequence</span>
-<span class="sd">        @rtype: sequence of any</span>
-<span class="sd">        @param unlabeled_sequence: the sequence of unlabeled symbols </span>
-<span class="sd">        @type unlabeled_sequence: list</span>
+<span class="sd">        :return: the state sequence</span>
+<span class="sd">        :rtype: sequence of any</span>
+<span class="sd">        :param unlabeled_sequence: the sequence of unlabeled symbols </span>
+<span class="sd">        :type unlabeled_sequence: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">unlabeled_sequence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_best_path</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
@@ -452,10 +453,10 @@
 <span class="sd">        programming.  This uses a simple, direct method, and is included for</span>
 <span class="sd">        teaching purposes.</span>
 
-<span class="sd">        @return: the state sequence</span>
-<span class="sd">        @rtype: sequence of any</span>
-<span class="sd">        @param unlabeled_sequence: the sequence of unlabeled symbols </span>
-<span class="sd">        @type unlabeled_sequence: list</span>
+<span class="sd">        :return: the state sequence</span>
+<span class="sd">        :rtype: sequence of any</span>
+<span class="sd">        :param unlabeled_sequence: the sequence of unlabeled symbols </span>
+<span class="sd">        :type unlabeled_sequence: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">unlabeled_sequence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_best_path_simple</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
@@ -513,16 +514,16 @@
 <span class="sd">        This will mostly generate unintelligible garbage, but can provide some</span>
 <span class="sd">        amusement.</span>
 
-<span class="sd">        @return:        the randomly created state/observation sequence,</span>
+<span class="sd">        :return:        the randomly created state/observation sequence,</span>
 <span class="sd">                        generated according to the HMM&#39;s probability</span>
 <span class="sd">                        distributions. The SUBTOKENS have TEXT and TAG</span>
 <span class="sd">                        properties containing the observation and state</span>
 <span class="sd">                        respectively.</span>
-<span class="sd">        @rtype:         list</span>
-<span class="sd">        @param rng:     random number generator</span>
-<span class="sd">        @type rng:      Random (or any object with a random() method)</span>
-<span class="sd">        @param length:  desired output length</span>
-<span class="sd">        @type length:   int</span>
+<span class="sd">        :rtype:         list</span>
+<span class="sd">        :param rng:     random number generator</span>
+<span class="sd">        :type rng:      Random (or any object with a random() method)</span>
+<span class="sd">        :param length:  desired output length</span>
+<span class="sd">        :type length:   int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="c"># sample the starting state and symbol prob dists</span>
@@ -732,10 +733,10 @@
 <span class="sd">        state s at time t after observing the partial symbol sequence up to</span>
 <span class="sd">        and including t.</span>
 
-<span class="sd">        @param unlabeled_sequence: the sequence of unlabeled symbols </span>
-<span class="sd">        @type unlabeled_sequence: list</span>
-<span class="sd">        @return: the forward log probability matrix</span>
-<span class="sd">        @rtype:  array</span>
+<span class="sd">        :param unlabeled_sequence: the sequence of unlabeled symbols </span>
+<span class="sd">        :type unlabeled_sequence: list</span>
+<span class="sd">        :return: the forward log probability matrix</span>
+<span class="sd">        :rtype:  array</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">T</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_states</span><span class="p">)</span>
@@ -764,10 +765,10 @@
 <span class="sd">        state s at time t after observing the partial symbol sequence from t</span>
 <span class="sd">        .. T.</span>
 
-<span class="sd">        @return: the backward log probability matrix</span>
-<span class="sd">        @rtype:  array</span>
-<span class="sd">        @param unlabeled_sequence: the sequence of unlabeled symbols </span>
-<span class="sd">        @type unlabeled_sequence: list</span>
+<span class="sd">        :return: the backward log probability matrix</span>
+<span class="sd">        :rtype:  array</span>
+<span class="sd">        :param unlabeled_sequence: the sequence of unlabeled symbols </span>
+<span class="sd">        :type unlabeled_sequence: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">T</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">unlabeled_sequence</span><span class="p">)</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_states</span><span class="p">)</span>
@@ -791,13 +792,13 @@
 
 <div class="viewcode-block" id="HiddenMarkovModelTagger.test"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.HiddenMarkovModelTagger.test">[docs]</a>    <span class="k">def</span> <span class="nf">test</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sequence</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Tests the C{HiddenMarkovModelTagger} instance.</span>
+<span class="sd">        Tests the HiddenMarkovModelTagger instance.</span>
 
-<span class="sd">    	@param test_sequence: a sequence of labeled test instances</span>
-<span class="sd">        @type test_sequence: C{list} of C{list}</span>
-<span class="sd">        @kwparam verbose: boolean flag indicating whether training should be</span>
+<span class="sd">    	:param test_sequence: a sequence of labeled test instances</span>
+<span class="sd">        :type test_sequence: list(list)</span>
+<span class="sd">        :param verbose: boolean flag indicating whether training should be</span>
 <span class="sd">            verbose or include printed output</span>
-<span class="sd">        @type verbose: C{bool}</span>
+<span class="sd">        :type verbose: bool</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         
         <span class="k">def</span> <span class="nf">words</span><span class="p">(</span><span class="n">sent</span><span class="p">):</span>
@@ -837,7 +838,7 @@
         <span class="n">test_tags</span> <span class="o">=</span> <span class="n">LazyConcatenation</span><span class="p">(</span><span class="n">LazyMap</span><span class="p">(</span><span class="n">tags</span><span class="p">,</span> <span class="n">test_sequence</span><span class="p">))</span>
         <span class="n">predicted_tags</span> <span class="o">=</span> <span class="n">LazyConcatenation</span><span class="p">(</span><span class="n">LazyMap</span><span class="p">(</span><span class="n">tags</span><span class="p">,</span> <span class="n">predicted_sequence</span><span class="p">))</span>
                 
-        <span class="n">acc</span> <span class="o">=</span> <span class="n">_accuracy</span><span class="p">(</span><span class="n">test_tags</span><span class="p">,</span> <span class="n">predicted_tags</span><span class="p">)</span>
+        <span class="n">acc</span> <span class="o">=</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">test_tags</span><span class="p">,</span> <span class="n">predicted_tags</span><span class="p">)</span>
 
         <span class="n">count</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">test_sequence</span><span class="p">])</span>
 
@@ -852,19 +853,18 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Algorithms for learning HMM parameters from training data. These include</span>
 <span class="sd">    both supervised learning (MLE) and unsupervised learning (Baum-Welch).</span>
+
+<span class="sd">    Creates an HMM trainer to induce an HMM with the given states and</span>
+<span class="sd">    output symbol alphabet. A supervised and unsupervised training</span>
+<span class="sd">    method may be used. If either of the states or symbols are not given,</span>
+<span class="sd">    these may be derived from supervised training.</span>
+
+<span class="sd">    :param states:  the set of state labels</span>
+<span class="sd">    :type states:   sequence of any</span>
+<span class="sd">    :param symbols: the set of observation symbols</span>
+<span class="sd">    :type symbols:  sequence of any</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">symbols</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Creates an HMM trainer to induce an HMM with the given states and</span>
-<span class="sd">        output symbol alphabet. A supervised and unsupervised training</span>
-<span class="sd">        method may be used. If either of the states or symbols are not given,</span>
-<span class="sd">        these may be derived from supervised training.</span>
-
-<span class="sd">        @param states:  the set of state labels</span>
-<span class="sd">        @type states:   sequence of any</span>
-<span class="sd">        @param symbols: the set of observation symbols</span>
-<span class="sd">        @type symbols:  sequence of any</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">states</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_states</span> <span class="o">=</span> <span class="n">states</span>
         <span class="k">else</span><span class="p">:</span>
@@ -880,15 +880,15 @@
 <span class="sd">        Trains the HMM using both (or either of) supervised and unsupervised</span>
 <span class="sd">        techniques.</span>
 
-<span class="sd">        @return: the trained model</span>
-<span class="sd">        @rtype: HiddenMarkovModelTagger</span>
-<span class="sd">        @param labelled_sequences: the supervised training data, a set of</span>
+<span class="sd">        :return: the trained model</span>
+<span class="sd">        :rtype: HiddenMarkovModelTagger</span>
+<span class="sd">        :param labelled_sequences: the supervised training data, a set of</span>
 <span class="sd">            labelled sequences of observations</span>
-<span class="sd">        @type labelled_sequences: list</span>
-<span class="sd">        @param unlabeled_sequences: the unsupervised training data, a set of</span>
+<span class="sd">        :type labelled_sequences: list</span>
+<span class="sd">        :param unlabeled_sequences: the unsupervised training data, a set of</span>
 <span class="sd">            sequences of observations</span>
-<span class="sd">        @type unlabeled_sequences: list</span>
-<span class="sd">        @param kwargs: additional arguments to pass to the training methods</span>
+<span class="sd">        :type unlabeled_sequences: list</span>
+<span class="sd">        :param kwargs: additional arguments to pass to the training methods</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">assert</span> <span class="n">labelled_sequences</span> <span class="ow">or</span> <span class="n">unlabeled_sequences</span>
         <span class="n">model</span> <span class="o">=</span> <span class="bp">None</span>
@@ -908,12 +908,12 @@
 <span class="sd">        Markov Models and Selected Applications in Speech Recognition&#39;,</span>
 <span class="sd">        Lawrence Rabiner, IEEE, 1989.</span>
 
-<span class="sd">        @return: the trained model</span>
-<span class="sd">        @rtype: HiddenMarkovModelTagger</span>
-<span class="sd">        @param unlabeled_sequences: the training data, a set of</span>
+<span class="sd">        :return: the trained model</span>
+<span class="sd">        :rtype: HiddenMarkovModelTagger</span>
+<span class="sd">        :param unlabeled_sequences: the training data, a set of</span>
 <span class="sd">            sequences of observations</span>
-<span class="sd">        @type unlabeled_sequences: list</span>
-<span class="sd">        @param kwargs: may include the following parameters::</span>
+<span class="sd">        :type unlabeled_sequences: list</span>
+<span class="sd">        :param kwargs: may include the following parameters::</span>
 <span class="sd">            model - a HiddenMarkovModelTagger instance used to begin</span>
 <span class="sd">                the Baum-Welch algorithm</span>
 <span class="sd">            max_iterations - the maximum number of EM iterations</span>
@@ -1054,13 +1054,13 @@
 <span class="sd">        are then normalised into probability estimates, which can be</span>
 <span class="sd">        smoothed if desired.</span>
 
-<span class="sd">        @return: the trained model</span>
-<span class="sd">        @rtype: HiddenMarkovModelTagger</span>
-<span class="sd">        @param labelled_sequences: the training data, a set of</span>
+<span class="sd">        :return: the trained model</span>
+<span class="sd">        :rtype: HiddenMarkovModelTagger</span>
+<span class="sd">        :param labelled_sequences: the training data, a set of</span>
 <span class="sd">            labelled sequences of observations</span>
-<span class="sd">        @type labelled_sequences: list</span>
-<span class="sd">        @param kwargs: may include an &#39;estimator&#39; parameter, a function taking</span>
-<span class="sd">            a C{FreqDist} and a number of bins and returning a C{ProbDistI};</span>
+<span class="sd">        :type labelled_sequences: list</span>
+<span class="sd">        :param kwargs: may include an &#39;estimator&#39; parameter, a function taking</span>
+<span class="sd">            a FreqDist and a number of bins and returning a CProbDistI;</span>
 <span class="sd">            otherwise a MLE estimate is used</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
@@ -1103,7 +1103,7 @@
 </div></div>
 <div class="viewcode-block" id="HiddenMarkovModelTaggerTransform"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.HiddenMarkovModelTaggerTransform">[docs]</a><span class="k">class</span> <span class="nc">HiddenMarkovModelTaggerTransform</span><span class="p">(</span><span class="n">HiddenMarkovModelTaggerTransformI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An abstract subclass of C{HiddenMarkovModelTaggerTransformI}.</span>
+<span class="sd">    An abstract subclass of HiddenMarkovModelTaggerTransformI.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">==</span> <span class="n">HiddenMarkovModelTaggerTransform</span><span class="p">:</span>
@@ -1112,13 +1112,13 @@
 </div>
 <div class="viewcode-block" id="LambdaTransform"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.LambdaTransform">[docs]</a><span class="k">class</span> <span class="nc">LambdaTransform</span><span class="p">(</span><span class="n">HiddenMarkovModelTaggerTransform</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A subclass of C{HiddenMarkovModelTaggerTransform} that is backed by an</span>
+<span class="sd">    A subclass of HiddenMarkovModelTaggerTransform that is backed by an</span>
 <span class="sd">    arbitrary user-defined function, instance method, or lambda function.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">transform</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param func: a user-defined or lambda transform function</span>
-<span class="sd">        @type func: C{function}</span>
+<span class="sd">        :param func: a user-defined or lambda transform function</span>
+<span class="sd">        :type func: function</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_transform</span> <span class="o">=</span> <span class="n">transform</span>
         
@@ -1128,9 +1128,9 @@
 </div></div>
 <div class="viewcode-block" id="IdentityTransform"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.IdentityTransform">[docs]</a><span class="k">class</span> <span class="nc">IdentityTransform</span><span class="p">(</span><span class="n">HiddenMarkovModelTaggerTransform</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A subclass of C{HiddenMarkovModelTaggerTransform} that implements </span>
-<span class="sd">    L{transform()} as the identity function, i.e. symbols passed to </span>
-<span class="sd">    C{transform()} are returned unmodified.</span>
+<span class="sd">    A subclass of HiddenMarkovModelTaggerTransform that implements </span>
+<span class="sd">    transform() as the identity function, i.e. symbols passed to </span>
+<span class="sd">    transform() are returned unmodified.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 <div class="viewcode-block" id="IdentityTransform.transform"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.hmm.IdentityTransform.transform">[docs]</a>    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labeled_symbols</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">labeled_symbols</span>
@@ -1313,13 +1313,11 @@
     <span class="n">trainer</span> <span class="o">=</span> <span class="n">HiddenMarkovModelTrainer</span><span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="n">symbols</span><span class="p">)</span>
     <span class="n">hmm</span> <span class="o">=</span> <span class="n">trainer</span><span class="o">.</span><span class="n">train_unsupervised</span><span class="p">(</span><span class="n">training</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
                                      <span class="n">max_iterations</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
-    </div>
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">demo</span><span class="p">()</span> 
-    <span class="n">demo_pos</span><span class="p">()</span>
-    <span class="n">demo_pos_bw</span><span class="p">()</span>
-<span class="c">#    demo_bw()</span>
 
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span>
+    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">(</span><span class="n">optionflags</span><span class="o">=</span><span class="n">doctest</span><span class="o">.</span><span class="n">NORMALIZE_WHITESPACE</span><span class="p">)</span>
 
  	  	 
 </pre></div>
@@ -1362,7 +1360,7 @@
           
     <div class="footer">
         &copy; Copyright 2011, Steven Bird.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
     </div>
         </div>
         <div class="clearer"></div>

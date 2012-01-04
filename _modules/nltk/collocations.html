@@ -53,14 +53,14 @@
   <h1>Source code for nltk.collocations</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Collocations and Association Measures </span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Joel Nothman &lt;jnothman@student.usyd.edu.au&gt;</span>
 <span class="c"># URL: &lt;http://nltk.org&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 <span class="c">#</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Tools to identify X{collocation}s --- words that often appear consecutively</span>
-<span class="sd">--- within corpora. They may also be used to find other X{association}s between</span>
+<span class="sd">Tools to identify collocations --- words that often appear consecutively</span>
+<span class="sd">--- within corpora. They may also be used to find other associations between</span>
 <span class="sd">word occurrences.</span>
 <span class="sd">See Manning and Schutze ch. 5 at http://nlp.stanford.edu/fsnlp/promo/colloc.pdf</span>
 <span class="sd">and the Text::NSP Perl package at http://ngram.sourceforge.net</span>
@@ -71,10 +71,10 @@
 <span class="sd">of words may then be scored according to some X{association measure}, in order</span>
 <span class="sd">to determine the relative likelihood of each ngram being a collocation.</span>
 
-<span class="sd">The L{BigramCollocationFinder} and L{TrigramCollocationFinder} classes provide</span>
+<span class="sd">The BigramCollocationFinder and TrigramCollocationFinder classes provide</span>
 <span class="sd">these functionalities, dependent on being provided a function which scores a</span>
 <span class="sd">ngram given appropriate frequency counts. A number of standard association</span>
-<span class="sd">measures are provided in L{bigram_measures} and L{trigram_measures}.</span>
+<span class="sd">measures are provided in bigram_measures and trigram_measures.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="c"># Possible TODOs:</span>
@@ -86,24 +86,23 @@
 <span class="kn">import</span> <span class="nn">itertools</span> <span class="kn">as</span> <span class="nn">_itertools</span>
 <span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">itemgetter</span> <span class="k">as</span> <span class="n">_itemgetter</span>
 
-<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="nb">any</span>
 <span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">FreqDist</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ingrams</span>
 <span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">ContingencyMeasures</span><span class="p">,</span> <span class="n">BigramAssocMeasures</span><span class="p">,</span> <span class="n">TrigramAssocMeasures</span>
-<span class="kn">from</span> <span class="nn">nltk.metrics.spearman</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.metrics.spearman</span> <span class="kn">import</span> <span class="n">ranks_from_scores</span><span class="p">,</span> <span class="n">spearman_correlation</span>
 
 <span class="k">class</span> <span class="nc">AbstractCollocationFinder</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An abstract base class for X{collocation finder}s whose purpose is to</span>
+<span class="sd">    An abstract base class for collocation finders whose purpose is to</span>
 <span class="sd">    collect collocation candidate frequencies, filter and rank them.</span>
+
+<span class="sd">    As a minimum, collocation finders require the frequencies of each</span>
+<span class="sd">    word in a corpus, and the joint frequency of word tuples. This data</span>
+<span class="sd">    should be provided through nltk.probability.FreqDist objects or an</span>
+<span class="sd">    identical interface.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word_fd</span><span class="p">,</span> <span class="n">ngram_fd</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;As a minimum, collocation finders require the frequencies of each</span>
-<span class="sd">        word in a corpus, and the joint frequency of word tuples. This data</span>
-<span class="sd">        should be provided through L{nltk.probability.FreqDist} objects or an</span>
-<span class="sd">        identical interface.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">word_fd</span> <span class="o">=</span> <span class="n">word_fd</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ngram_fd</span> <span class="o">=</span> <span class="n">ngram_fd</span>
 
@@ -290,14 +289,14 @@
     <span class="k">if</span> <span class="n">compare_scorer</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
         <span class="n">compare_scorer</span> <span class="o">=</span> <span class="n">BigramAssocMeasures</span><span class="o">.</span><span class="n">raw_freq</span>
 
-    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">corpus</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">stopwords</span><span class="p">,</span> <span class="n">webtext</span>
         
-    <span class="n">ignored_words</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">stopwords</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;english&#39;</span><span class="p">)</span>
+    <span class="n">ignored_words</span> <span class="o">=</span> <span class="n">stopwords</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="s">&#39;english&#39;</span><span class="p">)</span>
     <span class="n">word_filter</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">w</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="ow">or</span> <span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">ignored_words</span>
 
-    <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span> <span class="n">corpus</span><span class="o">.</span><span class="n">webtext</span><span class="o">.</span><span class="n">files</span><span class="p">():</span>
+    <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span> <span class="n">webtext</span><span class="o">.</span><span class="n">fileids</span><span class="p">():</span>
         <span class="n">words</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-                 <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">corpus</span><span class="o">.</span><span class="n">webtext</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="nb">file</span><span class="p">)]</span>
+                 <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">webtext</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="nb">file</span><span class="p">)]</span>
 
         <span class="n">cf</span> <span class="o">=</span> <span class="n">BigramCollocationFinder</span><span class="o">.</span><span class="n">from_words</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
         <span class="n">cf</span><span class="o">.</span><span class="n">apply_freq_filter</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
@@ -370,7 +369,7 @@
           
     <div class="footer">
         &copy; Copyright 2011, Steven Bird.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
     </div>
         </div>
         <div class="clearer"></div>

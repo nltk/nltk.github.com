@@ -53,7 +53,7 @@
   <h1>Source code for nltk.tag.brill</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Brill Tagger</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Authors: Christopher Maloof &lt;cjmaloof@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#          Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#          Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
@@ -61,18 +61,73 @@
 <span class="c"># For license information, see LICENSE.TXT</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Brill&#39;s transformational rule-based tagger.</span>
+<span class="sd">Brill Tagger</span>
+
+<span class="sd">The Brill Tagger is a transformational rule-based tagger.</span>
+<span class="sd">It starts by running an initial tagger, and then</span>
+<span class="sd">improves the tagging by applying a list of transformation rules.</span>
+<span class="sd">These transformation rules are automatically learned from the training</span>
+<span class="sd">corpus, based on one or more &quot;rule templates.&quot;</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.corpus import brown</span>
+<span class="sd">    &gt;&gt;&gt; from nltk.tag import UnigramTagger</span>
+<span class="sd">    &gt;&gt;&gt; brown_train = list(brown.tagged_sents(categories=&#39;news&#39;)[:500])</span>
+<span class="sd">    &gt;&gt;&gt; brown_test = list(brown.tagged_sents(categories=&#39;news&#39;)[500:600])</span>
+<span class="sd">    &gt;&gt;&gt; unigram_tagger = UnigramTagger(brown_train)</span>
+<span class="sd">    &gt;&gt;&gt; templates = [</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateTagsRule, (1,1)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateTagsRule, (2,2)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateTagsRule, (1,2)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateTagsRule, (1,3)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateWordsRule, (1,1)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateWordsRule, (2,2)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateWordsRule, (1,2)),</span>
+<span class="sd">    ...     SymmetricProximateTokensTemplate(ProximateWordsRule, (1,3)),</span>
+<span class="sd">    ...     ProximateTokensTemplate(ProximateTagsRule, (-1, -1), (1,1)),</span>
+<span class="sd">    ...     ProximateTokensTemplate(ProximateWordsRule, (-1, -1), (1,1)),</span>
+<span class="sd">    ...     ]</span>
+<span class="sd">    &gt;&gt;&gt; trainer = FastBrillTaggerTrainer(initial_tagger=unigram_tagger,</span>
+<span class="sd">    ...                                  templates=templates, trace=3,</span>
+<span class="sd">    ...                                  deterministic=True)</span>
+<span class="sd">    &gt;&gt;&gt; brill_tagger = trainer.train(brown_train, max_rules=10)</span>
+<span class="sd">    Training Brill tagger on 500 sentences...</span>
+<span class="sd">    Finding initial useful rules...</span>
+<span class="sd">        Found 10210 useful rules.</span>
+<span class="sd">    &lt;BLANKLINE&gt;</span>
+<span class="sd">               B      |     </span>
+<span class="sd">       S   F   r   O  |        Score = Fixed - Broken</span>
+<span class="sd">       c   i   o   t  |  R     Fixed = num tags changed incorrect -&gt; correct</span>
+<span class="sd">       o   x   k   h  |  u     Broken = num tags changed correct -&gt; incorrect</span>
+<span class="sd">       r   e   e   e  |  l     Other = num tags changed incorrect -&gt; incorrect</span>
+<span class="sd">       e   d   n   r  |  e</span>
+<span class="sd">    ------------------+-------------------------------------------------------</span>
+<span class="sd">      46  46   0   0  | TO -&gt; IN if the tag of the following word is &#39;AT&#39;</span>
+<span class="sd">      18  20   2   0  | TO -&gt; IN if the tag of words i+1...i+3 is &#39;CD&#39;</span>
+<span class="sd">      14  14   0   0  | IN -&gt; IN-TL if the tag of the preceding word is</span>
+<span class="sd">                      |   &#39;NN-TL&#39;, and the tag of the following word is</span>
+<span class="sd">                      |   &#39;NN-TL&#39;</span>
+<span class="sd">      11  11   0   1  | TO -&gt; IN if the tag of the following word is &#39;NNS&#39;</span>
+<span class="sd">      10  10   0   0  | TO -&gt; IN if the tag of the following word is &#39;JJ&#39;</span>
+<span class="sd">       8   8   0   0  | , -&gt; ,-HL if the tag of the preceding word is &#39;NP-</span>
+<span class="sd">                      |   HL&#39;</span>
+<span class="sd">       7   7   0   1  | NN -&gt; VB if the tag of the preceding word is &#39;MD&#39;</span>
+<span class="sd">       7  13   6   0  | NN -&gt; VB if the tag of the preceding word is &#39;TO&#39;</span>
+<span class="sd">       7   7   0   0  | NP-TL -&gt; NP if the tag of words i+1...i+2 is &#39;NNS&#39;</span>
+<span class="sd">       7   7   0   0  | VBN -&gt; VBD if the tag of the preceding word is</span>
+<span class="sd">                      |   &#39;NP&#39;</span>
+<span class="sd">    &gt;&gt;&gt; brill_tagger.evaluate(brown_test) # doctest: +ELLIPSIS</span>
+<span class="sd">    0.742...</span>
+
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span> <span class="nn">bisect</span>        <span class="c"># for binary search through a subset of indices</span>
 <span class="kn">import</span> <span class="nn">random</span>        <span class="c"># for shuffling WSJ files</span>
 <span class="kn">import</span> <span class="nn">yaml</span>          <span class="c"># to save and load taggers in files</span>
 <span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 
-<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">defaultdict</span>
-
-<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">untag</span>
-<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.tag.util</span> <span class="kn">import</span> <span class="n">untag</span>
+<span class="kn">from</span> <span class="nn">nltk.tag.api</span> <span class="kn">import</span> <span class="n">TaggerI</span>
 
 <span class="c">######################################################################</span>
 <span class="c">## The Brill Tagger</span>
@@ -81,26 +136,26 @@
 <div class="viewcode-block" id="BrillTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTagger">[docs]</a><span class="k">class</span> <span class="nc">BrillTagger</span><span class="p">(</span><span class="n">TaggerI</span><span class="p">,</span> <span class="n">yaml</span><span class="o">.</span><span class="n">YAMLObject</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Brill&#39;s transformational rule-based tagger.  Brill taggers use an</span>
-<span class="sd">    X{initial tagger} (such as L{tag.DefaultTagger}) to assign an initial</span>
+<span class="sd">    initial tagger (such as ``tag.DefaultTagger``) to assign an initial</span>
 <span class="sd">    tag sequence to a text; and then apply an ordered list of</span>
 <span class="sd">    transformational rules to correct the tags of individual tokens.</span>
-<span class="sd">    These transformation rules are specified by the L{BrillRule}</span>
+<span class="sd">    These transformation rules are specified by the ``BrillRule``</span>
 <span class="sd">    interface.</span>
 
 <span class="sd">    Brill taggers can be created directly, from an initial tagger and</span>
 <span class="sd">    a list of transformational rules; but more often, Brill taggers</span>
 <span class="sd">    are created by learning rules from a training corpus, using either</span>
-<span class="sd">    L{BrillTaggerTrainer} or L{FastBrillTaggerTrainer}.</span>
+<span class="sd">    ``BrillTaggerTrainer`` or ``FastBrillTaggerTrainer``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     
     <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!nltk.BrillTagger&#39;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_tagger</span><span class="p">,</span> <span class="n">rules</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param initial_tagger: The initial tagger</span>
-<span class="sd">        @type initial_tagger: L{TaggerI}</span>
-<span class="sd">        @param rules: An ordered list of transformation rules that</span>
+<span class="sd">        :param initial_tagger: The initial tagger</span>
+<span class="sd">        :type initial_tagger: TaggerI</span>
+<span class="sd">        :param rules: An ordered list of transformation rules that</span>
 <span class="sd">            should be used to correct the initial tagging.</span>
-<span class="sd">        @type rules: C{list} of L{BrillRule}</span>
+<span class="sd">        :type rules: list(BrillRule)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span> <span class="o">=</span> <span class="n">initial_tagger</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rules</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rules</span><span class="p">)</span>
@@ -143,9 +198,9 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An interface for tag transformations on a tagged corpus, as</span>
 <span class="sd">    performed by brill taggers.  Each transformation finds all tokens</span>
-<span class="sd">    in the corpus that are tagged with a specific X{original tag} and</span>
-<span class="sd">    satisfy a specific X{condition}, and replaces their tags with a</span>
-<span class="sd">    X{replacement tag}.  For any given transformation, the original</span>
+<span class="sd">    in the corpus that are tagged with a specific original tag and</span>
+<span class="sd">    satisfy a specific condition, and replaces their tags with a</span>
+<span class="sd">    replacement tag.  For any given transformation, the original</span>
 <span class="sd">    tag, replacement tag, and condition are fixed.  Conditions may</span>
 <span class="sd">    depend on the token under consideration, as well as any other</span>
 <span class="sd">    tokens in the corpus.</span>
@@ -157,27 +212,27 @@
                <span class="s">&quot;BrillRule is an abstract base class&quot;</span>
         
         <span class="bp">self</span><span class="o">.</span><span class="n">original_tag</span> <span class="o">=</span> <span class="n">original_tag</span>
-        <span class="sd">&quot;&quot;&quot;The tag which this C{BrillRule} may cause to be replaced.&quot;&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;The tag which this BrillRule may cause to be replaced.&quot;&quot;&quot;</span>
         
         <span class="bp">self</span><span class="o">.</span><span class="n">replacement_tag</span> <span class="o">=</span> <span class="n">replacement_tag</span>
-        <span class="sd">&quot;&quot;&quot;The tag with which this C{BrillRule} may replace another tag.&quot;&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;The tag with which this BrillRule may replace another tag.&quot;&quot;&quot;</span>
         
 <div class="viewcode-block" id="BrillRule.apply"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillRule.apply">[docs]</a>    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Apply this rule at every position in C{positions} where it</span>
-<span class="sd">        applies to the given sentence.  I.e., for each position M{p}</span>
-<span class="sd">        in C{positions}, if C{tokens[M{p}]} is tagged with this rule&#39;s</span>
+<span class="sd">        Apply this rule at every position in positions where it</span>
+<span class="sd">        applies to the given sentence.  I.e., for each position p</span>
+<span class="sd">        in *positions*, if *tokens[p]* is tagged with this rule&#39;s</span>
 <span class="sd">        original tag, and satisfies this rule&#39;s condition, then set</span>
 <span class="sd">        its tag to be this rule&#39;s replacement tag.</span>
 
-<span class="sd">        @param tokens: The tagged sentence</span>
-<span class="sd">        @type tokens: list of Token</span>
-<span class="sd">        @type positions: C{list} of C{int}</span>
-<span class="sd">        @param positions: The positions where the transformation is to</span>
+<span class="sd">        :param tokens: The tagged sentence</span>
+<span class="sd">        :type tokens: list(tuple(str, str))</span>
+<span class="sd">        :type positions: list(int)</span>
+<span class="sd">        :param positions: The positions where the transformation is to</span>
 <span class="sd">            be tried.  If not specified, try it at all positions.</span>
-<span class="sd">        @return: The indices of tokens whose tags were changed by this</span>
+<span class="sd">        :return: The indices of tokens whose tags were changed by this</span>
 <span class="sd">            rule.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">positions</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
             <span class="n">positions</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
@@ -195,14 +250,13 @@
 </div>
 <div class="viewcode-block" id="BrillRule.applies"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillRule.applies">[docs]</a>    <span class="k">def</span> <span class="nf">applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: True if the rule would change the tag of </span>
-<span class="sd">            C{tokens[index]}, False otherwise</span>
-<span class="sd">        @rtype: Boolean</span>
-
-<span class="sd">        @param tokens: A tagged sentence</span>
-<span class="sd">        @type tokens: C{list} of C{str}</span>
-<span class="sd">        @param index: The index to check</span>
-<span class="sd">        @type index: C{int}</span>
+<span class="sd">        :return: True if the rule would change the tag of </span>
+<span class="sd">            ``tokens[index]``, False otherwise</span>
+<span class="sd">        :rtype: bool</span>
+<span class="sd">        :param tokens: A tagged sentence</span>
+<span class="sd">        :type tokens: list(str)</span>
+<span class="sd">        :param index: The index to check</span>
+<span class="sd">        :type index: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;Brill rules must define applies()&quot;</span>
         
@@ -222,39 +276,34 @@
 <span class="sd">    positions, relative to the token.</span>
 
 <span class="sd">    Each subclass of proximate tokens brill rule defines a method</span>
-<span class="sd">    M{extract_property}, which extracts a specific property from the</span>
+<span class="sd">    ``extract_property()``, which extracts a specific property from the</span>
 <span class="sd">    the token, such as its text or tag.  Each instance is</span>
 <span class="sd">    parameterized by a set of tuples, specifying ranges of positions</span>
-<span class="sd">    and property values to check for in those ranges:</span>
-<span class="sd">    </span>
-<span class="sd">      - (M{start}, M{end}, M{value})</span>
+<span class="sd">    and property values to check for in those ranges: ``(start, end, value)``.</span>
 
-<span class="sd">    The brill rule is then applicable to the M{n}th token iff:</span>
+<span class="sd">    The brill rule is then applicable to the *n*th token iff:</span>
 <span class="sd">    </span>
-<span class="sd">      - The M{n}th token is tagged with the rule&#39;s original tag; and</span>
-<span class="sd">      - For each (M{start}, M{end}, M{value}) triple:</span>
-<span class="sd">        - The property value of at least one token between</span>
-<span class="sd">          M{n+start} and M{n+end} (inclusive) is M{value}.</span>
+<span class="sd">      - The *n*th token is tagged with the rule&#39;s original tag; and</span>
+<span class="sd">      - For each (start, end, value) triple, the property value of</span>
+<span class="sd">        at least one token between n+start and n+end (inclusive) is value.</span>
 
-<span class="sd">    For example, a proximate token brill template with M{start=end=-1}</span>
+<span class="sd">    For example, a proximate token brill template with start=end=-1</span>
 <span class="sd">    generates rules that check just the property of the preceding</span>
 <span class="sd">    token.  Note that multiple properties may be included in a single</span>
 <span class="sd">    rule; the rule applies if they all hold.</span>
+
+<span class="sd">    Construct a new brill rule that changes a token&#39;s tag from</span>
+<span class="sd">    *original_tag* to *replacement_tag* if all of the properties</span>
+<span class="sd">    specified in *conditions* hold.</span>
+
+<span class="sd">    :type conditions: tuple(int, int, *)</span>
+<span class="sd">    :param conditions: A list of 3-tuples (start, end, value),</span>
+<span class="sd">        each of which specifies that the property of at least one</span>
+<span class="sd">        token between n+start and n+end (inclusive) is value.</span>
+<span class="sd">    :raise ValueError: If start&gt;end for any condition.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original_tag</span><span class="p">,</span> <span class="n">replacement_tag</span><span class="p">,</span> <span class="o">*</span><span class="n">conditions</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a new brill rule that changes a token&#39;s tag from</span>
-<span class="sd">        C{original_tag} to C{replacement_tag} if all of the properties</span>
-<span class="sd">        specified in C{conditions} hold.</span>
-
-<span class="sd">        @type conditions: C{tuple} of C{(int, int, *)}</span>
-<span class="sd">        @param conditions: A list of 3-tuples C{(start, end, value)},</span>
-<span class="sd">            each of which specifies that the property of at least one</span>
-<span class="sd">            token between M{n}+C{start} and M{n}+C{end} (inclusive) is</span>
-<span class="sd">            C{value}.</span>
-<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any condition.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">!=</span> <span class="n">ProximateTokensRule</span><span class="p">,</span> \
                <span class="s">&quot;ProximateTokensRule is an abstract base class&quot;</span>
         <span class="n">BrillRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">original_tag</span><span class="p">,</span> <span class="n">replacement_tag</span><span class="p">)</span>
@@ -287,12 +336,12 @@
 
 <span class="sd">        Each implentation of this method should correspond to an</span>
 <span class="sd">        implementation of the method with the same name in a subclass</span>
-<span class="sd">        of L{ProximateTokensTemplate}.</span>
+<span class="sd">        of ``ProximateTokensTemplate``.</span>
 
-<span class="sd">        @param token: The token</span>
-<span class="sd">        @type token: Token</span>
-<span class="sd">        @return: The property</span>
-<span class="sd">        @rtype: any</span>
+<span class="sd">        :param token: The token</span>
+<span class="sd">        :type token: str</span>
+<span class="sd">        :return: The property</span>
+<span class="sd">        :rtype: any</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">assert</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&quot;ProximateTokenRules must define extract_property()&quot;</span>
 </div>
@@ -367,7 +416,7 @@
     <span class="k">def</span> <span class="nf">_condition_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">condition</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a string representation of the given condition.</span>
-<span class="sd">        This helper method is used by L{__str__}.</span>
+<span class="sd">        This helper method is used by __str__.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">=</span> <span class="n">condition</span>
         <span class="k">return</span> <span class="p">(</span><span class="s">&#39;the </span><span class="si">%s</span><span class="s"> of </span><span class="si">%s</span><span class="s"> is </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span>
@@ -376,7 +425,7 @@
     <span class="k">def</span> <span class="nf">_range_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a string representation for the given range.  This</span>
-<span class="sd">        helper method is used by L{__str__}.</span>
+<span class="sd">        helper method is used by __str__.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">start</span> <span class="o">==</span> <span class="n">end</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="s">&#39;this word&#39;</span>
@@ -396,27 +445,27 @@
 <div class="viewcode-block" id="ProximateTagsRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTagsRule">[docs]</a><span class="k">class</span> <span class="nc">ProximateTagsRule</span><span class="p">(</span><span class="n">ProximateTokensRule</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule which examines the tags of nearby tokens.</span>
-<span class="sd">    @see: superclass L{ProximateTokensRule} for details.</span>
-<span class="sd">    @see: L{SymmetricProximateTokensTemplate}, which generates these rules.</span>
+<span class="sd">    See ``ProximateTokensRule`` for details.</span>
+<span class="sd">    Also see ``SymmetricProximateTokensTemplate`` which generates these rules.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">PROPERTY_NAME</span> <span class="o">=</span> <span class="s">&#39;tag&#39;</span> <span class="c"># for printing.</span>
     <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!ProximateTagsRule&#39;</span>
     <span class="nd">@staticmethod</span>
 <div class="viewcode-block" id="ProximateTagsRule.extract_property"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTagsRule.extract_property">[docs]</a>    <span class="k">def</span> <span class="nf">extract_property</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;@return: The given token&#39;s tag.&quot;&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;:return: The given token&#39;s tag.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">token</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 </div></div>
 <div class="viewcode-block" id="ProximateWordsRule"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateWordsRule">[docs]</a><span class="k">class</span> <span class="nc">ProximateWordsRule</span><span class="p">(</span><span class="n">ProximateTokensRule</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule which examines the base types of nearby tokens.</span>
-<span class="sd">    @see: L{ProximateTokensRule} for details.</span>
-<span class="sd">    @see: L{SymmetricProximateTokensTemplate}, which generates these rules.</span>
+<span class="sd">    See ``ProximateTokensRule`` for details.</span>
+<span class="sd">    Also see ``SymmetricProximateTokensTemplate`` which generates these rules.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">PROPERTY_NAME</span> <span class="o">=</span> <span class="s">&#39;text&#39;</span> <span class="c"># for printing.</span>
     <span class="n">yaml_tag</span> <span class="o">=</span> <span class="s">&#39;!ProximateWordsRule&#39;</span>
     <span class="nd">@staticmethod</span>
 <div class="viewcode-block" id="ProximateWordsRule.extract_property"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateWordsRule.extract_property">[docs]</a>    <span class="k">def</span> <span class="nf">extract_property</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;@return: The given token&#39;s text.&quot;&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;:return: The given token&#39;s text.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">token</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
 <span class="c">######################################################################</span>
@@ -426,8 +475,8 @@
 <div class="viewcode-block" id="BrillTemplateI"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI">[docs]</a><span class="k">class</span> <span class="nc">BrillTemplateI</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An interface for generating lists of transformational rules that</span>
-<span class="sd">    apply at given sentence positions.  C{BrillTemplateI} is used by</span>
-<span class="sd">    C{Brill} training algorithms to generate candidate rules.</span>
+<span class="sd">    apply at given sentence positions.  ``BrillTemplateI`` is used by</span>
+<span class="sd">    ``Brill`` training algorithms to generate candidate rules.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
@@ -435,69 +484,67 @@
 <div class="viewcode-block" id="BrillTemplateI.applicable_rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI.applicable_rules">[docs]</a>    <span class="k">def</span> <span class="nf">applicable_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a list of the transformational rules that would correct</span>
-<span class="sd">        the C{i}th subtoken&#39;s tag in the given token.  In particular,</span>
+<span class="sd">        the *i*th subtoken&#39;s tag in the given token.  In particular,</span>
 <span class="sd">        return a list of zero or more rules that would change</span>
-<span class="sd">        C{tagged_tokens[i][1]} to C{correctTag}, if applied</span>
-<span class="sd">        to C{token}.</span>
+<span class="sd">        *tokens*[i][1] to *correctTag*, if applied to *token*[i].</span>
 
-<span class="sd">        If the C{i}th subtoken already has the correct tag (i.e., if</span>
-<span class="sd">        C{tagged_tokens[i][1]} == C{correctTag}), then</span>
-<span class="sd">        C{applicable_rules} should return the empty list.</span>
+<span class="sd">        If the *i*th token already has the correct tag (i.e., if</span>
+<span class="sd">        tagged_tokens[i][1] == correctTag), then</span>
+<span class="sd">        ``applicable_rules()`` should return the empty list.</span>
 <span class="sd">        </span>
-<span class="sd">        @param tokens: The tagged tokens being tagged.</span>
-<span class="sd">        @type tokens: C{list} of C{tuple}</span>
-<span class="sd">        @param i: The index of the token whose tag should be corrected.</span>
-<span class="sd">        @type i: C{int}</span>
-<span class="sd">        @param correctTag: The correct tag for the C{i}th token.</span>
-<span class="sd">        @type correctTag: (any)</span>
-<span class="sd">        @rtype: C{list} of L{BrillRule}</span>
+<span class="sd">        :param tokens: The tagged tokens being tagged.</span>
+<span class="sd">        :type tokens: list(tuple)</span>
+<span class="sd">        :param i: The index of the token whose tag should be corrected.</span>
+<span class="sd">        :type i: int</span>
+<span class="sd">        :param correctTag: The correct tag for the *i*th token.</span>
+<span class="sd">        :type correctTag: any</span>
+<span class="sd">        :rtype: list(BrillRule)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
     </div>
 <div class="viewcode-block" id="BrillTemplateI.get_neighborhood"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTemplateI.get_neighborhood">[docs]</a>    <span class="k">def</span> <span class="nf">get_neighborhood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Returns the set of indices C{i} such that</span>
-<span class="sd">        C{applicable_rules(token, i, ...)} depends on the value of</span>
-<span class="sd">        the C{index}th subtoken of C{token}.</span>
+<span class="sd">        Returns the set of indices *i* such that</span>
+<span class="sd">        ``applicable_rules(token, i, ...)`` depends on the value of</span>
+<span class="sd">        the *index*th token of *token*.</span>
 
-<span class="sd">        This method is used by the \&quot;fast\&quot; Brill tagger trainer.</span>
+<span class="sd">        This method is used by the &quot;fast&quot; Brill tagger trainer.</span>
 
-<span class="sd">        @param token: The tokens being tagged.</span>
-<span class="sd">        @type token: C{list} of C{tuple}</span>
-<span class="sd">        @param index: The index whose neighborhood should be returned.</span>
-<span class="sd">        @type index: C{int}</span>
-<span class="sd">        @rtype: C{Set}</span>
+<span class="sd">        :param token: The tokens being tagged.</span>
+<span class="sd">        :type token: list(tuple)</span>
+<span class="sd">        :param index: The index whose neighborhood should be returned.</span>
+<span class="sd">        :type index: int</span>
+<span class="sd">        :rtype: set</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&quot;BrillTemplateI is an abstract interface&quot;</span>
     </div></div>
 <div class="viewcode-block" id="ProximateTokensTemplate"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.ProximateTokensTemplate">[docs]</a><span class="k">class</span> <span class="nc">ProximateTokensTemplate</span><span class="p">(</span><span class="n">BrillTemplateI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An brill templates that generates a list of</span>
-<span class="sd">    L{ProximateTokensRule}s that apply at a given sentence</span>
-<span class="sd">    position.  In particular, each C{ProximateTokensTemplate} is</span>
+<span class="sd">    A brill template that generates a list of</span>
+<span class="sd">    ``ProximateTokensRule``s that apply at a given sentence</span>
+<span class="sd">    position.  In particular, each ``ProximateTokensTemplate`` is</span>
 <span class="sd">    parameterized by a proximate token brill rule class and a list of</span>
 <span class="sd">    boundaries, and generates all rules that:</span>
 <span class="sd">    </span>
 <span class="sd">      - use the given brill rule class</span>
-<span class="sd">      - use the given list of boundaries as the C{start} and C{end}</span>
+<span class="sd">      - use the given list of boundaries as the start and end</span>
 <span class="sd">        points for their conditions</span>
 <span class="sd">      - are applicable to the given token.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a template for generating proximate token brill</span>
-<span class="sd">        rules.</span>
 
-<span class="sd">        @type rule_class: C{class}</span>
-<span class="sd">        @param rule_class: The proximate token brill rule class that</span>
+<span class="sd">    Construct a template for generating proximate token brill rules.</span>
+
+<span class="sd">    :type rule_class: class</span>
+<span class="sd">    :param rule_class: The proximate token brill rule class that</span>
 <span class="sd">        should be used to generate new rules.  This class must be a</span>
-<span class="sd">        subclass of L{ProximateTokensRule}.</span>
-<span class="sd">        @type boundaries: C{tuple} of C{(int, int)}</span>
-<span class="sd">        @param boundaries: A list of tuples C{(start, end)}, each of</span>
-<span class="sd">            which specifies a range for which a condition should be</span>
-<span class="sd">            created by each rule.</span>
-<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any boundary.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        subclass of ``ProximateTokensRule``.</span>
+<span class="sd">    :type boundaries: tuple(int, int)</span>
+<span class="sd">    :param boundaries: A list of (start, end) tuples each of</span>
+<span class="sd">        which specifies a range for which a condition should be</span>
+<span class="sd">        created by each rule.</span>
+<span class="sd">    :raise ValueError: If start&gt;end for any boundary.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rule_class</span> <span class="o">=</span> <span class="n">rule_class</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_boundaries</span> <span class="o">=</span> <span class="n">boundaries</span>
         <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">)</span> <span class="ow">in</span> <span class="n">boundaries</span><span class="p">:</span>
@@ -530,12 +577,11 @@
 </div>
     <span class="k">def</span> <span class="nf">_applicable_conditions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A set of all conditions for proximate token rules</span>
-<span class="sd">        that are applicable to C{tokens[index]}, given boundaries of</span>
-<span class="sd">        C{(start, end)}.  I.e., return a list of all tuples C{(start,</span>
-<span class="sd">        end, M{value})}, such the property value of at least one token</span>
-<span class="sd">        between M{index+start} and M{index+end} (inclusive) is</span>
-<span class="sd">        M{value}.</span>
+<span class="sd">        :return: A set of all conditions for proximate token rules</span>
+<span class="sd">        that are applicable to *tokens[index]*, given boundaries of</span>
+<span class="sd">        (start, end).  I.e., return a list of all tuples</span>
+<span class="sd">        (start, end, value), such the property value of at least one token</span>
+<span class="sd">        between *index+start* and *index+end* (inclusive) is *value*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">conditions</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">s</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="n">start</span><span class="p">)</span>
@@ -563,41 +609,41 @@
 </div></div>
 <div class="viewcode-block" id="SymmetricProximateTokensTemplate"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.SymmetricProximateTokensTemplate">[docs]</a><span class="k">class</span> <span class="nc">SymmetricProximateTokensTemplate</span><span class="p">(</span><span class="n">BrillTemplateI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Simulates two L{ProximateTokensTemplate}s which are symmetric</span>
-<span class="sd">    across the location of the token.  For rules of the form \&quot;If the</span>
-<span class="sd">    M{n}th token is tagged C{A}, and any tag preceding B{or} following</span>
-<span class="sd">    the M{n}th token by a distance between M{x} and M{y} is C{B}, and</span>
-<span class="sd">    ... , then change the tag of the nth token from C{A} to C{C}.\&quot;</span>
+<span class="sd">    Simulates two ``ProximateTokensTemplate``s which are symmetric</span>
+<span class="sd">    across the location of the token.  For rules of the form &quot;If the</span>
+<span class="sd">    *n*th token is tagged ``A``, and any tag preceding or following</span>
+<span class="sd">    the *n*th token by a distance between x and y is ``B``, and</span>
+<span class="sd">    ... , then change the tag of the *n*th token from ``A`` to ``C``.&quot;</span>
 
-<span class="sd">    One C{ProximateTokensTemplate} is formed by passing in the</span>
+<span class="sd">    One ``ProximateTokensTemplate`` is formed by passing in the</span>
 <span class="sd">    same arguments given to this class&#39;s constructor: tuples</span>
 <span class="sd">    representing intervals in which a tag may be found.  The other</span>
-<span class="sd">    C{ProximateTokensTemplate} is constructed with the negative</span>
+<span class="sd">    ``ProximateTokensTemplate`` is constructed with the negative</span>
 <span class="sd">    of all the arguments in reversed order.  For example, a</span>
-<span class="sd">    C{SymmetricProximateTokensTemplate} using the pair (-2,-1) and the</span>
-<span class="sd">    constructor C{SymmetricProximateTokensTemplate} generates the same rules as a</span>
-<span class="sd">    C{SymmetricProximateTokensTemplate} using (-2,-1) plus a second</span>
-<span class="sd">    C{SymmetricProximateTokensTemplate} using (1,2).</span>
+<span class="sd">    ``SymmetricProximateTokensTemplate`` using the pair (-2,-1) and the</span>
+<span class="sd">    constructor ``SymmetricProximateTokensTemplate`` generates the same rules as a</span>
+<span class="sd">    ``SymmetricProximateTokensTemplate`` using (-2,-1) plus a second</span>
+<span class="sd">    ``SymmetricProximateTokensTemplate`` using (1,2).</span>
 
 <span class="sd">    This is useful because we typically don&#39;t want templates to</span>
-<span class="sd">    specify only \&quot;following\&quot; or only \&quot;preceding\&quot;; we&#39;d like our</span>
+<span class="sd">    specify only &quot;following&quot; or only &quot;preceding&quot;; we&#39;d like our</span>
 <span class="sd">    rules to be able to look in either direction.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a template for generating proximate token brill</span>
-<span class="sd">        rules.</span>
+
+<span class="sd">    Construct a template for generating proximate token brill</span>
+<span class="sd">    rules.</span>
 <span class="sd">        </span>
-<span class="sd">        @type rule_class: C{class}</span>
-<span class="sd">        @param rule_class: The proximate token brill rule class that</span>
+<span class="sd">    :type rule_class: class</span>
+<span class="sd">    :param rule_class: The proximate token brill rule class that</span>
 <span class="sd">        should be used to generate new rules.  This class must be a</span>
-<span class="sd">        subclass of L{ProximateTokensRule}.</span>
-<span class="sd">        @type boundaries: C{tuple} of C{(int, int)}</span>
-<span class="sd">        @param boundaries: A list of tuples C{(start, end)}, each of</span>
-<span class="sd">            which specifies a range for which a condition should be</span>
-<span class="sd">            created by each rule.</span>
-<span class="sd">        @raise ValueError: If C{start}&gt;C{end} for any boundary.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        subclass of ``ProximateTokensRule``.</span>
+<span class="sd">    :type boundaries: tuple(int, int)</span>
+<span class="sd">    :param boundaries: A list of tuples (start, end), each of</span>
+<span class="sd">        which specifies a range for which a condition should be</span>
+<span class="sd">        created by each rule.</span>
+<span class="sd">    :raise ValueError: If start&gt;end for any boundary.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ptt1</span> <span class="o">=</span> <span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="n">boundaries</span><span class="p">)</span>
         <span class="nb">reversed</span> <span class="o">=</span> <span class="p">[(</span><span class="o">-</span><span class="n">e</span><span class="p">,</span><span class="o">-</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="n">e</span><span class="p">)</span> <span class="ow">in</span> <span class="n">boundaries</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ptt2</span> <span class="o">=</span> <span class="n">ProximateTokensTemplate</span><span class="p">(</span><span class="n">rule_class</span><span class="p">,</span> <span class="o">*</span><span class="nb">reversed</span><span class="p">)</span>
@@ -605,9 +651,9 @@
     <span class="c"># Generates lists of a subtype of ProximateTokensRule.</span>
 <div class="viewcode-block" id="SymmetricProximateTokensTemplate.applicable_rules"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.SymmetricProximateTokensTemplate.applicable_rules">[docs]</a>    <span class="k">def</span> <span class="nf">applicable_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        See L{BrillTemplateI} for full specifications.</span>
+<span class="sd">        See ``BrillTemplateI`` for full specifications.</span>
 
-<span class="sd">        @rtype: list of ProximateTokensRule</span>
+<span class="sd">        :rtype: list of ProximateTokensRule</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ptt1</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">)</span> <span class="o">+</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_ptt2</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">correctTag</span><span class="p">))</span>
@@ -625,18 +671,18 @@
 <div class="viewcode-block" id="BrillTaggerTrainer"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTaggerTrainer">[docs]</a><span class="k">class</span> <span class="nc">BrillTaggerTrainer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A trainer for brill taggers.</span>
+
+<span class="sd">    :param deterministic: If true, then choose between rules that</span>
+<span class="sd">        have the same score by picking the one whose __repr__</span>
+<span class="sd">        is lexicographically smaller.  If false, then just pick the</span>
+<span class="sd">        first rule we find with a given score -- this will depend</span>
+<span class="sd">        on the order in which keys are returned from dictionaries,</span>
+<span class="sd">        and so may not be the same from one run to the next.  If</span>
+<span class="sd">        not specified, treat as true iff trace &gt; 0.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_tagger</span><span class="p">,</span> <span class="n">templates</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
                  <span class="n">deterministic</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param deterministic: If true, then choose between rules that</span>
-<span class="sd">            have the same score by picking the one whose __repr__</span>
-<span class="sd">            is lexicographically smaller.  If false, then just pick the</span>
-<span class="sd">            first rule we find with a given score -- this will depend</span>
-<span class="sd">            on the order in which keys are returned from dictionaries,</span>
-<span class="sd">            and so may not be the same from one run to the next.  If</span>
-<span class="sd">            not specified, treat as true iff trace &gt; 0.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">deterministic</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">deterministic</span> <span class="o">=</span> <span class="p">(</span><span class="n">trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_initial_tagger</span> <span class="o">=</span> <span class="n">initial_tagger</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span> <span class="o">=</span> <span class="n">templates</span>
@@ -649,17 +695,17 @@
 
 <div class="viewcode-block" id="BrillTaggerTrainer.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.brill.BrillTaggerTrainer.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">max_rules</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">min_score</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Trains the Brill tagger on the corpus C{train_token},</span>
-<span class="sd">        producing at most C{max_rules} transformations, each of which</span>
+<span class="sd">        Trains the Brill tagger on the corpus *train_sents*,</span>
+<span class="sd">        producing at most *max_rules* transformations, each of which</span>
 <span class="sd">        reduces the net number of errors in the corpus by at least</span>
-<span class="sd">        C{min_score}.</span>
+<span class="sd">        *min_score*.</span>
 <span class="sd">        </span>
-<span class="sd">        @type train_sents: C{list} of C{list} of L{tuple}</span>
-<span class="sd">        @param train_sents: The corpus of tagged tokens</span>
-<span class="sd">        @type max_rules: C{int}</span>
-<span class="sd">        @param max_rules: The maximum number of transformations to be created</span>
-<span class="sd">        @type min_score: C{int}</span>
-<span class="sd">        @param min_score: The minimum acceptable net error reduction</span>
+<span class="sd">        :type train_sents: list(list(tuple))</span>
+<span class="sd">        :param train_sents: The corpus of tagged sentences</span>
+<span class="sd">        :type max_rules: int</span>
+<span class="sd">        :param max_rules: The maximum number of transformations to be created</span>
+<span class="sd">        :type min_score: int</span>
+<span class="sd">        :param min_score: The minimum acceptable net error reduction</span>
 <span class="sd">            that each transformation must produce in the corpus.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">print</span> <span class="p">(</span><span class="s">&quot;Training Brill tagger on </span><span class="si">%d</span><span class="s"> &quot;</span>
@@ -763,13 +809,12 @@
 
     <span class="k">def</span> <span class="nf">_find_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Find all rules that correct at least one token&#39;s tag in</span>
-<span class="sd">        C{test_sents}.</span>
+<span class="sd">        Find all rules that correct at least one token&#39;s tag in *test_sents*.</span>
 
-<span class="sd">        @return: A list of tuples C{(rule, fixscore)}, where C{rule}</span>
-<span class="sd">            is a brill rule and C{fixscore} is the number of tokens</span>
-<span class="sd">            whose tag the rule corrects.  Note that C{fixscore} does</span>
-<span class="sd">            I{not} include the number of tokens whose tags are changed</span>
+<span class="sd">        :return: A list of tuples ``(rule, fixscore)``, where rule</span>
+<span class="sd">            is a brill rule and ``fixscore`` is the number of tokens</span>
+<span class="sd">            whose tag the rule corrects.  Note that ``fixscore`` does</span>
+<span class="sd">            *not* include the number of tokens whose tags are changed</span>
 <span class="sd">            to incorrect values.        </span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
@@ -796,9 +841,9 @@
     
     <span class="k">def</span> <span class="nf">_find_rules_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_sent</span><span class="p">,</span> <span class="n">train_sent</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @rtype: C{Set}</span>
-<span class="sd">        @return: the set of all rules (based on the templates) that</span>
-<span class="sd">        correct token C{i}&#39;s tag in C{test_sent}.</span>
+<span class="sd">        :rtype: set</span>
+<span class="sd">        :return: the set of all rules (based on the templates) that</span>
+<span class="sd">            correct token *i*&#39;s tag in *test_sent*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">applicable_rules</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">test_sent</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">train_sent</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]:</span>
@@ -989,8 +1034,8 @@
         
     <span class="k">def</span> <span class="nf">_find_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">new_tag</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use the templates to find rules that apply at index C{wordnum}</span>
-<span class="sd">        in the sentence C{sent} and generate the tag C{new_tag}.</span>
+<span class="sd">        Use the templates to find rules that apply at index *wordnum*</span>
+<span class="sd">        in the sentence *sent* and generate the tag *new_tag*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_templates</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">rule</span> <span class="ow">in</span> <span class="n">template</span><span class="o">.</span><span class="n">applicable_rules</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">new_tag</span><span class="p">):</span>
@@ -999,7 +1044,7 @@
     <span class="k">def</span> <span class="nf">_update_rule_applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Update the rule data tables to reflect the fact that</span>
-<span class="sd">        C{rule} applies at the position C{(sentnum, wordnum)}.</span>
+<span class="sd">        *rule* applies at the position *(sentnum, wordnum)*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">pos</span> <span class="o">=</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span>
         
@@ -1030,8 +1075,8 @@
 
     <span class="k">def</span> <span class="nf">_update_rule_not_applies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Update the rule data tables to reflect the fact that C{rule}</span>
-<span class="sd">        does not apply at the position C{(sentnum, wordnum)}.</span>
+<span class="sd">        Update the rule data tables to reflect the fact that *rule*</span>
+<span class="sd">        does not apply at the position *(sentnum, wordnum)*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">pos</span> <span class="o">=</span> <span class="n">sentnum</span><span class="p">,</span> <span class="n">wordnum</span>
         
@@ -1057,7 +1102,7 @@
 <span class="sd">        see where it applies.  When it makes an error (decreasing its</span>
 <span class="sd">        score) it&#39;s bumped down, and we try a new rule with the</span>
 <span class="sd">        highest score.  When we find a rule which has the highest</span>
-<span class="sd">        score AND which has been tested against the entire corpus, we</span>
+<span class="sd">        score *and* which has been tested against the entire corpus, we</span>
 <span class="sd">        can conclude that it&#39;s the next best rule.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rules_by_score</span> <span class="o">==</span> <span class="p">{}:</span>
@@ -1099,8 +1144,8 @@
 
     <span class="k">def</span> <span class="nf">_apply_rule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Update C{test_sents} by applying C{rule} everywhere where its</span>
-<span class="sd">        conditions are meet.</span>
+<span class="sd">        Update *test_sents* by applying *rule* everywhere where its</span>
+<span class="sd">        conditions are met.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">update_positions</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">])</span>
         <span class="n">old_tag</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">original_tag</span>
@@ -1116,7 +1161,7 @@
     <span class="k">def</span> <span class="nf">_update_tag_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Update _tag_positions to reflect the changes to tags that are</span>
-<span class="sd">        made by C{rule}.</span>
+<span class="sd">        made by *rule*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Update the tag index.</span>
         <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_positions_by_rule</span><span class="p">[</span><span class="n">rule</span><span class="p">]:</span>
@@ -1131,7 +1176,7 @@
     <span class="k">def</span> <span class="nf">_update_rules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rule</span><span class="p">,</span> <span class="n">train_sents</span><span class="p">,</span> <span class="n">test_sents</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check if we should add or remove any rules from consideration,</span>
-<span class="sd">        given the changes made by C{rule}.</span>
+<span class="sd">        given the changes made by *rule*.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Collect a list of all positions that might be affected.</span>
         <span class="n">neighbors</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -1243,15 +1288,15 @@
 <span class="sd">    Returns a list of human-readable strings indicating the errors in the</span>
 <span class="sd">    given tagging of the corpus.</span>
 
-<span class="sd">    @param train_sents: The correct tagging of the corpus</span>
-<span class="sd">    @type train_sents: C{list} of C{tuple}</span>
-<span class="sd">    @param test_sents: The tagged corpus</span>
-<span class="sd">    @type test_sents: C{list} of C{tuple}</span>
-<span class="sd">    @param radius: How many tokens on either side of a wrongly-tagged token</span>
-<span class="sd">        to include in the error string.  For example, if C{radius}=2,</span>
+<span class="sd">    :param train_sents: The correct tagging of the corpus</span>
+<span class="sd">    :type train_sents: list(tuple)</span>
+<span class="sd">    :param test_sents: The tagged corpus</span>
+<span class="sd">    :type test_sents: list(tuple)</span>
+<span class="sd">    :param radius: How many tokens on either side of a wrongly-tagged token</span>
+<span class="sd">        to include in the error string.  For example, if radius=2,</span>
 <span class="sd">        each error string will show the incorrect token plus two</span>
 <span class="sd">        tokens on either side.</span>
-<span class="sd">    @type radius: int</span>
+<span class="sd">    :type radius: int</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">hdr</span> <span class="o">=</span> <span class="p">((</span><span class="s">&#39;</span><span class="si">%25s</span><span class="s"> | </span><span class="si">%s</span><span class="s"> | </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">26</span><span class="o">+</span><span class="s">&#39;+&#39;</span><span class="o">+</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">24</span><span class="o">+</span><span class="s">&#39;+&#39;</span><span class="o">+</span><span class="s">&#39;-&#39;</span><span class="o">*</span><span class="mi">26</span><span class="p">)</span> <span class="o">%</span>
            <span class="p">(</span><span class="s">&#39;left context&#39;</span><span class="p">,</span> <span class="s">&#39;word/test-&gt;gold&#39;</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="mi">22</span><span class="p">),</span> <span class="s">&#39;right context&#39;</span><span class="p">))</span>
@@ -1278,25 +1323,25 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Brill Tagger Demonstration</span>
 
-<span class="sd">    @param num_sents: how many sentences of training and testing data to use</span>
-<span class="sd">    @type num_sents: L{int}</span>
-<span class="sd">    @param max_rules: maximum number of rule instances to create</span>
-<span class="sd">    @type max_rules: L{int}</span>
-<span class="sd">    @param min_score: the minimum score for a rule in order for it to</span>
+<span class="sd">    :param num_sents: how many sentences of training and testing data to use</span>
+<span class="sd">    :type num_sents: int</span>
+<span class="sd">    :param max_rules: maximum number of rule instances to create</span>
+<span class="sd">    :type max_rules: int</span>
+<span class="sd">    :param min_score: the minimum score for a rule in order for it to</span>
 <span class="sd">        be considered</span>
-<span class="sd">    @type min_score: L{int}</span>
-<span class="sd">    @param error_output: the file where errors will be saved</span>
-<span class="sd">    @type error_output: C{string}</span>
-<span class="sd">    @param rule_output: the file where rules will be saved</span>
-<span class="sd">    @type rule_output: C{string}</span>
-<span class="sd">    @param randomize: whether the training data should be a random subset</span>
+<span class="sd">    :type min_score: int</span>
+<span class="sd">    :param error_output: the file where errors will be saved</span>
+<span class="sd">    :type error_output: str</span>
+<span class="sd">    :param rule_output: the file where rules will be saved</span>
+<span class="sd">    :type rule_output: str</span>
+<span class="sd">    :param randomize: whether the training data should be a random subset</span>
 <span class="sd">        of the corpus</span>
-<span class="sd">    @type randomize: boolean</span>
-<span class="sd">    @param train: the fraction of the the corpus to be used for training</span>
+<span class="sd">    :type randomize: bool</span>
+<span class="sd">    :param train: the fraction of the the corpus to be used for training</span>
 <span class="sd">        (1=all)</span>
-<span class="sd">    @type train: L{float}</span>
-<span class="sd">    @param trace: the level of diagnostic tracing output to produce (0-4)</span>
-<span class="sd">    @type trace: L{int}</span>
+<span class="sd">    :type train: float</span>
+<span class="sd">    :param trace: the level of diagnostic tracing output to produce (0-4)</span>
+<span class="sd">    :type trace: int</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span>
@@ -1370,10 +1415,11 @@
     <span class="n">error_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
     <span class="k">print</span> <span class="p">(</span><span class="s">&quot;Done; rules and errors saved to </span><span class="si">%s</span><span class="s"> and </span><span class="si">%s</span><span class="s">.&quot;</span> <span class="o">%</span>
            <span class="p">(</span><span class="n">rule_output</span><span class="p">,</span> <span class="n">error_output</span><span class="p">))</span>
+
 </div>
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">demo</span><span class="p">()</span>
-    <span class="c">#demo(num_sents=1000000, train=1.0, max_rules=10000)</span>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span>
+    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">(</span><span class="n">optionflags</span><span class="o">=</span><span class="n">doctest</span><span class="o">.</span><span class="n">NORMALIZE_WHITESPACE</span><span class="p">)</span>
 </pre></div>
 
           </div>
@@ -1414,7 +1460,7 @@
           
     <div class="footer">
         &copy; Copyright 2011, Steven Bird.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
     </div>
         </div>
         <div class="clearer"></div>
