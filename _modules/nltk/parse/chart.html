@@ -26,7 +26,7 @@
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
     <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
-    <link rel="up" title="nltk.parse" href="../parse.html" /> 
+    <link rel="up" title="Module code" href="../../index.html" /> 
   </head>
   <body>
     <div class="header-wrapper">
@@ -54,7 +54,7 @@
 <span class="c"># -*- coding: utf-8 -*-</span>
 <span class="c"># Natural Language Toolkit: A Chart Parser</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
 <span class="c">#         Jean Mark Gawron &lt;gawron@mail.sdsu.edu&gt;</span>
@@ -62,43 +62,44 @@
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 <span class="c">#</span>
-<span class="c"># $Id: chart.py 8778 2011-04-10 07:29:10Z StevenBird1 $</span>
+<span class="c"># $Id$</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Data classes and parser implementations for \&quot;chart parsers\&quot;, which</span>
-<span class="sd">use dynamic programming to efficiently parse a text.  A X{chart</span>
-<span class="sd">parser} derives parse trees for a text by iteratively adding \&quot;edges\&quot;</span>
-<span class="sd">to a \&quot;chart.\&quot;  Each X{edge} represents a hypothesis about the tree</span>
-<span class="sd">structure for a subsequence of the text.  The X{chart} is a</span>
-<span class="sd">\&quot;blackboard\&quot; for composing and combining these hypotheses.</span>
+<span class="sd">Data classes and parser implementations for &quot;chart parsers&quot;, which</span>
+<span class="sd">use dynamic programming to efficiently parse a text.  A chart</span>
+<span class="sd">parser derives parse trees for a text by iteratively adding &quot;edges&quot;</span>
+<span class="sd">to a &quot;chart.&quot;  Each edge represents a hypothesis about the tree</span>
+<span class="sd">structure for a subsequence of the text.  The chart is a</span>
+<span class="sd">&quot;blackboard&quot; for composing and combining these hypotheses.</span>
 
 <span class="sd">When a chart parser begins parsing a text, it creates a new (empty)</span>
 <span class="sd">chart, spanning the text.  It then incrementally adds new edges to the</span>
-<span class="sd">chart.  A set of X{chart rules} specifies the conditions under which</span>
+<span class="sd">chart.  A set of &quot;chart rules&quot; specifies the conditions under which</span>
 <span class="sd">new edges should be added to the chart.  Once the chart reaches a</span>
 <span class="sd">stage where none of the chart rules adds any new edges, parsing is</span>
 <span class="sd">complete.</span>
 
-<span class="sd">Charts are encoded with the L{Chart} class, and edges are encoded with</span>
-<span class="sd">the L{TreeEdge} and L{LeafEdge} classes.  The chart parser module</span>
+<span class="sd">Charts are encoded with the ``Chart`` class, and edges are encoded with</span>
+<span class="sd">the ``TreeEdge`` and ``LeafEdge`` classes.  The chart parser module</span>
 <span class="sd">defines three chart parsers:</span>
 
-<span class="sd">  - C{ChartParser} is a simple and flexible chart parser.  Given a</span>
+<span class="sd">  - ``ChartParser`` is a simple and flexible chart parser.  Given a</span>
 <span class="sd">    set of chart rules, it will apply those rules to the chart until</span>
 <span class="sd">    no more edges are added.</span>
 
-<span class="sd">  - C{SteppingChartParser} is a subclass of C{ChartParser} that can</span>
+<span class="sd">  - ``SteppingChartParser`` is a subclass of ``ChartParser`` that can</span>
 <span class="sd">    be used to step through the parsing process.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
-<span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">WeightedGrammar</span><span class="p">,</span> <span class="n">is_nonterminal</span><span class="p">,</span> <span class="n">is_terminal</span>
-<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">defaultdict</span>
-
-<span class="kn">from</span> <span class="nn">api</span> <span class="kn">import</span> <span class="o">*</span>
-
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">WeightedGrammar</span><span class="p">,</span> <span class="n">is_nonterminal</span><span class="p">,</span> <span class="n">is_terminal</span>
+
+<span class="kn">from</span> <span class="nn">nltk.parse.api</span> <span class="kn">import</span> <span class="n">ParserI</span>
+
 
 <span class="c">########################################################################</span>
 <span class="c">##  Edges</span>
@@ -110,35 +111,30 @@
 <span class="sd">    Each edge records the fact that a structure is (partially)</span>
 <span class="sd">    consistent with the sentence.  An edge contains:</span>
 
-<span class="sd">        - A X{span}, indicating what part of the sentence is</span>
-<span class="sd">          consistent with the hypothesized structure.</span>
-<span class="sd">          </span>
-<span class="sd">        - A X{left-hand side}, specifying what kind of structure is</span>
-<span class="sd">          hypothesized.</span>
+<span class="sd">    - A span, indicating what part of the sentence is</span>
+<span class="sd">      consistent with the hypothesized structure.</span>
+<span class="sd">    - A left-hand side, specifying what kind of structure is</span>
+<span class="sd">      hypothesized.</span>
+<span class="sd">    - A right-hand side, specifying the contents of the</span>
+<span class="sd">      hypothesized structure.</span>
+<span class="sd">    - A dot position, indicating how much of the hypothesized</span>
+<span class="sd">      structure is consistent with the sentence.</span>
 
-<span class="sd">        - A X{right-hand side}, specifying the contents of the</span>
-<span class="sd">          hypothesized structure.</span>
+<span class="sd">    Every edge is either complete or incomplete:</span>
 
-<span class="sd">        - A X{dot position}, indicating how much of the hypothesized</span>
-<span class="sd">          structure is consistent with the sentence.</span>
-
-<span class="sd">    Every edge is either X{complete} or X{incomplete}:</span>
-
-<span class="sd">      - An edge is X{complete} if its structure is fully consistent</span>
-<span class="sd">        with the sentence.</span>
-
-<span class="sd">      - An edge is X{incomplete} if its structure is partially</span>
-<span class="sd">        consistent with the sentence.  For every incomplete edge, the</span>
-<span class="sd">        span specifies a possible prefix for the edge&#39;s structure.</span>
+<span class="sd">    - An edge is complete if its structure is fully consistent</span>
+<span class="sd">      with the sentence.</span>
+<span class="sd">    - An edge is incomplete if its structure is partially</span>
+<span class="sd">      consistent with the sentence.  For every incomplete edge, the</span>
+<span class="sd">      span specifies a possible prefix for the edge&#39;s structure.</span>
 <span class="sd">    </span>
 <span class="sd">    There are two kinds of edge:</span>
 
-<span class="sd">        - C{TreeEdges&lt;TreeEdge&gt;} record which trees have been found to</span>
-<span class="sd">          be (partially) consistent with the text.</span>
-<span class="sd">          </span>
-<span class="sd">        - C{LeafEdges&lt;leafEdge&gt;} record the tokens occur in the text.</span>
+<span class="sd">    - A ``TreeEdge`` records which trees have been found to</span>
+<span class="sd">      be (partially) consistent with the text.</span>
+<span class="sd">    - A ``LeafEdge`` records the tokens occuring in the text.</span>
 
-<span class="sd">    The C{EdgeI} interface provides a common interface to both types</span>
+<span class="sd">    The ``EdgeI`` interface provides a common interface to both types</span>
 <span class="sd">    of edge, allowing chart parsers to treat them in a uniform manner.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -151,31 +147,35 @@
 
 <div class="viewcode-block" id="EdgeI.span"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.span">[docs]</a>    <span class="k">def</span> <span class="nf">span</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A tuple C{(s,e)}, where C{subtokens[s:e]} is the</span>
-<span class="sd">            portion of the sentence that is consistent with this</span>
-<span class="sd">            edge&#39;s structure.</span>
-<span class="sd">        @rtype: C{(int, int)}</span>
+<span class="sd">        Return a tuple ``(s, e)``, where ``tokens[s:e]`` is the</span>
+<span class="sd">        portion of the sentence that is consistent with this</span>
+<span class="sd">        edge&#39;s structure.</span>
+
+<span class="sd">        :rtype: tuple(int, int)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.start"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.start">[docs]</a>    <span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The start index of this edge&#39;s span.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return the start index of this edge&#39;s span.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.end"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.end">[docs]</a>    <span class="k">def</span> <span class="nf">end</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The end index of this edge&#39;s span.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return the end index of this edge&#39;s span.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.length"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.length">[docs]</a>    <span class="k">def</span> <span class="nf">length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The length of this edge&#39;s span.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return the length of this edge&#39;s span.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 
@@ -185,9 +185,10 @@
 </div>
 <div class="viewcode-block" id="EdgeI.lhs"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.lhs">[docs]</a>    <span class="k">def</span> <span class="nf">lhs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: This edge&#39;s left-hand side, which specifies what kind</span>
-<span class="sd">            of structure is hypothesized by this edge.</span>
-<span class="sd">        @see: L{TreeEdge} and L{LeafEdge} for a description of</span>
+<span class="sd">        Return this edge&#39;s left-hand side, which specifies what kind</span>
+<span class="sd">        of structure is hypothesized by this edge.</span>
+
+<span class="sd">        :see: ``TreeEdge`` and ``LeafEdge`` for a description of</span>
 <span class="sd">            the left-hand side values for each edge type.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
@@ -198,45 +199,49 @@
 </div>
 <div class="viewcode-block" id="EdgeI.rhs"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.rhs">[docs]</a>    <span class="k">def</span> <span class="nf">rhs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: This edge&#39;s right-hand side, which specifies</span>
-<span class="sd">            the content of the structure hypothesized by this</span>
-<span class="sd">            edge.</span>
-<span class="sd">        @see: L{TreeEdge} and L{LeafEdge} for a description of</span>
+<span class="sd">        Return this edge&#39;s right-hand side, which specifies</span>
+<span class="sd">        the content of the structure hypothesized by this edge.</span>
+
+<span class="sd">        :see: ``TreeEdge`` and ``LeafEdge`` for a description of</span>
 <span class="sd">            the right-hand side values for each edge type.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.dot"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.dot">[docs]</a>    <span class="k">def</span> <span class="nf">dot</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: This edge&#39;s dot position, which indicates how much of</span>
-<span class="sd">            the hypothesized structure is consistent with the</span>
-<span class="sd">            sentence.  In particular, C{self.rhs[:dot]} is consistent</span>
-<span class="sd">            with C{subtoks[self.start():self.end()]}.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return this edge&#39;s dot position, which indicates how much of</span>
+<span class="sd">        the hypothesized structure is consistent with the</span>
+<span class="sd">        sentence.  In particular, ``self.rhs[:dot]`` is consistent</span>
+<span class="sd">        with ``tokens[self.start():self.end()]``.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.next"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.next">[docs]</a>    <span class="k">def</span> <span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The element of this edge&#39;s right-hand side that</span>
-<span class="sd">            immediately follows its dot.</span>
-<span class="sd">        @rtype: C{Nonterminal} or X{terminal} or C{None}</span>
+<span class="sd">        Return the element of this edge&#39;s right-hand side that</span>
+<span class="sd">        immediately follows its dot.</span>
+
+<span class="sd">        :rtype: Nonterminal or terminal or None</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.is_complete"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.is_complete">[docs]</a>    <span class="k">def</span> <span class="nf">is_complete</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: True if this edge&#39;s structure is fully consistent</span>
-<span class="sd">            with the text.</span>
-<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        Return True if this edge&#39;s structure is fully consistent</span>
+<span class="sd">        with the text.</span>
+
+<span class="sd">        :rtype: bool</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="EdgeI.is_incomplete"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.EdgeI.is_incomplete">[docs]</a>    <span class="k">def</span> <span class="nf">is_incomplete</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: True if this edge&#39;s structure is partially consistent</span>
-<span class="sd">            with the text.</span>
-<span class="sd">        @rtype: C{boolean}</span>
+<span class="sd">        Return True if this edge&#39;s structure is partially consistent</span>
+<span class="sd">        with the text.</span>
+
+<span class="sd">        :rtype: bool</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;EdgeI is an abstract interface&#39;</span><span class="p">)</span>
 
@@ -254,48 +259,45 @@
 <span class="sd">    An edge that records the fact that a tree is (partially)</span>
 <span class="sd">    consistent with the sentence.  A tree edge consists of:</span>
 
-<span class="sd">        - A X{span}, indicating what part of the sentence is</span>
-<span class="sd">          consistent with the hypothesized tree.</span>
-<span class="sd">          </span>
-<span class="sd">        - A X{left-hand side}, specifying the hypothesized tree&#39;s node</span>
-<span class="sd">          value.</span>
+<span class="sd">    - A span, indicating what part of the sentence is</span>
+<span class="sd">      consistent with the hypothesized tree.</span>
+<span class="sd">    - A left-hand side, specifying the hypothesized tree&#39;s node</span>
+<span class="sd">      value.</span>
+<span class="sd">    - A right-hand side, specifying the hypothesized tree&#39;s</span>
+<span class="sd">      children.  Each element of the right-hand side is either a</span>
+<span class="sd">      terminal, specifying a token with that terminal as its leaf</span>
+<span class="sd">      value; or a nonterminal, specifying a subtree with that</span>
+<span class="sd">      nonterminal&#39;s symbol as its node value.</span>
+<span class="sd">    - A dot position, indicating which children are consistent</span>
+<span class="sd">      with part of the sentence.  In particular, if ``dot`` is the</span>
+<span class="sd">      dot position, ``rhs`` is the right-hand size, ``(start,end)``</span>
+<span class="sd">      is the span, and ``sentence`` is the list of tokens in the</span>
+<span class="sd">      sentence, then ``tokens[start:end]`` can be spanned by the</span>
+<span class="sd">      children specified by ``rhs[:dot]``.</span>
 
-<span class="sd">        - A X{right-hand side}, specifying the hypothesized tree&#39;s</span>
-<span class="sd">          children.  Each element of the right-hand side is either a</span>
-<span class="sd">          terminal, specifying a token with that terminal as its leaf</span>
-<span class="sd">          value; or a nonterminal, specifying a subtree with that</span>
-<span class="sd">          nonterminal&#39;s symbol as its node value.</span>
-
-<span class="sd">        - A X{dot position}, indicating which children are consistent</span>
-<span class="sd">          with part of the sentence.  In particular, if C{dot} is the</span>
-<span class="sd">          dot position, C{rhs} is the right-hand size, C{(start,end)}</span>
-<span class="sd">          is the span, and C{sentence} is the list of subtokens in the</span>
-<span class="sd">          sentence, then C{subtokens[start:end]} can be spanned by the</span>
-<span class="sd">          children specified by C{rhs[:dot]}.</span>
-
-<span class="sd">    For more information about edges, see the L{EdgeI} interface.</span>
+<span class="sd">    For more information about edges, see the ``EdgeI`` interface.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">dot</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a new C{TreeEdge}.</span>
+<span class="sd">        Construct a new ``TreeEdge``.</span>
 <span class="sd">        </span>
-<span class="sd">        @type span: C{(int, int)}</span>
-<span class="sd">        @param span: A tuple C{(s,e)}, where C{subtokens[s:e]} is the</span>
+<span class="sd">        :type span: tuple(int, int)</span>
+<span class="sd">        :param span: A tuple ``(s, e)``, where ``tokens[s:e]`` is the</span>
 <span class="sd">            portion of the sentence that is consistent with the new</span>
 <span class="sd">            edge&#39;s structure.</span>
-<span class="sd">        @type lhs: L{Nonterminal}</span>
-<span class="sd">        @param lhs: The new edge&#39;s left-hand side, specifying the</span>
+<span class="sd">        :type lhs: Nonterminal</span>
+<span class="sd">        :param lhs: The new edge&#39;s left-hand side, specifying the</span>
 <span class="sd">            hypothesized tree&#39;s node value.</span>
-<span class="sd">        @type rhs: C{list} of (L{Nonterminal} and C{string})</span>
-<span class="sd">        @param rhs: The new edge&#39;s right-hand side, specifying the</span>
+<span class="sd">        :type rhs: list(Nonterminal and str)</span>
+<span class="sd">        :param rhs: The new edge&#39;s right-hand side, specifying the</span>
 <span class="sd">            hypothesized tree&#39;s children.</span>
-<span class="sd">        @type dot: C{int}</span>
-<span class="sd">        @param dot: The position of the new edge&#39;s dot.  This position</span>
+<span class="sd">        :type dot: int</span>
+<span class="sd">        :param dot: The position of the new edge&#39;s dot.  This position</span>
 <span class="sd">            specifies what prefix of the production&#39;s right hand side</span>
 <span class="sd">            is consistent with the text.  In particular, if</span>
-<span class="sd">            C{sentence} is the list of subtokens in the sentence, then</span>
-<span class="sd">            C{subtokens[span[0]:span[1]]} can be spanned by the</span>
-<span class="sd">            children specified by C{rhs[:dot]}.</span>
+<span class="sd">            ``sentence`` is the list of tokens in the sentence, then</span>
+<span class="sd">            ``okens[span[0]:span[1]]`` can be spanned by the</span>
+<span class="sd">            children specified by ``rhs[:dot]``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span> <span class="o">=</span> <span class="n">lhs</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs</span><span class="p">)</span>
@@ -305,11 +307,12 @@
     <span class="c"># [staticmethod]</span>
 <div class="viewcode-block" id="TreeEdge.from_production"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TreeEdge.from_production">[docs]</a>    <span class="k">def</span> <span class="nf">from_production</span><span class="p">(</span><span class="n">production</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A new C{TreeEdge} formed from the given production.</span>
-<span class="sd">            The new edge&#39;s left-hand side and right-hand side will</span>
-<span class="sd">            be taken from C{production}; its span will be </span>
-<span class="sd">            C{(index,index)}; and its dot position will be C{0}.</span>
-<span class="sd">        @rtype: L{TreeEdge}</span>
+<span class="sd">        Return a new ``TreeEdge`` formed from the given production.</span>
+<span class="sd">        The new edge&#39;s left-hand side and right-hand side will</span>
+<span class="sd">        be taken from ``production``; its span will be </span>
+<span class="sd">        ``(index,index)``; and its dot position will be ``0``.</span>
+
+<span class="sd">        :rtype: TreeEdge</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">TreeEdge</span><span class="p">(</span><span class="n">span</span><span class="o">=</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">index</span><span class="p">),</span> <span class="n">lhs</span><span class="o">=</span><span class="n">production</span><span class="o">.</span><span class="n">lhs</span><span class="p">(),</span>
                         <span class="n">rhs</span><span class="o">=</span><span class="n">production</span><span class="o">.</span><span class="n">rhs</span><span class="p">(),</span> <span class="n">dot</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
@@ -317,12 +320,13 @@
 
 <div class="viewcode-block" id="TreeEdge.move_dot_forward"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TreeEdge.move_dot_forward">[docs]</a>    <span class="k">def</span> <span class="nf">move_dot_forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_end</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A new C{TreeEdge} formed from this edge.</span>
-<span class="sd">            The new edge&#39;s dot position is increased by C{1}, </span>
-<span class="sd">            and its end index will be replaced by C{new_end}.</span>
-<span class="sd">        @rtype: L{TreeEdge}</span>
-<span class="sd">        @param new_end: The new end index.</span>
-<span class="sd">        @type new_end: C{int}</span>
+<span class="sd">        Return a new ``TreeEdge`` formed from this edge.</span>
+<span class="sd">        The new edge&#39;s dot position is increased by ``1``, </span>
+<span class="sd">        and its end index will be replaced by ``new_end``.</span>
+
+<span class="sd">        :param new_end: The new end index.</span>
+<span class="sd">        :type new_end: int</span>
+<span class="sd">        :rtype: TreeEdge</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">TreeEdge</span><span class="p">(</span><span class="n">span</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_span</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">new_end</span><span class="p">),</span>
                         <span class="n">lhs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_rhs</span><span class="p">,</span>
@@ -369,20 +373,20 @@
 <span class="sd">    An edge that records the fact that a leaf value is consistent with</span>
 <span class="sd">    a word in the sentence.  A leaf edge consists of:</span>
 
-<span class="sd">      - An X{index}, indicating the position of the word.</span>
-<span class="sd">      - A X{leaf}, specifying the word&#39;s content.</span>
+<span class="sd">    - An index, indicating the position of the word.</span>
+<span class="sd">    - A leaf, specifying the word&#39;s content.</span>
 
 <span class="sd">    A leaf edge&#39;s left-hand side is its leaf value, and its right hand</span>
-<span class="sd">    side is C{()}.  Its span is C{[index, index+1]}, and its dot</span>
-<span class="sd">    position is C{0}.</span>
+<span class="sd">    side is ``()``.  Its span is ``[index, index+1]``, and its dot</span>
+<span class="sd">    position is ``0``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">leaf</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a new C{LeafEdge}.</span>
+<span class="sd">        Construct a new ``LeafEdge``.</span>
 
-<span class="sd">        @param leaf: The new edge&#39;s leaf value, specifying the word</span>
+<span class="sd">        :param leaf: The new edge&#39;s leaf value, specifying the word</span>
 <span class="sd">            that is recorded by this edge.</span>
-<span class="sd">        @param index: The new edge&#39;s index, specifying the position of</span>
+<span class="sd">        :param index: The new edge&#39;s index, specifying the position of</span>
 <span class="sd">            the word that is recorded by this edge.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_leaf</span> <span class="o">=</span> <span class="n">leaf</span>
@@ -424,24 +428,24 @@
 <span class="sd">    a single hypothesis about the structure of some portion of the</span>
 <span class="sd">    sentence.</span>
 
-<span class="sd">    The L{select} method can be used to select a specific collection</span>
-<span class="sd">    of edges.  For example C{chart.select(is_complete=True, start=0)}</span>
+<span class="sd">    The ``select`` method can be used to select a specific collection</span>
+<span class="sd">    of edges.  For example ``chart.select(is_complete=True, start=0)``</span>
 <span class="sd">    yields all complete edges whose start indices are 0.  To ensure</span>
-<span class="sd">    the efficiency of these selection operations, C{Chart} dynamically</span>
+<span class="sd">    the efficiency of these selection operations, ``Chart`` dynamically</span>
 <span class="sd">    creates and maintains an index for each set of attributes that</span>
 <span class="sd">    have been selected on.</span>
 
 <span class="sd">    In order to reconstruct the trees that are represented by an edge,</span>
 <span class="sd">    the chart associates each edge with a set of child pointer lists.</span>
-<span class="sd">    A X{child pointer list} is a list of the edges that license an</span>
+<span class="sd">    A child pointer list is a list of the edges that license an</span>
 <span class="sd">    edge&#39;s right-hand side.</span>
 
-<span class="sd">    @ivar _tokens: The sentence that the chart covers.</span>
-<span class="sd">    @ivar _num_leaves: The number of tokens.</span>
-<span class="sd">    @ivar _edges: A list of the edges in the chart</span>
-<span class="sd">    @ivar _edge_to_cpls: A dictionary mapping each edge to a set</span>
+<span class="sd">    :ivar _tokens: The sentence that the chart covers.</span>
+<span class="sd">    :ivar _num_leaves: The number of tokens.</span>
+<span class="sd">    :ivar _edges: A list of the edges in the chart</span>
+<span class="sd">    :ivar _edge_to_cpls: A dictionary mapping each edge to a set</span>
 <span class="sd">        of child pointer lists that are associated with that edge.</span>
-<span class="sd">    @ivar _indexes: A dictionary mapping tuples of edge attributes</span>
+<span class="sd">    :ivar _indexes: A dictionary mapping tuples of edge attributes</span>
 <span class="sd">        to indices, where each index maps the corresponding edge</span>
 <span class="sd">        attribute values to lists of edges.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -450,8 +454,8 @@
 <span class="sd">        Construct a new chart. The chart is initialized with the </span>
 <span class="sd">        leaf edges corresponding to the terminal leaves.</span>
 
-<span class="sd">        @type tokens: L{list}</span>
-<span class="sd">        @param tokens: The sentence that this chart will be used to parse.</span>
+<span class="sd">        :type tokens: list</span>
+<span class="sd">        :param tokens: The sentence that this chart will be used to parse.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Record the sentence token and the sentence length.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_tokens</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
@@ -480,23 +484,26 @@
 </div>
 <div class="viewcode-block" id="Chart.num_leaves"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.num_leaves">[docs]</a>    <span class="k">def</span> <span class="nf">num_leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The number of words in this chart&#39;s sentence.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return the number of words in this chart&#39;s sentence.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_leaves</span>
 </div>
 <div class="viewcode-block" id="Chart.leaf"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.leaf">[docs]</a>    <span class="k">def</span> <span class="nf">leaf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The leaf value of the word at the given index.</span>
-<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        Return the leaf value of the word at the given index.</span>
+
+<span class="sd">        :rtype: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tokens</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
 </div>
 <div class="viewcode-block" id="Chart.leaves"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.leaves">[docs]</a>    <span class="k">def</span> <span class="nf">leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A list of the leaf values of each word in the</span>
-<span class="sd">            chart&#39;s sentence.</span>
-<span class="sd">        @rtype: C{list} of C{string}</span>
+<span class="sd">        Return a list of the leaf values of each word in the</span>
+<span class="sd">        chart&#39;s sentence.</span>
+
+<span class="sd">        :rtype: list(str)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tokens</span>
 
@@ -506,22 +513,23 @@
 </div>
 <div class="viewcode-block" id="Chart.edges"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.edges">[docs]</a>    <span class="k">def</span> <span class="nf">edges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A list of all edges in this chart.  New edges</span>
-<span class="sd">            that are added to the chart after the call to edges()</span>
-<span class="sd">            will I{not} be contained in this list.</span>
-<span class="sd">        @rtype: C{list} of L{EdgeI}</span>
-<span class="sd">        @see: L{iteredges}, L{select}</span>
+<span class="sd">        Return a list of all edges in this chart.  New edges</span>
+<span class="sd">        that are added to the chart after the call to edges()</span>
+<span class="sd">        will *not* be contained in this list.</span>
+
+<span class="sd">        :rtype: list(EdgeI)</span>
+<span class="sd">        :see: ``iteredges``, ``select``</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edges</span><span class="p">[:]</span>
 </div>
 <div class="viewcode-block" id="Chart.iteredges"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.iteredges">[docs]</a>    <span class="k">def</span> <span class="nf">iteredges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: An iterator over the edges in this chart.  It is </span>
-<span class="sd">            I{not} guaranteed that new edges which are added to the </span>
-<span class="sd">            chart before the iterator is exhausted will also be  </span>
-<span class="sd">            generated.</span>
-<span class="sd">        @rtype: C{iter} of L{EdgeI}</span>
-<span class="sd">        @see: L{edges}, L{select}</span>
+<span class="sd">        Return an iterator over the edges in this chart.  It is </span>
+<span class="sd">        not guaranteed that new edges which are added to the </span>
+<span class="sd">        chart before the iterator is exhausted will also be generated.</span>
+
+<span class="sd">        :rtype: iter(EdgeI)</span>
+<span class="sd">        :see: ``edges``, ``select``</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_edges</span><span class="p">)</span>
 
@@ -530,32 +538,33 @@
 
 <div class="viewcode-block" id="Chart.num_edges"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.num_edges">[docs]</a>    <span class="k">def</span> <span class="nf">num_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The number of edges contained in this chart.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        Return the number of edges contained in this chart.</span>
+
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_edge_to_cpls</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="Chart.select"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">restrictions</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: An iterator over the edges in this chart.  Any</span>
-<span class="sd">            new edges that are added to the chart before the iterator</span>
-<span class="sd">            is exahusted will also be generated.  C{restrictions}</span>
-<span class="sd">            can be used to restrict the set of edges that will be</span>
-<span class="sd">            generated.</span>
-<span class="sd">        @rtype: C{iter} of L{EdgeI}</span>
+<span class="sd">        Return an iterator over the edges in this chart.  Any</span>
+<span class="sd">        new edges that are added to the chart before the iterator</span>
+<span class="sd">        is exahusted will also be generated.  ``restrictions``</span>
+<span class="sd">        can be used to restrict the set of edges that will be</span>
+<span class="sd">        generated.</span>
 
-<span class="sd">        @kwarg span: Only generate edges C{e} where C{e.span()==span}</span>
-<span class="sd">        @kwarg start: Only generate edges C{e} where C{e.start()==start}</span>
-<span class="sd">        @kwarg end: Only generate edges C{e} where C{e.end()==end}</span>
-<span class="sd">        @kwarg length: Only generate edges C{e} where C{e.length()==length}</span>
-<span class="sd">        @kwarg lhs: Only generate edges C{e} where C{e.lhs()==lhs}</span>
-<span class="sd">        @kwarg rhs: Only generate edges C{e} where C{e.rhs()==rhs}</span>
-<span class="sd">        @kwarg next: Only generate edges C{e} where C{e.next()==next}</span>
-<span class="sd">        @kwarg dot: Only generate edges C{e} where C{e.dot()==dot}</span>
-<span class="sd">        @kwarg is_complete: Only generate edges C{e} where</span>
-<span class="sd">            C{e.is_complete()==is_complete}</span>
-<span class="sd">        @kwarg is_incomplete: Only generate edges C{e} where</span>
-<span class="sd">            C{e.is_incomplete()==is_incomplete}</span>
+<span class="sd">        :param span: Only generate edges ``e`` where ``e.span()==span``</span>
+<span class="sd">        :param start: Only generate edges ``e`` where ``e.start()==start``</span>
+<span class="sd">        :param end: Only generate edges ``e`` where ``e.end()==end``</span>
+<span class="sd">        :param length: Only generate edges ``e`` where ``e.length()==length``</span>
+<span class="sd">        :param lhs: Only generate edges ``e`` where ``e.lhs()==lhs``</span>
+<span class="sd">        :param rhs: Only generate edges ``e`` where ``e.rhs()==rhs``</span>
+<span class="sd">        :param next: Only generate edges ``e`` where ``e.next()==next``</span>
+<span class="sd">        :param dot: Only generate edges ``e`` where ``e.dot()==dot``</span>
+<span class="sd">        :param is_complete: Only generate edges ``e`` where</span>
+<span class="sd">            ``e.is_complete()==is_complete``</span>
+<span class="sd">        :param is_incomplete: Only generate edges ``e`` where</span>
+<span class="sd">            ``e.is_incomplete()==is_incomplete``</span>
+<span class="sd">        :rtype: iter(EdgeI)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># If there are no restrictions, then return all edges.</span>
         <span class="k">if</span> <span class="n">restrictions</span><span class="o">==</span><span class="p">{}:</span> <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_edges</span><span class="p">)</span>
@@ -574,7 +583,7 @@
     </div>
     <span class="k">def</span> <span class="nf">_add_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">restr_keys</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        A helper function for L{select}, which creates a new index for</span>
+<span class="sd">        A helper function for ``select``, which creates a new index for</span>
 <span class="sd">        a given set of attributes (aka restriction keys).</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Make sure it&#39;s a valid index.</span>
@@ -592,7 +601,7 @@
     
     <span class="k">def</span> <span class="nf">_register_with_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        A helper function for L{insert}, which registers the new</span>
+<span class="sd">        A helper function for ``insert``, which registers the new</span>
 <span class="sd">        edge with all existing indexes.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="p">(</span><span class="n">restr_keys</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indexes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -613,19 +622,18 @@
 </div>
 <div class="viewcode-block" id="Chart.insert"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.insert">[docs]</a>    <span class="k">def</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">,</span> <span class="o">*</span><span class="n">child_pointer_lists</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Add a new edge to the chart.</span>
+<span class="sd">        Add a new edge to the chart, and return True if this operation</span>
+<span class="sd">        modified the chart.  In particular, return true iff the chart</span>
+<span class="sd">        did not already contain ``edge``, or if it did not already associate</span>
+<span class="sd">        ``child_pointer_lists`` with ``edge``.</span>
 
-<span class="sd">        @type edge: L{EdgeI}</span>
-<span class="sd">        @param edge: The new edge</span>
-<span class="sd">        @type child_pointer_lists: C(sequence} of C{tuple} of L{EdgeI} </span>
-<span class="sd">        @param child_pointer_lists: A sequence of lists of the edges that </span>
+<span class="sd">        :type edge: EdgeI</span>
+<span class="sd">        :param edge: The new edge</span>
+<span class="sd">        :type child_pointer_lists: sequence of tuple(EdgeI)</span>
+<span class="sd">        :param child_pointer_lists: A sequence of lists of the edges that </span>
 <span class="sd">            were used to form this edge.  This list is used to reconstruct </span>
-<span class="sd">            the trees (or partial trees) that are associated with C{edge}.</span>
-<span class="sd">        @rtype: C{bool}</span>
-<span class="sd">        @return: True if this operation modified the chart.  In</span>
-<span class="sd">            particular, return true iff the chart did not already</span>
-<span class="sd">            contain C{edge}, or if it did not already associate</span>
-<span class="sd">            C{child_pointer_lists} with C{edge}.</span>
+<span class="sd">            the trees (or partial trees) that are associated with ``edge``.</span>
+<span class="sd">        :rtype: bool</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Is it a new edge?</span>
         <span class="k">if</span> <span class="n">edge</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edge_to_cpls</span><span class="p">:</span>
@@ -654,8 +662,8 @@
 
 <div class="viewcode-block" id="Chart.parses"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.parses">[docs]</a>    <span class="k">def</span> <span class="nf">parses</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">tree_class</span><span class="o">=</span><span class="n">Tree</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A list of the complete tree structures that span</span>
-<span class="sd">        the entire chart, and whose root node is C{root}.</span>
+<span class="sd">        Return a list of the complete tree structures that span</span>
+<span class="sd">        the entire chart, and whose root node is ``root``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">trees</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_leaves</span><span class="p">,</span> <span class="n">lhs</span><span class="o">=</span><span class="n">root</span><span class="p">):</span>
@@ -664,16 +672,16 @@
 </div>
 <div class="viewcode-block" id="Chart.trees"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.trees">[docs]</a>    <span class="k">def</span> <span class="nf">trees</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">,</span> <span class="n">tree_class</span><span class="o">=</span><span class="n">Tree</span><span class="p">,</span> <span class="n">complete</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A list of the tree structures that are associated</span>
-<span class="sd">        with C{edge}.</span>
+<span class="sd">        Return a list of the tree structures that are associated</span>
+<span class="sd">        with ``edge``.</span>
 
-<span class="sd">        If C{edge} is incomplete, then the unexpanded children will be</span>
+<span class="sd">        If ``edge`` is incomplete, then the unexpanded children will be</span>
 <span class="sd">        encoded as childless subtrees, whose node value is the</span>
 <span class="sd">        corresponding terminal or nonterminal.</span>
 <span class="sd">            </span>
-<span class="sd">        @rtype: C{list} of L{Tree}</span>
-<span class="sd">        @note: If two trees share a common subtree, then the same</span>
-<span class="sd">            C{Tree} may be used to encode that subtree in</span>
+<span class="sd">        :rtype: list(Tree)</span>
+<span class="sd">        :note: If two trees share a common subtree, then the same</span>
+<span class="sd">            Tree may be used to encode that subtree in</span>
 <span class="sd">            both trees.  If you need to eliminate this subtree</span>
 <span class="sd">            sharing, then create a deep copy of each tree.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -681,8 +689,9 @@
 </div>
     <span class="k">def</span> <span class="nf">_trees</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">,</span> <span class="n">complete</span><span class="p">,</span> <span class="n">memo</span><span class="p">,</span> <span class="n">tree_class</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        A helper function for L{trees}.</span>
-<span class="sd">        @param memo: A dictionary used to record the trees that we&#39;ve</span>
+<span class="sd">        A helper function for ``trees``.</span>
+
+<span class="sd">        :param memo: A dictionary used to record the trees that we&#39;ve</span>
 <span class="sd">            generated for each edge, so that when we see an edge more</span>
 <span class="sd">            than once, we can reuse the same trees.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -738,12 +747,12 @@
 
     <span class="k">def</span> <span class="nf">_choose_children</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">child_choices</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        A helper function for L{_trees} that finds the possible sets</span>
+<span class="sd">        A helper function for ``_trees`` that finds the possible sets</span>
 <span class="sd">        of subtrees for a new tree.</span>
 <span class="sd">        </span>
-<span class="sd">        @param child_choices: A list that specifies the options for</span>
-<span class="sd">        each child.  In particular, C{child_choices[i]} is a list of</span>
-<span class="sd">        tokens and subtrees that can be used as the C{i}th child.</span>
+<span class="sd">        :param child_choices: A list that specifies the options for</span>
+<span class="sd">            each child.  In particular, ``child_choices[i]`` is a list of</span>
+<span class="sd">            tokens and subtrees that can be used as the ``i``th child.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">children_lists</span> <span class="o">=</span> <span class="p">[[]]</span>
         <span class="k">for</span> <span class="n">child_choice</span> <span class="ow">in</span> <span class="n">child_choices</span><span class="p">:</span>
@@ -763,10 +772,11 @@
     
 <div class="viewcode-block" id="Chart.child_pointer_lists"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.child_pointer_lists">[docs]</a>    <span class="k">def</span> <span class="nf">child_pointer_lists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @rtype: C{list} of C{list} of C{EdgeI}</span>
-<span class="sd">        @return: The set of child pointer lists for the given edge.</span>
-<span class="sd">            Each child pointer list is a list of edges that have</span>
-<span class="sd">            been used to form this edge.</span>
+<span class="sd">        Return the set of child pointer lists for the given edge.</span>
+<span class="sd">        Each child pointer list is a list of edges that have</span>
+<span class="sd">        been used to form this edge.</span>
+
+<span class="sd">        :rtype: list(list(EdgeI))</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Make a copy, in case they modify it.</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edge_to_cpls</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
@@ -776,10 +786,11 @@
     <span class="c">#////////////////////////////////////////////////////////////</span></div>
 <div class="viewcode-block" id="Chart.pp_edge"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.pp_edge">[docs]</a>    <span class="k">def</span> <span class="nf">pp_edge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A pretty-printed string representation of a given edge</span>
-<span class="sd">            in this chart.</span>
-<span class="sd">        @rtype: C{string}</span>
-<span class="sd">        @param width: The number of characters allotted to each</span>
+<span class="sd">        Return a pretty-printed string representation of a given edge</span>
+<span class="sd">        in this chart.</span>
+
+<span class="sd">        :rtype: str</span>
+<span class="sd">        :param width: The number of characters allotted to each</span>
 <span class="sd">            index in the sentence.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">width</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">width</span> <span class="o">=</span> <span class="mi">50</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
@@ -806,9 +817,9 @@
 </div>
 <div class="viewcode-block" id="Chart.pp_leaves"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.pp_leaves">[docs]</a>    <span class="k">def</span> <span class="nf">pp_leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A pretty-printed string representation of this</span>
-<span class="sd">            chart&#39;s leaves.  This string can be used as a header</span>
-<span class="sd">            for calls to L{pp_edge}.</span>
+<span class="sd">        Return a pretty-printed string representation of this</span>
+<span class="sd">        chart&#39;s leaves.  This string can be used as a header</span>
+<span class="sd">        for calls to ``pp_edge``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">width</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">width</span> <span class="o">=</span> <span class="mi">50</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
         
@@ -824,10 +835,11 @@
 </div>
 <div class="viewcode-block" id="Chart.pp"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.Chart.pp">[docs]</a>    <span class="k">def</span> <span class="nf">pp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A pretty-printed string representation of this chart.</span>
-<span class="sd">        @rtype: C{string}</span>
-<span class="sd">        @param width: The number of characters allotted to each</span>
+<span class="sd">        Return a pretty-printed string representation of this chart.</span>
+
+<span class="sd">        :param width: The number of characters allotted to each</span>
 <span class="sd">            index in the sentence.</span>
+<span class="sd">        :rtype: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">width</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">width</span> <span class="o">=</span> <span class="mi">50</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
         <span class="c"># sort edges: primary key=length, secondary key=start index.</span>
@@ -902,85 +914,82 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule that specifies what new edges are licensed by any given set</span>
 <span class="sd">    of existing edges.  Each chart rule expects a fixed number of</span>
-<span class="sd">    edges, as indicated by the class variable L{NUM_EDGES}.  In</span>
+<span class="sd">    edges, as indicated by the class variable ``NUM_EDGES``.  In</span>
 <span class="sd">    particular:</span>
 <span class="sd">    </span>
-<span class="sd">      - A chart rule with C{NUM_EDGES=0} specifies what new edges are</span>
-<span class="sd">        licensed, regardless of existing edges.</span>
-
-<span class="sd">      - A chart rule with C{NUM_EDGES=1} specifies what new edges are</span>
-<span class="sd">        licensed by a single existing edge.</span>
-
-<span class="sd">      - A chart rule with C{NUM_EDGES=2} specifies what new edges are</span>
-<span class="sd">        licensed by a pair of existing edges.</span>
+<span class="sd">    - A chart rule with ``NUM_EDGES=0`` specifies what new edges are</span>
+<span class="sd">      licensed, regardless of existing edges.</span>
+<span class="sd">    - A chart rule with ``NUM_EDGES=1`` specifies what new edges are</span>
+<span class="sd">      licensed by a single existing edge.</span>
+<span class="sd">    - A chart rule with ``NUM_EDGES=2`` specifies what new edges are</span>
+<span class="sd">      licensed by a pair of existing edges.</span>
 <span class="sd">      </span>
-<span class="sd">    @type NUM_EDGES: C{int}</span>
-<span class="sd">    @cvar NUM_EDGES: The number of existing edges that this rule uses</span>
+<span class="sd">    :type NUM_EDGES: int</span>
+<span class="sd">    :cvar NUM_EDGES: The number of existing edges that this rule uses</span>
 <span class="sd">        to license new edges.  Typically, this number ranges from zero</span>
 <span class="sd">        to two.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 <div class="viewcode-block" id="ChartRuleI.apply"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartRuleI.apply">[docs]</a>    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">*</span><span class="n">edges</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Add the edges licensed by this rule and the given edges to the</span>
-<span class="sd">        chart.</span>
+<span class="sd">        chart.  Return a list of the edges that were added.</span>
 
-<span class="sd">        @type edges: C{list} of L{EdgeI}</span>
-<span class="sd">        @param edges: A set of existing edges.  The number of edges</span>
-<span class="sd">            that should be passed to C{apply} is specified by the</span>
-<span class="sd">            L{NUM_EDGES} class variable.</span>
-<span class="sd">        @rtype: C{list} of L{EdgeI}</span>
-<span class="sd">        @return: A list of the edges that were added.</span>
+<span class="sd">        :type edges: list(EdgeI)</span>
+<span class="sd">        :param edges: A set of existing edges.  The number of edges</span>
+<span class="sd">            that should be passed to ``apply`` is specified by the</span>
+<span class="sd">            ``NUM_EDGES`` class variable.</span>
+<span class="sd">        :rtype: list(EdgeI)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&#39;ChartRuleI is an abstract interface&#39;</span>
 </div>
 <div class="viewcode-block" id="ChartRuleI.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartRuleI.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">*</span><span class="n">edges</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A generator that will add edges licensed by this rule</span>
-<span class="sd">            and the given edges to the chart, one at a time.  Each</span>
-<span class="sd">            time the generator is resumed, it will either add a new</span>
-<span class="sd">            edge and yield that edge; or return.</span>
-<span class="sd">        @rtype: C{iter} of L{EdgeI}</span>
-<span class="sd">        </span>
-<span class="sd">        @type edges: C{list} of L{EdgeI}</span>
-<span class="sd">        @param edges: A set of existing edges.  The number of edges</span>
-<span class="sd">            that should be passed to C{apply} is specified by the</span>
-<span class="sd">            L{NUM_EDGES} class variable.</span>
+<span class="sd">        Return a generator that will add edges licensed by this rule</span>
+<span class="sd">        and the given edges to the chart, one at a time.  Each</span>
+<span class="sd">        time the generator is resumed, it will either add a new</span>
+<span class="sd">        edge and yield that edge; or return.</span>
+
+<span class="sd">        :type edges: list(EdgeI)</span>
+<span class="sd">        :param edges: A set of existing edges.  The number of edges</span>
+<span class="sd">            that should be passed to ``apply()`` is specified by the</span>
+<span class="sd">            ``NUM_EDGES`` class variable.</span>
+<span class="sd">        :rtype: iter(EdgeI)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&#39;ChartRuleI is an abstract interface&#39;</span>
 </div>
 <div class="viewcode-block" id="ChartRuleI.apply_everywhere"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartRuleI.apply_everywhere">[docs]</a>    <span class="k">def</span> <span class="nf">apply_everywhere</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Add all the edges licensed by this rule and the edges in the</span>
-<span class="sd">        chart to the chart.</span>
+<span class="sd">        chart to the chart.  Return a list of the edges that were added.</span>
 <span class="sd">        </span>
-<span class="sd">        @rtype: C{list} of L{EdgeI}</span>
-<span class="sd">        @return: A list of the edges that were added.</span>
+<span class="sd">        :rtype: list(EdgeI)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&#39;ChartRuleI is an abstract interface&#39;</span>
 </div>
 <div class="viewcode-block" id="ChartRuleI.apply_everywhere_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartRuleI.apply_everywhere_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_everywhere_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A generator that will add all edges licensed by</span>
-<span class="sd">            this rule, given the edges that are currently in the</span>
-<span class="sd">            chart, one at a time.  Each time the generator is resumed,</span>
-<span class="sd">            it will either add a new edge and yield that edge; or</span>
-<span class="sd">            return.</span>
-<span class="sd">        @rtype: C{iter} of L{EdgeI}</span>
+<span class="sd">        Return a generator that will add all edges licensed by</span>
+<span class="sd">        this rule, given the edges that are currently in the</span>
+<span class="sd">        chart, one at a time.  Each time the generator is resumed,</span>
+<span class="sd">        it will either add a new edge and yield that edge; or return.</span>
+
+<span class="sd">        :rtype: iter(EdgeI)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="s">&#39;ChartRuleI is an abstract interface&#39;</span>
         </div></div>
 <div class="viewcode-block" id="AbstractChartRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.AbstractChartRule">[docs]</a><span class="k">class</span> <span class="nc">AbstractChartRule</span><span class="p">(</span><span class="n">ChartRuleI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An abstract base class for chart rules.  C{AbstractChartRule}</span>
+<span class="sd">    An abstract base class for chart rules.  ``AbstractChartRule``</span>
 <span class="sd">    provides:</span>
-<span class="sd">      - A default implementation for C{apply}, based on C{apply_iter}.</span>
-<span class="sd">      - A default implementation for C{apply_everywhere_iter},</span>
-<span class="sd">        based on C{apply_iter}.</span>
-<span class="sd">      - A default implementation for C{apply_everywhere}, based on</span>
-<span class="sd">        C{apply_everywhere_iter}.  Currently, this implementation</span>
-<span class="sd">        assumes that C{NUM_EDGES}&lt;=3.</span>
-<span class="sd">      - A default implementation for C{__str__}, which returns a</span>
-<span class="sd">        name basd on the rule&#39;s class name.</span>
+
+<span class="sd">    - A default implementation for ``apply``, based on ``apply_iter``.</span>
+<span class="sd">    - A default implementation for ``apply_everywhere_iter``,</span>
+<span class="sd">      based on ``apply_iter``.</span>
+<span class="sd">    - A default implementation for ``apply_everywhere``, based on</span>
+<span class="sd">      ``apply_everywhere_iter``.  Currently, this implementation</span>
+<span class="sd">      assumes that ``NUM_EDGES``&lt;=3.</span>
+<span class="sd">    - A default implementation for ``__str__``, which returns a</span>
+<span class="sd">      name basd on the rule&#39;s class name.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="c"># Subclasses must define apply_iter.</span>
@@ -1035,12 +1044,14 @@
 <div class="viewcode-block" id="FundamentalRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.FundamentalRule">[docs]</a><span class="k">class</span> <span class="nc">FundamentalRule</span><span class="p">(</span><span class="n">AbstractChartRule</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule that joins two adjacent edges to form a single combined</span>
-<span class="sd">    edge.  In particular, this rule specifies that any pair of edges:</span>
+<span class="sd">    edge.  In particular, this rule specifies that any pair of edges</span>
 <span class="sd">    </span>
-<span class="sd">        - [A S{-&gt;} S{alpha} * B S{beta}][i:j]</span>
-<span class="sd">        - [B S{-&gt;} S{gamma} *][j:k]</span>
+<span class="sd">    - ``[A -&gt; alpha \* B beta][i:j]``</span>
+<span class="sd">    - ``[B -&gt; gamma \*][j:k]``</span>
+
 <span class="sd">    licenses the edge:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} B * S{beta}][i:j]</span>
+
+<span class="sd">    - ``[A -&gt; alpha B * beta][i:j]``</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">2</span>
 <div class="viewcode-block" id="FundamentalRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.FundamentalRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">left_edge</span><span class="p">,</span> <span class="n">right_edge</span><span class="p">):</span>
@@ -1063,13 +1074,17 @@
 <span class="sd">    A rule that joins a given edge with adjacent edges in the chart,</span>
 <span class="sd">    to form combined edges.  In particular, this rule specifies that</span>
 <span class="sd">    either of the edges:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} * B S{beta}][i:j]</span>
-<span class="sd">        - [B S{-&gt;} S{gamma} *][j:k]</span>
+
+<span class="sd">    - ``[A -&gt; alpha \* B beta][i:j]``</span>
+<span class="sd">    - ``[B -&gt; gamma \*][j:k]``</span>
+
 <span class="sd">    licenses the edge:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} B * S{beta}][i:j]</span>
+
+<span class="sd">    - ``[A -&gt; alpha B * beta][i:j]``</span>
+
 <span class="sd">    if the other edge is already in the chart.</span>
 <span class="sd">    </span>
-<span class="sd">    @note: This is basically L{FundamentalRule}, with one edge left</span>
+<span class="sd">    :note: This is basically ``FundamentalRule``, with one edge left</span>
 <span class="sd">        unspecified.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">1</span>
@@ -1117,10 +1132,9 @@
 <div class="viewcode-block" id="TopDownInitRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TopDownInitRule">[docs]</a><span class="k">class</span> <span class="nc">TopDownInitRule</span><span class="p">(</span><span class="n">AbstractChartRule</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule licensing edges corresponding to the grammar productions for</span>
-<span class="sd">    the grammar&#39;s start symbol.  In particular, this rule specifies that:</span>
-<span class="sd">        - [S S{-&gt;} * S{alpha}][0:i]</span>
-<span class="sd">    is licensed for each grammar production C{S S{-&gt;} S{alpha}}, where</span>
-<span class="sd">    C{S} is the grammar&#39;s start symbol.</span>
+<span class="sd">    the grammar&#39;s start symbol.  In particular, this rule specifies that</span>
+<span class="sd">    ``[S -&gt; \* alpha][0:i]`` is licensed for each grammar production</span>
+<span class="sd">    ``S -&gt; alpha``, where ``S`` is the grammar&#39;s start symbol.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">0</span>
 <div class="viewcode-block" id="TopDownInitRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TopDownInitRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">):</span>
@@ -1133,13 +1147,11 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule licensing edges corresponding to the grammar productions</span>
 <span class="sd">    for the nonterminal following an incomplete edge&#39;s dot.  In</span>
-<span class="sd">    particular, this rule specifies that:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} * B S{beta}][i:j]</span>
-<span class="sd">    licenses the edge:</span>
-<span class="sd">        - [B S{-&gt;} * S{gamma}][j:j]</span>
-<span class="sd">    for each grammar production C{B S{-&gt;} S{gamma}}.</span>
+<span class="sd">    particular, this rule specifies that</span>
+<span class="sd">    ``[A -&gt; alpha \* B beta][i:j]`` licenses the edge</span>
+<span class="sd">    ``[B -&gt; \* gamma][j:j]`` for each grammar production ``B -&gt; gamma``.</span>
 <span class="sd">    </span>
-<span class="sd">    @note: This rule corresponds to the Predictor Rule in Earley parsing.</span>
+<span class="sd">    :note: This rule corresponds to the Predictor Rule in Earley parsing.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">1</span>
 <div class="viewcode-block" id="TopDownPredictRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TopDownPredictRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
@@ -1151,12 +1163,12 @@
 </div></div>
 <div class="viewcode-block" id="CachedTopDownPredictRule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.CachedTopDownPredictRule">[docs]</a><span class="k">class</span> <span class="nc">CachedTopDownPredictRule</span><span class="p">(</span><span class="n">TopDownPredictRule</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A cached version of L{TopDownPredictRule}.  After the first time</span>
-<span class="sd">    this rule is applied to an edge with a given C{end} and C{next},</span>
-<span class="sd">    it will not generate any more edges for edges with that C{end} and</span>
-<span class="sd">    C{next}.</span>
+<span class="sd">    A cached version of ``TopDownPredictRule``.  After the first time</span>
+<span class="sd">    this rule is applied to an edge with a given ``end`` and ``next``,</span>
+<span class="sd">    it will not generate any more edges for edges with that ``end`` and</span>
+<span class="sd">    ``next``.</span>
 <span class="sd">    </span>
-<span class="sd">    If C{chart} or C{grammar} are changed, then the cache is flushed.</span>
+<span class="sd">    If ``chart`` or ``grammar`` are changed, then the cache is flushed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">TopDownPredictRule</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
@@ -1197,11 +1209,8 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule licensing any edge corresponding to a production whose</span>
 <span class="sd">    right-hand side begins with a complete edge&#39;s left-hand side.  In</span>
-<span class="sd">    particular, this rule specifies that:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} *]</span>
-<span class="sd">    licenses the edge:</span>
-<span class="sd">        - [B S{-&gt;} * A S{beta}]</span>
-<span class="sd">    for each grammar production C{B S{-&gt;} A S{beta}}.</span>
+<span class="sd">    particular, this rule specifies that ``[A -&gt; alpha \*]`` licenses</span>
+<span class="sd">    the edge ``[B -&gt; \* A beta]`` for each grammar production ``B -&gt; A beta``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">1</span>
 <div class="viewcode-block" id="BottomUpPredictRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.BottomUpPredictRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
@@ -1215,14 +1224,12 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A rule licensing any edge corresponding to a production whose</span>
 <span class="sd">    right-hand side begins with a complete edge&#39;s left-hand side.  In</span>
-<span class="sd">    particular, this rule specifies that:</span>
-<span class="sd">        - [A S{-&gt;} S{alpha} *]</span>
-<span class="sd">    licenses the edge:</span>
-<span class="sd">        - [B S{-&gt;} A * S{beta}]</span>
-<span class="sd">    for each grammar production C{B S{-&gt;} A S{beta}}.</span>
+<span class="sd">    particular, this rule specifies that ``[A -&gt; alpha \*]``</span>
+<span class="sd">    licenses the edge ``[B -&gt; A \* beta]`` for each grammar</span>
+<span class="sd">    production ``B -&gt; A beta``.</span>
 <span class="sd">    </span>
-<span class="sd">    @note: This is like L{BottomUpPredictRule}, but it also applies</span>
-<span class="sd">    the L{FundamentalRule} to the resulting edge.</span>
+<span class="sd">    :note: This is like ``BottomUpPredictRule``, but it also applies</span>
+<span class="sd">        the ``FundamentalRule`` to the resulting edge.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">NUM_EDGES</span> <span class="o">=</span> <span class="mi">1</span>
 <div class="viewcode-block" id="BottomUpPredictCombineRule.apply_iter"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.BottomUpPredictCombineRule.apply_iter">[docs]</a>    <span class="k">def</span> <span class="nf">apply_iter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">edge</span><span class="p">):</span>
@@ -1318,40 +1325,40 @@
 
 <div class="viewcode-block" id="ChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartParser">[docs]</a><span class="k">class</span> <span class="nc">ChartParser</span><span class="p">(</span><span class="n">ParserI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A generic chart parser.  A X{strategy}, or list of</span>
-<span class="sd">    L{ChartRules&lt;ChartRuleI&gt;}, is used to decide what edges to add to</span>
-<span class="sd">    the chart.  In particular, C{ChartParser} uses the following</span>
+<span class="sd">    A generic chart parser.  A &quot;strategy&quot;, or list of</span>
+<span class="sd">    ``ChartRuleI`` instances, is used to decide what edges to add to</span>
+<span class="sd">    the chart.  In particular, ``ChartParser`` uses the following</span>
 <span class="sd">    algorithm to parse texts:</span>
 
-<span class="sd">        - Until no new edges are added:</span>
-<span class="sd">          - For each I{rule} in I{strategy}:</span>
-<span class="sd">            - Apply I{rule} to any applicable edges in the chart.</span>
-<span class="sd">        - Return any complete parses in the chart</span>
+<span class="sd">    | Until no new edges are added:</span>
+<span class="sd">    |   For each *rule* in *strategy*:</span>
+<span class="sd">    |     Apply *rule* to any applicable edges in the chart.</span>
+<span class="sd">    | Return any complete parses in the chart</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">strategy</span><span class="o">=</span><span class="n">BU_LC_STRATEGY</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> 
                  <span class="n">trace_chart_width</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">use_agenda</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">chart_class</span><span class="o">=</span><span class="n">Chart</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Create a new chart parser, that uses C{grammar} to parse</span>
+<span class="sd">        Create a new chart parser, that uses ``grammar`` to parse</span>
 <span class="sd">        texts.</span>
 
-<span class="sd">        @type grammar: L{ContextFreeGrammar}</span>
-<span class="sd">        @param grammar: The grammar used to parse texts.</span>
-<span class="sd">        @type strategy: C{list} of L{ChartRuleI}</span>
-<span class="sd">        @param strategy: A list of rules that should be used to decide</span>
+<span class="sd">        :type grammar: ContextFreeGrammar</span>
+<span class="sd">        :param grammar: The grammar used to parse texts.</span>
+<span class="sd">        :type strategy: list(ChartRuleI)</span>
+<span class="sd">        :param strategy: A list of rules that should be used to decide</span>
 <span class="sd">            what edges to add to the chart (top-down strategy by default).</span>
-<span class="sd">        @type trace: C{int}</span>
-<span class="sd">        @param trace: The level of tracing that should be used when</span>
-<span class="sd">            parsing a text.  C{0} will generate no tracing output;</span>
+<span class="sd">        :type trace: int</span>
+<span class="sd">        :param trace: The level of tracing that should be used when</span>
+<span class="sd">            parsing a text.  ``0`` will generate no tracing output;</span>
 <span class="sd">            and higher numbers will produce more verbose tracing</span>
 <span class="sd">            output.</span>
-<span class="sd">        @type trace_chart_width: C{int}</span>
-<span class="sd">        @param trace_chart_width: The default total width reserved for </span>
+<span class="sd">        :type trace_chart_width: int</span>
+<span class="sd">        :param trace_chart_width: The default total width reserved for </span>
 <span class="sd">            the chart in trace output.  The remainder of each line will </span>
 <span class="sd">            be used to display edges. </span>
-<span class="sd">        @type use_agenda: C{bool}</span>
-<span class="sd">        @param use_agenda: Use an optimized agenda-based algorithm, </span>
+<span class="sd">        :type use_agenda: bool</span>
+<span class="sd">        :param use_agenda: Use an optimized agenda-based algorithm, </span>
 <span class="sd">            if possible. </span>
-<span class="sd">        @param chart_class: The class that should be used to create</span>
+<span class="sd">        :param chart_class: The class that should be used to create</span>
 <span class="sd">            the parse charts.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">grammar</span>
@@ -1387,12 +1394,12 @@
 
 <div class="viewcode-block" id="ChartParser.chart_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.ChartParser.chart_parse">[docs]</a>    <span class="k">def</span> <span class="nf">chart_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The final parse L{Chart}, </span>
-<span class="sd">        from which all possible parse trees can be extracted.</span>
+<span class="sd">        Return the final parse ``Chart`` from which all possible</span>
+<span class="sd">        parse trees can be extracted.</span>
 <span class="sd">        </span>
-<span class="sd">        @param tokens: The sentence to be parsed</span>
-<span class="sd">        @type tokens: L{list} of L{string}</span>
-<span class="sd">        @rtype: L{Chart}</span>
+<span class="sd">        :param tokens: The sentence to be parsed</span>
+<span class="sd">        :type tokens: list(str)</span>
+<span class="sd">        :rtype: Chart</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">trace</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">trace</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace</span>
         <span class="n">trace_new_edges</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trace_new_edges</span>
@@ -1446,16 +1453,16 @@
 </div></div>
 <div class="viewcode-block" id="TopDownChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.TopDownChartParser">[docs]</a><span class="k">class</span> <span class="nc">TopDownChartParser</span><span class="p">(</span><span class="n">ChartParser</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A L{ChartParser} using a top-down parsing strategy.</span>
-<span class="sd">    See L{ChartParser} for more information.</span>
+<span class="sd">    A ``ChartParser`` using a top-down parsing strategy.</span>
+<span class="sd">    See ``ChartParser`` for more information.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span> 
         <span class="n">ChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">TD_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="BottomUpChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.BottomUpChartParser">[docs]</a><span class="k">class</span> <span class="nc">BottomUpChartParser</span><span class="p">(</span><span class="n">ChartParser</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A L{ChartParser} using a bottom-up parsing strategy.</span>
-<span class="sd">    See L{ChartParser} for more information.</span>
+<span class="sd">    A ``ChartParser`` using a bottom-up parsing strategy.</span>
+<span class="sd">    See ``ChartParser`` for more information.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span> 
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">grammar</span><span class="p">,</span> <span class="n">WeightedGrammar</span><span class="p">):</span>
@@ -1466,9 +1473,9 @@
 </div>
 <div class="viewcode-block" id="BottomUpLeftCornerChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.BottomUpLeftCornerChartParser">[docs]</a><span class="k">class</span> <span class="nc">BottomUpLeftCornerChartParser</span><span class="p">(</span><span class="n">ChartParser</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A L{ChartParser} using a bottom-up left-corner parsing strategy.</span>
+<span class="sd">    A ``ChartParser`` using a bottom-up left-corner parsing strategy.</span>
 <span class="sd">    This strategy is often more efficient than standard bottom-up.</span>
-<span class="sd">    See L{ChartParser} for more information.</span>
+<span class="sd">    See ``ChartParser`` for more information.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">):</span> 
         <span class="n">ChartParser</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">BU_LC_STRATEGY</span><span class="p">,</span> <span class="o">**</span><span class="n">parser_args</span><span class="p">)</span>
@@ -1486,18 +1493,18 @@
 </div>
 <div class="viewcode-block" id="SteppingChartParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser">[docs]</a><span class="k">class</span> <span class="nc">SteppingChartParser</span><span class="p">(</span><span class="n">ChartParser</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A C{ChartParser} that allows you to step through the parsing</span>
+<span class="sd">    A ``ChartParser`` that allows you to step through the parsing</span>
 <span class="sd">    process, adding a single edge at a time.  It also allows you to</span>
 <span class="sd">    change the parser&#39;s strategy or grammar midway through parsing a</span>
 <span class="sd">    text.</span>
 
-<span class="sd">    The C{initialize} method is used to start parsing a text.  C{step}</span>
-<span class="sd">    adds a single edge to the chart.  C{set_strategy} changes the</span>
-<span class="sd">    strategy used by the chart parser.  C{parses} returns the set of</span>
+<span class="sd">    The ``initialize`` method is used to start parsing a text.  ``step``</span>
+<span class="sd">    adds a single edge to the chart.  ``set_strategy`` changes the</span>
+<span class="sd">    strategy used by the chart parser.  ``parses`` returns the set of</span>
 <span class="sd">    parses that has been found by the chart parser.</span>
 
-<span class="sd">    @ivar _restart: Records whether the parser&#39;s strategy, grammar,</span>
-<span class="sd">        or chart has been changed.  If so, then L{step} must restart</span>
+<span class="sd">    :ivar _restart: Records whether the parser&#39;s strategy, grammar,</span>
+<span class="sd">        or chart has been changed.  If so, then ``step`` must restart</span>
 <span class="sd">        the parsing algorithm.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">grammar</span><span class="p">,</span> <span class="n">strategy</span><span class="o">=</span><span class="p">[],</span> <span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
@@ -1521,10 +1528,10 @@
 </div>
 <div class="viewcode-block" id="SteppingChartParser.step"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.step">[docs]</a>    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A generator that adds edges to the chart, one at a</span>
+<span class="sd">        Return a generator that adds edges to the chart, one at a</span>
 <span class="sd">        time.  Each time the generator is resumed, it adds a single</span>
 <span class="sd">        edge and yields that edge.  If no more edges can be added,</span>
-<span class="sd">        then it yields C{None}.</span>
+<span class="sd">        then it yields None.</span>
 
 <span class="sd">        If the parser&#39;s strategy, grammar, or chart is changed, then</span>
 <span class="sd">        the generator will continue adding edges using the new</span>
@@ -1532,7 +1539,7 @@
 
 <span class="sd">        Note that this generator never terminates, since the grammar</span>
 <span class="sd">        or strategy might be changed to values that would add new</span>
-<span class="sd">        edges.  Instead, it yields C{None} when no more edges can be</span>
+<span class="sd">        edges.  Instead, it yields None when no more edges can be</span>
 <span class="sd">        added with the current strategy and grammar.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
@@ -1552,7 +1559,7 @@
     <span class="k">def</span> <span class="nf">_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A generator that implements the actual parsing algorithm.</span>
-<span class="sd">        L{step} iterates through this generator, and restarts it</span>
+<span class="sd">        ``step`` iterates through this generator, and restarts it</span>
 <span class="sd">        whenever the parser&#39;s strategy, grammar, or chart is modified.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">chart</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span>
@@ -1571,23 +1578,23 @@
     <span class="c">#////////////////////////////////////////////////////////////</span>
 
 <div class="viewcode-block" id="SteppingChartParser.strategy"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.strategy">[docs]</a>    <span class="k">def</span> <span class="nf">strategy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="s">&quot;@return: The strategy used by this parser.&quot;</span>
+        <span class="s">&quot;Return the strategy used by this parser.&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy</span>
 </div>
 <div class="viewcode-block" id="SteppingChartParser.grammar"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.grammar">[docs]</a>    <span class="k">def</span> <span class="nf">grammar</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="s">&quot;@return: The grammar used by this parser.&quot;</span>
+        <span class="s">&quot;Return the grammar used by this parser.&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span>
 </div>
 <div class="viewcode-block" id="SteppingChartParser.chart"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.chart">[docs]</a>    <span class="k">def</span> <span class="nf">chart</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="s">&quot;@return: The chart that is used by this parser.&quot;</span>
+        <span class="s">&quot;Return the chart that is used by this parser.&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span>
 </div>
 <div class="viewcode-block" id="SteppingChartParser.current_chartrule"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.current_chartrule">[docs]</a>    <span class="k">def</span> <span class="nf">current_chartrule</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="s">&quot;@return: The chart rule used to generate the most recent edge.&quot;</span>
+        <span class="s">&quot;Return the chart rule used to generate the most recent edge.&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_chartrule</span>
 </div>
 <div class="viewcode-block" id="SteppingChartParser.parses"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.chart.SteppingChartParser.parses">[docs]</a>    <span class="k">def</span> <span class="nf">parses</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree_class</span><span class="o">=</span><span class="n">Tree</span><span class="p">):</span>
-        <span class="s">&quot;@return: The parse trees currently contained in the chart.&quot;</span>
+        <span class="s">&quot;Return the parse trees currently contained in the chart.&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span><span class="o">.</span><span class="n">parses</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">start</span><span class="p">(),</span> <span class="n">tree_class</span><span class="p">)</span>
     
     <span class="c">#////////////////////////////////////////////////////////////</span>
@@ -1598,8 +1605,9 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Change the startegy that the parser uses to decide which edges</span>
 <span class="sd">        to add to the chart.</span>
-<span class="sd">        @type strategy: C{list} of L{ChartRuleI}</span>
-<span class="sd">        @param strategy: A list of rules that should be used to decide</span>
+
+<span class="sd">        :type strategy: list(ChartRuleI)</span>
+<span class="sd">        :param strategy: A list of rules that should be used to decide</span>
 <span class="sd">            what edges to add to the chart.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">strategy</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy</span><span class="p">:</span> <span class="k">return</span>
@@ -1712,7 +1720,7 @@
                   <span class="s">&#39;3&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s">&#39;Bottom-up left-corner&#39;</span><span class="p">,</span> <span class="n">BU_LC_STRATEGY</span><span class="p">),</span>
                   <span class="s">&#39;4&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s">&#39;Filtered left-corner&#39;</span><span class="p">,</span> <span class="n">LC_STRATEGY</span><span class="p">)}</span>
     <span class="n">choices</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">if</span> <span class="n">strategies</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">choice</span><span class="p">):</span> <span class="n">choices</span> <span class="o">=</span> <span class="p">[</span><span class="n">choice</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">choice</span> <span class="ow">in</span> <span class="n">strategies</span><span class="p">:</span> <span class="n">choices</span> <span class="o">=</span> <span class="p">[</span><span class="n">choice</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">choice</span><span class="o">==</span><span class="s">&#39;6&#39;</span><span class="p">:</span> <span class="n">choices</span> <span class="o">=</span> <span class="s">&quot;1234&quot;</span>
 
     <span class="c"># Run the requested chart parser(s), except the stepping parser.</span>
@@ -1810,7 +1818,7 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2011, Steven Bird.
+        &copy; Copyright 2012, NLTK Project.
       Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
     </div>
         </div>

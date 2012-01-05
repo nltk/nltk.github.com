@@ -53,14 +53,12 @@
   <h1>Source code for nltk.app.chartparser_app</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Chart Parser Application</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#         Jean Mark Gawron &lt;gawron@mail.sdsu.edu&gt;</span>
 <span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
-<span class="c">#</span>
-<span class="c"># $Id: chartparser_app.py 8730 2011-03-08 04:49:46Z StevenBird1 $</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">A graphical tool for exploring chart parsing.</span>
@@ -70,7 +68,7 @@
 <span class="sd">constituents.  Each hypothesis is represented by a single &quot;edge&quot; on</span>
 <span class="sd">the chart.  A set of &quot;chart rules&quot; determine when new edges can be</span>
 <span class="sd">added to the chart.  This set of rules controls the overall behavior</span>
-<span class="sd">of the parser (e.g., whether it parses top-down or bottom-up).</span>
+<span class="sd">of the parser (e.g. whether it parses top-down or bottom-up).</span>
 
 <span class="sd">The chart parsing tool demonstrates the process of parsing a single</span>
 <span class="sd">sentence, with a given grammar and lexicon.  Its display is divided</span>
@@ -83,7 +81,7 @@
 <span class="sd">The chart parsing tool allows for flexible control of the parsing</span>
 <span class="sd">algorithm.  At each step of the algorithm, you can select which rule</span>
 <span class="sd">or strategy you wish to apply.  This allows you to experiment with</span>
-<span class="sd">mixing different strategies (e.g., top-down and bottom-up).  You can</span>
+<span class="sd">mixing different strategies (e.g. top-down and bottom-up).  You can</span>
 <span class="sd">exercise fine-grained control over the algorithm by selecting which</span>
 <span class="sd">edge you wish to apply a rule to.</span>
 <span class="sd">&quot;&quot;&quot;</span>
@@ -97,14 +95,19 @@
 <span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">string</span>
 <span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">tkFont</span><span class="o">,</span> <span class="nn">tkMessageBox</span>
 
-<span class="kn">from</span> <span class="nn">nltk.parse.chart</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nltk.parse.chart</span> <span class="kn">import</span> <span class="p">(</span><span class="n">BottomUpPredictCombineRule</span><span class="p">,</span> <span class="n">BottomUpPredictRule</span><span class="p">,</span>
+                              <span class="n">Chart</span><span class="p">,</span> <span class="n">LeafEdge</span><span class="p">,</span> <span class="n">LeafInitRule</span><span class="p">,</span> <span class="n">SingleEdgeFundamentalRule</span><span class="p">,</span>
+                              <span class="n">SteppingChartParser</span><span class="p">,</span> <span class="n">TopDownInitRule</span><span class="p">,</span> <span class="n">TopDownPredictRule</span><span class="p">,</span>
+                              <span class="n">TreeEdge</span><span class="p">)</span>
 <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
 <span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">Nonterminal</span><span class="p">,</span> <span class="n">parse_cfg</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">in_idle</span>
-<span class="kn">from</span> <span class="nn">nltk.draw.util</span> <span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span> <span class="nn">nltk.draw.cfg</span> <span class="kn">import</span> <span class="n">CFGEditor</span>
-<span class="kn">from</span> <span class="nn">nltk.draw.tree</span> <span class="kn">import</span> <span class="n">tree_to_treesegment</span><span class="p">,</span> <span class="n">TreeSegmentWidget</span>
+<span class="kn">from</span> <span class="nn">nltk.draw.util</span> <span class="kn">import</span> <span class="p">(</span><span class="n">CanvasFrame</span><span class="p">,</span> <span class="n">ColorizedList</span><span class="p">,</span>
+                            <span class="n">EntryDialog</span><span class="p">,</span> <span class="n">MutableOptionMenu</span><span class="p">,</span>
+                            <span class="n">ShowText</span><span class="p">,</span> <span class="n">SymbolWidget</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">nltk.draw</span> <span class="kn">import</span> <span class="n">CFGEditor</span><span class="p">,</span> <span class="n">tree_to_treesegment</span><span class="p">,</span> <span class="n">TreeSegmentWidget</span>
 
 <span class="c"># Known bug: ChartView doesn&#39;t handle edges generated by epsilon</span>
 <span class="c"># productions (e.g., [Production: PP -&gt; ]) very well.</span>
@@ -264,7 +267,7 @@
             <span class="k">except</span><span class="p">:</span> <span class="k">pass</span>
 
     <span class="k">def</span> <span class="nf">_fire_callbacks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">event</span><span class="p">):</span> <span class="k">return</span>
+        <span class="k">if</span> <span class="n">event</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="p">:</span> <span class="k">return</span>
         <span class="k">for</span> <span class="n">cb_func</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="p">[</span><span class="n">event</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span> <span class="n">cb_func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">select_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">):</span>
@@ -510,29 +513,29 @@
 <span class="k">class</span> <span class="nc">ChartComparer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="sd">    @ivar _root: The root window</span>
+<span class="sd">    :ivar _root: The root window</span>
 
-<span class="sd">    @ivar _charts: A dictionary mapping names to charts.  When </span>
+<span class="sd">    :ivar _charts: A dictionary mapping names to charts.  When </span>
 <span class="sd">        charts are loaded, they are added to this dictionary.</span>
 <span class="sd">    </span>
-<span class="sd">    @ivar _left_chart: The left L{Chart}.</span>
-<span class="sd">    @ivar _left_name: The name C{_left_chart} (derived from filename)</span>
-<span class="sd">    @ivar _left_matrix: The L{ChartMatrixView} for C{_left_chart}</span>
-<span class="sd">    @ivar _left_selector: The drop-down C{MutableOptionsMenu} used</span>
-<span class="sd">          to select C{_left_chart}.</span>
+<span class="sd">    :ivar _left_chart: The left ``Chart``.</span>
+<span class="sd">    :ivar _left_name: The name ``_left_chart`` (derived from filename)</span>
+<span class="sd">    :ivar _left_matrix: The ``ChartMatrixView`` for ``_left_chart``</span>
+<span class="sd">    :ivar _left_selector: The drop-down ``MutableOptionsMenu`` used</span>
+<span class="sd">          to select ``_left_chart``.</span>
 <span class="sd">    </span>
-<span class="sd">    @ivar _right_chart: The right L{Chart}.</span>
-<span class="sd">    @ivar _right_name: The name C{_right_chart} (derived from filename)</span>
-<span class="sd">    @ivar _right_matrix: The L{ChartMatrixView} for C{_right_chart}</span>
-<span class="sd">    @ivar _right_selector: The drop-down C{MutableOptionsMenu} used</span>
-<span class="sd">          to select C{_right_chart}.</span>
+<span class="sd">    :ivar _right_chart: The right ``Chart``.</span>
+<span class="sd">    :ivar _right_name: The name ``_right_chart`` (derived from filename)</span>
+<span class="sd">    :ivar _right_matrix: The ``ChartMatrixView`` for ``_right_chart``</span>
+<span class="sd">    :ivar _right_selector: The drop-down ``MutableOptionsMenu`` used</span>
+<span class="sd">          to select ``_right_chart``.</span>
 <span class="sd">    </span>
-<span class="sd">    @ivar _out_chart: The out L{Chart}.</span>
-<span class="sd">    @ivar _out_name: The name C{_out_chart} (derived from filename)</span>
-<span class="sd">    @ivar _out_matrix: The L{ChartMatrixView} for C{_out_chart}</span>
-<span class="sd">    @ivar _out_label: The label for C{_out_chart}.</span>
+<span class="sd">    :ivar _out_chart: The out ``Chart``.</span>
+<span class="sd">    :ivar _out_name: The name ``_out_chart`` (derived from filename)</span>
+<span class="sd">    :ivar _out_matrix: The ``ChartMatrixView`` for ``_out_chart``</span>
+<span class="sd">    :ivar _out_label: The label for ``_out_chart``.</span>
 
-<span class="sd">    @ivar _op_label: A Label containing the most recent operation.</span>
+<span class="sd">    :ivar _op_label: A Label containing the most recent operation.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">_OPSYMBOL</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;-&#39;</span><span class="p">:</span> <span class="s">&#39;-&#39;</span><span class="p">,</span>
@@ -891,48 +894,48 @@
 
 <span class="k">class</span> <span class="nc">ChartView</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A component for viewing charts.  This is used by C{ChartParserApp} to</span>
+<span class="sd">    A component for viewing charts.  This is used by ``ChartParserApp`` to</span>
 <span class="sd">    allow students to interactively experiment with various chart</span>
-<span class="sd">    parsing techniques.  It is also used by C{Chart.draw()}.</span>
+<span class="sd">    parsing techniques.  It is also used by ``Chart.draw()``.</span>
 
-<span class="sd">    @ivar _chart: The chart that we are giving a view of.  This chart</span>
+<span class="sd">    :ivar _chart: The chart that we are giving a view of.  This chart</span>
 <span class="sd">       may be modified; after it is modified, you should call</span>
-<span class="sd">       C{update}.</span>
-<span class="sd">    @ivar _sentence: The list of tokens that the chart spans.</span>
+<span class="sd">       ``update``.</span>
+<span class="sd">    :ivar _sentence: The list of tokens that the chart spans.</span>
 
-<span class="sd">    @ivar _root: The root window.</span>
-<span class="sd">    @ivar _chart_canvas: The canvas we&#39;re using to display the chart</span>
+<span class="sd">    :ivar _root: The root window.</span>
+<span class="sd">    :ivar _chart_canvas: The canvas we&#39;re using to display the chart</span>
 <span class="sd">        itself. </span>
-<span class="sd">    @ivar _tree_canvas: The canvas we&#39;re using to display the tree</span>
+<span class="sd">    :ivar _tree_canvas: The canvas we&#39;re using to display the tree</span>
 <span class="sd">        that each edge spans.  May be None, if we&#39;re not displaying</span>
 <span class="sd">        trees. </span>
-<span class="sd">    @ivar _sentence_canvas: The canvas we&#39;re using to display the sentence</span>
+<span class="sd">    :ivar _sentence_canvas: The canvas we&#39;re using to display the sentence</span>
 <span class="sd">        text.  May be None, if we&#39;re not displaying the sentence text.</span>
-<span class="sd">    @ivar _edgetags: A dictionary mapping from edges to the tags of</span>
+<span class="sd">    :ivar _edgetags: A dictionary mapping from edges to the tags of</span>
 <span class="sd">        the canvas elements (lines, etc) used to display that edge.</span>
 <span class="sd">        The values of this dictionary have the form </span>
-<span class="sd">        C{(linetag, rhstag1, dottag, rhstag2, lhstag)}.</span>
-<span class="sd">    @ivar _treetags: A list of all the tags that make up the tree;</span>
+<span class="sd">        ``(linetag, rhstag1, dottag, rhstag2, lhstag)``.</span>
+<span class="sd">    :ivar _treetags: A list of all the tags that make up the tree;</span>
 <span class="sd">        used to erase the tree (without erasing the loclines).</span>
-<span class="sd">    @ivar _chart_height: The height of the chart canvas.</span>
-<span class="sd">    @ivar _sentence_height: The height of the sentence canvas.</span>
-<span class="sd">    @ivar _tree_height: The height of the tree</span>
+<span class="sd">    :ivar _chart_height: The height of the chart canvas.</span>
+<span class="sd">    :ivar _sentence_height: The height of the sentence canvas.</span>
+<span class="sd">    :ivar _tree_height: The height of the tree</span>
 
-<span class="sd">    @ivar _text_height: The height of a text string (in the normal</span>
+<span class="sd">    :ivar _text_height: The height of a text string (in the normal</span>
 <span class="sd">        font). </span>
 
-<span class="sd">    @ivar _edgelevels: A list of edges at each level of the chart (the</span>
+<span class="sd">    :ivar _edgelevels: A list of edges at each level of the chart (the</span>
 <span class="sd">        top level is the 0th element).  This list is used to remember</span>
 <span class="sd">        where edges should be drawn; and to make sure that no edges</span>
 <span class="sd">        are overlapping on the chart view.</span>
 
-<span class="sd">    @ivar _unitsize: Pixel size of one unit (from the location).  This</span>
+<span class="sd">    :ivar _unitsize: Pixel size of one unit (from the location).  This</span>
 <span class="sd">       is determined by the span of the chart&#39;s location, and the</span>
 <span class="sd">       width of the chart display canvas.</span>
 
-<span class="sd">    @ivar _fontsize: The current font size</span>
+<span class="sd">    :ivar _fontsize: The current font size</span>
 
-<span class="sd">    @ivar _marks: A dictionary from edges to marks.  Marks are</span>
+<span class="sd">    :ivar _marks: A dictionary from edges to marks.  Marks are</span>
 <span class="sd">        strings, specifying colors (e.g. &#39;green&#39;).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     
@@ -943,7 +946,7 @@
     
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chart</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a new C{Chart} display.</span>
+<span class="sd">        Construct a new ``Chart`` display.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Process keyword args.</span>
         <span class="n">draw_tree</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;draw_tree&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
@@ -1112,10 +1115,10 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Draw any edges that have not been drawn.  This is typically</span>
 <span class="sd">        called when a after modifies the canvas that a CanvasView is</span>
-<span class="sd">        displaying.  C{update} will cause any edges that have been</span>
+<span class="sd">        displaying.  ``update`` will cause any edges that have been</span>
 <span class="sd">        added to the chart to be drawn.</span>
 
-<span class="sd">        If update is given a C{chart} argument, then it will replace</span>
+<span class="sd">        If update is given a ``chart`` argument, then it will replace</span>
 <span class="sd">        the current chart with the given chart.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">chart</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
@@ -1129,7 +1132,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_resize</span><span class="p">()</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span><span class="p">:</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">edge</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">edge</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="p">:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_add_edge</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_resize</span><span class="p">()</span>
 
@@ -1192,7 +1195,7 @@
         <span class="c"># Do NOT show leaf edges in the chart.</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="n">LeafEdge</span><span class="p">):</span> <span class="k">return</span>
         
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">edge</span><span class="p">):</span> <span class="k">return</span>
+        <span class="k">if</span> <span class="n">edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="p">:</span> <span class="k">return</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_analyze_edge</span><span class="p">(</span><span class="n">edge</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_grow</span><span class="p">()</span>
 
@@ -1299,11 +1302,11 @@
 <span class="sd">        If no colors are specified, use intelligent defaults</span>
 <span class="sd">        (dependant on selection, etc.)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">edge</span><span class="p">):</span> <span class="k">return</span>
+        <span class="k">if</span> <span class="n">edge</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="p">:</span> <span class="k">return</span>
         <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart_canvas</span>
 
         <span class="k">if</span> <span class="n">linecolor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">textcolor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">edge</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="p">:</span>
                 <span class="n">linecolor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="p">[</span><span class="n">edge</span><span class="p">]</span>
             <span class="n">tags</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_edgetags</span><span class="p">[</span><span class="n">edge</span><span class="p">]</span>
             <span class="n">c</span><span class="o">.</span><span class="n">itemconfig</span><span class="p">(</span><span class="n">tags</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fill</span><span class="o">=</span><span class="n">linecolor</span><span class="p">)</span>
@@ -1315,7 +1318,7 @@
             <span class="k">return</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">N</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart</span><span class="o">.</span><span class="n">num_leaves</span><span class="p">()</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">edge</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">edge</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_color_edge</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_marks</span><span class="p">[</span><span class="n">edge</span><span class="p">])</span>
             <span class="k">if</span> <span class="p">(</span><span class="n">edge</span><span class="o">.</span><span class="n">is_complete</span><span class="p">()</span> <span class="ow">and</span> <span class="n">edge</span><span class="o">.</span><span class="n">span</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">N</span><span class="p">)):</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_color_edge</span><span class="p">(</span><span class="n">edge</span><span class="p">,</span> <span class="s">&#39;#084&#39;</span><span class="p">,</span> <span class="s">&#39;#042&#39;</span><span class="p">)</span>
@@ -1392,7 +1395,7 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Update the scroll-regions for each canvas.  This ensures that</span>
 <span class="sd">        everything is within a scroll-region, so the user can use the</span>
-<span class="sd">        scrollbars to view the entire display.  This does I{not}</span>
+<span class="sd">        scrollbars to view the entire display.  This does *not*</span>
 <span class="sd">        resize the window.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chart_canvas</span>
@@ -1538,8 +1541,8 @@
 
     <span class="k">def</span> <span class="nf">_draw_treetok</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">treetok</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param index: The index of the first leaf in the tree.</span>
-<span class="sd">        @return: The index of the first leaf after the tree.</span>
+<span class="sd">        :param index: The index of the first leaf in the tree.</span>
+<span class="sd">        :return: The index of the first leaf after the tree.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tree_canvas</span>
         <span class="n">margin</span> <span class="o">=</span> <span class="n">ChartView</span><span class="o">.</span><span class="n">_MARGIN</span>
@@ -1627,7 +1630,7 @@
             <span class="k">except</span><span class="p">:</span> <span class="k">pass</span>
 
     <span class="k">def</span> <span class="nf">_fire_callbacks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">event</span><span class="p">):</span> <span class="k">return</span>
+        <span class="k">if</span> <span class="n">event</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="p">:</span> <span class="k">return</span>
         <span class="k">for</span> <span class="n">cb_func</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callbacks</span><span class="p">[</span><span class="n">event</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span> <span class="n">cb_func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
 
 <span class="c">#######################################################################</span>
@@ -2352,7 +2355,7 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2011, Steven Bird.
+        &copy; Copyright 2012, NLTK Project.
       Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
     </div>
         </div>

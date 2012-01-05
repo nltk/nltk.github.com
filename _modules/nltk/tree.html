@@ -53,7 +53,7 @@
   <h1>Source code for nltk.tree</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Text Trees</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2011 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
 <span class="c">#         Nathan Bodenstab &lt;bodenstab@cslu.ogi.edu&gt; (tree transforms)</span>
@@ -70,9 +70,9 @@
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">string</span>
 
-<span class="kn">from</span> <span class="nn">grammar</span> <span class="kn">import</span> <span class="n">Production</span><span class="p">,</span> <span class="n">Nonterminal</span>
-<span class="kn">from</span> <span class="nn">probability</span> <span class="kn">import</span> <span class="n">ProbabilisticMixIn</span>
-<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">slice_bounds</span>
+<span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">Production</span><span class="p">,</span> <span class="n">Nonterminal</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">ProbabilisticMixIn</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">slice_bounds</span>
 
 <span class="c">######################################################################</span>
 <span class="c">## Trees</span>
@@ -80,35 +80,66 @@
 
 <div class="viewcode-block" id="Tree"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree">[docs]</a><span class="k">class</span> <span class="nc">Tree</span><span class="p">(</span><span class="nb">list</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A hierarchical structure.</span>
+<span class="sd">    A Tree represents a hierarchical grouping of leaves and subtrees.</span>
+<span class="sd">    For example, each constituent in a syntax tree is represented by a single Tree.</span>
 
-<span class="sd">    Each C{Tree} represents a single hierarchical grouping of</span>
-<span class="sd">    leaves and subtrees.  For example, each constituent in a syntax</span>
-<span class="sd">    tree is represented by a single C{Tree}.</span>
+<span class="sd">    A tree&#39;s children are encoded as a list of leaves and subtrees,</span>
+<span class="sd">    where a leaf is a basic (non-tree) value; and a subtree is a</span>
+<span class="sd">    nested Tree.</span>
 
-<span class="sd">    A tree&#39;s children are encoded as a C{list} of leaves and subtrees,</span>
-<span class="sd">    where a X{leaf} is a basic (non-tree) value; and a X{subtree} is a</span>
-<span class="sd">    nested C{Tree}.</span>
+<span class="sd">        &gt;&gt;&gt; print Tree(1, [2, Tree(3, [4]), 5])</span>
+<span class="sd">        (1 2 (3 4) 5)</span>
+<span class="sd">        &gt;&gt;&gt; vp = Tree(&#39;VP&#39;, [Tree(&#39;V&#39;, [&#39;saw&#39;]),</span>
+<span class="sd">        ...                  Tree(&#39;NP&#39;, [&#39;him&#39;])])</span>
+<span class="sd">        &gt;&gt;&gt; s = Tree(&#39;S&#39;, [Tree(&#39;NP&#39;, [&#39;I&#39;]), vp])</span>
+<span class="sd">        &gt;&gt;&gt; print s</span>
+<span class="sd">        (S (NP I) (VP (V saw) (NP him)))</span>
+<span class="sd">        &gt;&gt;&gt; print s[1]</span>
+<span class="sd">        (VP (V saw) (NP him))</span>
+<span class="sd">        &gt;&gt;&gt; print s[1,1]</span>
+<span class="sd">        (NP him)</span>
+<span class="sd">        &gt;&gt;&gt; t = Tree(&quot;(S (NP I) (VP (V saw) (NP him)))&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; s == t</span>
+<span class="sd">        True</span>
+<span class="sd">        &gt;&gt;&gt; t[1][1].node = &quot;X&quot;</span>
+<span class="sd">        &gt;&gt;&gt; print t</span>
+<span class="sd">        (S (NP I) (VP (V saw) (X him)))</span>
+<span class="sd">        &gt;&gt;&gt; t[0], t[1,1] = t[1,1], t[0]</span>
+<span class="sd">        &gt;&gt;&gt; print t</span>
+<span class="sd">        (S (X him) (VP (V saw) (NP I)))</span>
 
-<span class="sd">    Any other properties that a C{Tree} defines are known as</span>
-<span class="sd">    X{node properties}, and are used to add information about</span>
-<span class="sd">    individual hierarchical groupings.  For example, syntax trees use a</span>
-<span class="sd">    NODE property to label syntactic constituents with phrase tags,</span>
-<span class="sd">    such as \&quot;NP\&quot; and\&quot;VP\&quot;.</span>
+<span class="sd">    The length of a tree is the number of children it has.</span>
 
-<span class="sd">    Several C{Tree} methods use X{tree positions} to specify</span>
+<span class="sd">        &gt;&gt;&gt; len(t)</span>
+<span class="sd">        2</span>
+
+<span class="sd">    Any other properties that a Tree defines are known as node</span>
+<span class="sd">    properties, and are used to add information about individual</span>
+<span class="sd">    hierarchical groupings.  For example, syntax trees use a NODE</span>
+<span class="sd">    property to label syntactic constituents with phrase tags, such as</span>
+<span class="sd">    &quot;NP&quot; and &quot;VP&quot;.</span>
+
+<span class="sd">    Several Tree methods use &quot;tree positions&quot; to specify</span>
 <span class="sd">    children or descendants of a tree.  Tree positions are defined as</span>
 <span class="sd">    follows:</span>
 
-<span class="sd">      - The tree position M{i} specifies a C{Tree}&#39;s M{i}th child.</span>
-<span class="sd">      - The tree position C{()} specifies the C{Tree} itself.</span>
-<span class="sd">      - If C{M{p}} is the tree position of descendant M{d}, then</span>
-<span class="sd">        C{M{p}+(M{i})} specifies the C{M{i}}th child of M{d}.</span>
+<span class="sd">      - The tree position *i* specifies a Tree&#39;s *i*\ th child.</span>
+<span class="sd">      - The tree position ``()`` specifies the Tree itself.</span>
+<span class="sd">      - If *p* is the tree position of descendant *d*, then</span>
+<span class="sd">        *p+i* specifies the *i*\ th child of *d*.</span>
 <span class="sd">    </span>
-<span class="sd">    I.e., every tree position is either a single index C{M{i}},</span>
-<span class="sd">    specifying C{self[M{i}]}; or a sequence C{(M{i1}, M{i2}, ...,</span>
-<span class="sd">    M{iN})}, specifying</span>
-<span class="sd">    C{self[M{i1}][M{i2}]...[M{iN}]}.</span>
+<span class="sd">    I.e., every tree position is either a single index *i*,</span>
+<span class="sd">    specifying self[i]; or a sequence *i1, i2, ..., iN*,</span>
+<span class="sd">    specifying self[i1][Mi2]...[MiN].</span>
+
+<span class="sd">    Construct a new tree.  This constructor can be called in one</span>
+<span class="sd">    of two ways:</span>
+
+<span class="sd">    - ``Tree(node, children)`` constructs a new tree with the</span>
+<span class="sd">        specified node value and list of children.</span>
+<span class="sd">            </span>
+<span class="sd">    - ``Tree(s)`` constructs a new tree by parsing the string ``s``.</span>
+<span class="sd">        It is equivalent to calling the class method ``Tree.parse(s)``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">node_or_str</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">node_or_str</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
@@ -126,17 +157,6 @@
             <span class="k">return</span> <span class="nb">list</span><span class="o">.</span><span class="n">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="p">)</span>
     
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Construct a new tree.  This constructor can be called in one</span>
-<span class="sd">        of two ways:</span>
-
-<span class="sd">          - C{Tree(node, children)} constructs a new tree with the</span>
-<span class="sd">            specified node value and list of children.</span>
-<span class="sd">            </span>
-<span class="sd">          - C{Tree(s)} constructs a new tree by parsing the string</span>
-<span class="sd">            C{s}.  It is equivalent to calling the class method</span>
-<span class="sd">            C{Tree.parse(s)}.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Because __new__ may delegate to Tree.parse(), the __init__</span>
         <span class="c"># method may end up getting called more than once (once when</span>
         <span class="c"># constructing the return value for Tree.parse; and again when</span>
@@ -227,10 +247,16 @@
     
 <div class="viewcode-block" id="Tree.leaves"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.leaves">[docs]</a>    <span class="k">def</span> <span class="nf">leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: a list containing this tree&#39;s leaves.</span>
+<span class="sd">        Return the leaves of the tree.</span>
+
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; t.leaves()</span>
+<span class="sd">            [&#39;the&#39;, &#39;dog&#39;, &#39;chased&#39;, &#39;the&#39;, &#39;cat&#39;]</span>
+
+<span class="sd">        :return: a list containing this tree&#39;s leaves.</span>
 <span class="sd">            The order reflects the order of the</span>
 <span class="sd">            leaves in the tree&#39;s hierarchical structure.</span>
-<span class="sd">        @rtype: C{list}</span>
+<span class="sd">        :rtype: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">leaves</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
@@ -242,20 +268,36 @@
 </div>
 <div class="viewcode-block" id="Tree.flatten"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.flatten">[docs]</a>    <span class="k">def</span> <span class="nf">flatten</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: a tree consisting of this tree&#39;s root connected directly to</span>
+<span class="sd">        Return a flat version of the tree, with all non-root non-terminals removed.</span>
+
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; print t.flatten()</span>
+<span class="sd">            (S the dog chased the cat)</span>
+
+<span class="sd">        :return: a tree consisting of this tree&#39;s root connected directly to</span>
 <span class="sd">            its leaves, omitting all intervening non-terminal nodes.</span>
-<span class="sd">        @rtype: C{Tree}</span>
+<span class="sd">        :rtype: Tree</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">Tree</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">node</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
 </div>
 <div class="viewcode-block" id="Tree.height"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.height">[docs]</a>    <span class="k">def</span> <span class="nf">height</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The height of this tree.  The height of a tree</span>
+<span class="sd">        Return the height of the tree.</span>
+
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; t.height()</span>
+<span class="sd">            5</span>
+<span class="sd">            &gt;&gt;&gt; print t[0,0]</span>
+<span class="sd">            (D the)</span>
+<span class="sd">            &gt;&gt;&gt; t[0,0].height()</span>
+<span class="sd">            2</span>
+
+<span class="sd">        :return: The height of this tree.  The height of a tree</span>
 <span class="sd">            containing no children is 1; the height of a tree</span>
 <span class="sd">            containing only leaves is 2; and the height of any other</span>
 <span class="sd">            tree is one plus the maximum of its children&#39;s</span>
 <span class="sd">            heights.</span>
-<span class="sd">        @rtype: C{int}</span>
+<span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">max_child_height</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
@@ -267,8 +309,16 @@
 </div>
 <div class="viewcode-block" id="Tree.treepositions"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.treepositions">[docs]</a>    <span class="k">def</span> <span class="nf">treepositions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s">&#39;preorder&#39;</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @param order: One of: C{preorder}, C{postorder}, C{bothorder},</span>
-<span class="sd">            C{leaves}.</span>
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; t.treepositions() # doctest: +ELLIPSIS</span>
+<span class="sd">            [(), (0,), (0, 0), (0, 0, 0), (0, 1), (0, 1, 0), (1,), (1, 0), (1, 0, 0), ...]</span>
+<span class="sd">            &gt;&gt;&gt; for pos in t.treepositions(&#39;leaves&#39;):</span>
+<span class="sd">            ...     t[pos] = t[pos][::-1].upper()</span>
+<span class="sd">            &gt;&gt;&gt; print t</span>
+<span class="sd">            (S (NP (D EHT) (N GOD)) (VP (V DESAHC) (NP (D EHT) (N TAC))))</span>
+
+<span class="sd">        :param order: One of: ``preorder``, ``postorder``, ``bothorder``,</span>
+<span class="sd">            ``leaves``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">positions</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">if</span> <span class="n">order</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;preorder&#39;</span><span class="p">,</span> <span class="s">&#39;bothorder&#39;</span><span class="p">):</span> <span class="n">positions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">()</span> <span class="p">)</span>
@@ -285,8 +335,18 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Generate all the subtrees of this tree, optionally restricted</span>
 <span class="sd">        to trees matching the filter function.</span>
-<span class="sd">        @type filter: C{function}</span>
-<span class="sd">        @param filter: the function to filter all local trees</span>
+
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; for s in t.subtrees(lambda t: t.height() == 2):</span>
+<span class="sd">            ...     print s</span>
+<span class="sd">            (D the)</span>
+<span class="sd">            (N dog)</span>
+<span class="sd">            (V chased)</span>
+<span class="sd">            (D the)</span>
+<span class="sd">            (N cat)</span>
+
+<span class="sd">        :type filter: function</span>
+<span class="sd">        :param filter: the function to filter all local trees</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">filter</span> <span class="ow">or</span> <span class="nb">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
             <span class="k">yield</span> <span class="bp">self</span>
@@ -301,7 +361,12 @@
 <span class="sd">        For each subtree of the form (P: C1 C2 ... Cn) this produces a production of the</span>
 <span class="sd">        form P -&gt; C1 C2 ... Cn.</span>
 
-<span class="sd">        @rtype: list of C{Production}s</span>
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; t.productions()</span>
+<span class="sd">            [S -&gt; NP VP, NP -&gt; D N, D -&gt; &#39;the&#39;, N -&gt; &#39;dog&#39;, VP -&gt; V NP, V -&gt; &#39;chased&#39;,</span>
+<span class="sd">            NP -&gt; D N, D -&gt; &#39;the&#39;, N -&gt; &#39;cat&#39;]</span>
+
+<span class="sd">        :rtype: list(Production)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">node</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
@@ -315,10 +380,15 @@
 </div>
 <div class="viewcode-block" id="Tree.pos"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.pos">[docs]</a>    <span class="k">def</span> <span class="nf">pos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: a list of tuples containing leaves and pre-terminals (part-of-speech tags).</span>
-<span class="sd">            The order reflects the order of the</span>
-<span class="sd">            leaves in the tree&#39;s hierarchical structure.</span>
-<span class="sd">        @rtype: C{list} of C{tuples}</span>
+<span class="sd">        Return a sequence of pos-tagged words extracted from the tree.</span>
+
+<span class="sd">            &gt;&gt;&gt; t = Tree(&quot;(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; t.pos()</span>
+<span class="sd">            [(&#39;the&#39;, &#39;D&#39;), (&#39;dog&#39;, &#39;N&#39;), (&#39;chased&#39;, &#39;V&#39;), (&#39;the&#39;, &#39;D&#39;), (&#39;cat&#39;, &#39;N&#39;)]</span>
+
+<span class="sd">        :return: a list of tuples containing leaves and pre-terminals (part-of-speech tags).</span>
+<span class="sd">            The order reflects the order of the leaves in the tree&#39;s hierarchical structure.</span>
+<span class="sd">        :rtype: list(tuple)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">pos</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
@@ -330,12 +400,12 @@
 </div>
 <div class="viewcode-block" id="Tree.leaf_treeposition"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.leaf_treeposition">[docs]</a>    <span class="k">def</span> <span class="nf">leaf_treeposition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The tree position of the C{index}-th leaf in this</span>
-<span class="sd">            tree.  I.e., if C{tp=self.leaf_treeposition(i)}, then</span>
-<span class="sd">            C{self[tp]==self.leaves()[i]}.</span>
+<span class="sd">        :return: The tree position of the ``index``-th leaf in this</span>
+<span class="sd">            tree.  I.e., if ``tp=self.leaf_treeposition(i)``, then</span>
+<span class="sd">            ``self[tp]==self.leaves()[i]``.</span>
 <span class="sd">        </span>
-<span class="sd">        @raise IndexError: If this tree contains fewer than C{index+1}</span>
-<span class="sd">            leaves, or if C{index&lt;0}.</span>
+<span class="sd">        :raise IndexError: If this tree contains fewer than ``index+1``</span>
+<span class="sd">            leaves, or if ``index&lt;0``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;index must be non-negative&#39;</span><span class="p">)</span>
 
@@ -353,9 +423,9 @@
 </div>
 <div class="viewcode-block" id="Tree.treeposition_spanning_leaves"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.treeposition_spanning_leaves">[docs]</a>    <span class="k">def</span> <span class="nf">treeposition_spanning_leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: The tree position of the lowest descendant of this</span>
-<span class="sd">            tree that dominates C{self.leaves()[start:end]}.</span>
-<span class="sd">        @raise ValueError: if C{end &lt;= start}</span>
+<span class="sd">        :return: The tree position of the lowest descendant of this</span>
+<span class="sd">            tree that dominates ``self.leaves()[start:end]``.</span>
+<span class="sd">        :raise ValueError: if ``end &lt;= start``</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">end</span> <span class="o">&lt;=</span> <span class="n">start</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;end must be greater than start&#39;</span><span class="p">)</span>
@@ -385,17 +455,17 @@
 <span class="sd">             nodes</span>
 <span class="sd">          3. Horizontal (parent) annotation of nodes</span>
 <span class="sd">      </span>
-<span class="sd">        @param factor: Right or left factoring method (default = &quot;right&quot;)</span>
-<span class="sd">        @type  factor: C{string} = [left|right]</span>
-<span class="sd">        @param horzMarkov: Markov order for sibling smoothing in artificial nodes (None (default) = include all siblings)</span>
-<span class="sd">        @type  horzMarkov: C{int} | None</span>
-<span class="sd">        @param vertMarkov: Markov order for parent smoothing (0 (default) = no vertical annotation)</span>
-<span class="sd">        @type  vertMarkov: C{int} | None</span>
-<span class="sd">        @param childChar: A string used in construction of the artificial nodes, separating the head of the</span>
+<span class="sd">        :param factor: Right or left factoring method (default = &quot;right&quot;)</span>
+<span class="sd">        :type  factor: str = [left|right]</span>
+<span class="sd">        :param horzMarkov: Markov order for sibling smoothing in artificial nodes (None (default) = include all siblings)</span>
+<span class="sd">        :type  horzMarkov: int | None</span>
+<span class="sd">        :param vertMarkov: Markov order for parent smoothing (0 (default) = no vertical annotation)</span>
+<span class="sd">        :type  vertMarkov: int | None</span>
+<span class="sd">        :param childChar: A string used in construction of the artificial nodes, separating the head of the</span>
 <span class="sd">                          original subtree from the child nodes that have yet to be expanded (default = &quot;|&quot;)</span>
-<span class="sd">        @type  childChar: C{string}</span>
-<span class="sd">        @param parentChar: A string used to separate the node representation from its vertical annotation</span>
-<span class="sd">        @type  parentChar: C{string}</span>
+<span class="sd">        :type  childChar: str</span>
+<span class="sd">        :param parentChar: A string used to separate the node representation from its vertical annotation</span>
+<span class="sd">        :type  parentChar: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="kn">from</span> <span class="nn">treetransforms</span> <span class="kn">import</span> <span class="n">chomsky_normal_form</span>
         <span class="n">chomsky_normal_form</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factor</span><span class="p">,</span> <span class="n">horzMarkov</span><span class="p">,</span> <span class="n">vertMarkov</span><span class="p">,</span> <span class="n">childChar</span><span class="p">,</span> <span class="n">parentChar</span><span class="p">)</span>
@@ -410,14 +480,14 @@
 <span class="sd">          3. (optional) expands unary subtrees (if previously</span>
 <span class="sd">             collapsed with collapseUnary(...) )</span>
 <span class="sd">          </span>
-<span class="sd">        @param expandUnary: Flag to expand unary or not (default = True)</span>
-<span class="sd">        @type  expandUnary: C{boolean}</span>
-<span class="sd">        @param childChar: A string separating the head node from its children in an artificial node (default = &quot;|&quot;)</span>
-<span class="sd">        @type  childChar: C{string}</span>
-<span class="sd">        @param parentChar: A sting separating the node label from its parent annotation (default = &quot;^&quot;)</span>
-<span class="sd">        @type  parentChar: C{string}</span>
-<span class="sd">        @param unaryChar: A string joining two non-terminals in a unary production (default = &quot;+&quot;)</span>
-<span class="sd">        @type  unaryChar: C{string}  </span>
+<span class="sd">        :param expandUnary: Flag to expand unary or not (default = True)</span>
+<span class="sd">        :type  expandUnary: bool</span>
+<span class="sd">        :param childChar: A string separating the head node from its children in an artificial node (default = &quot;|&quot;)</span>
+<span class="sd">        :type  childChar: str</span>
+<span class="sd">        :param parentChar: A sting separating the node label from its parent annotation (default = &quot;^&quot;)</span>
+<span class="sd">        :type  parentChar: str</span>
+<span class="sd">        :param unaryChar: A string joining two non-terminals in a unary production (default = &quot;+&quot;)</span>
+<span class="sd">        :type  unaryChar: str  </span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="kn">from</span> <span class="nn">treetransforms</span> <span class="kn">import</span> <span class="n">un_chomsky_normal_form</span>
         <span class="n">un_chomsky_normal_form</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expandUnary</span><span class="p">,</span> <span class="n">childChar</span><span class="p">,</span> <span class="n">parentChar</span><span class="p">,</span> <span class="n">unaryChar</span><span class="p">)</span>
@@ -431,15 +501,15 @@
 <span class="sd">        would require loss of useful information.  The Tree is modified </span>
 <span class="sd">        directly (since it is passed by reference) and no value is returned.</span>
 <span class="sd">    </span>
-<span class="sd">        @param collapsePOS: &#39;False&#39; (default) will not collapse the parent of leaf nodes (ie. </span>
+<span class="sd">        :param collapsePOS: &#39;False&#39; (default) will not collapse the parent of leaf nodes (ie. </span>
 <span class="sd">                            Part-of-Speech tags) since they are always unary productions</span>
-<span class="sd">        @type  collapsePOS: C{boolean}</span>
-<span class="sd">        @param collapseRoot: &#39;False&#39; (default) will not modify the root production</span>
+<span class="sd">        :type  collapsePOS: bool</span>
+<span class="sd">        :param collapseRoot: &#39;False&#39; (default) will not modify the root production</span>
 <span class="sd">                             if it is unary.  For the Penn WSJ treebank corpus, this corresponds</span>
 <span class="sd">                             to the TOP -&gt; productions.</span>
-<span class="sd">        @type collapseRoot: C{boolean}</span>
-<span class="sd">        @param joinChar: A string used to connect collapsed node values (default = &quot;+&quot;)</span>
-<span class="sd">        @type  joinChar: C{string}</span>
+<span class="sd">        :type collapseRoot: bool</span>
+<span class="sd">        :param joinChar: A string used to connect collapsed node values (default = &quot;+&quot;)</span>
+<span class="sd">        :type  joinChar: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="kn">from</span> <span class="nn">treetransforms</span> <span class="kn">import</span> <span class="n">collapse_unary</span>
         <span class="n">collapse_unary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">collapsePOS</span><span class="p">,</span> <span class="n">collapseRoot</span><span class="p">,</span> <span class="n">joinChar</span><span class="p">)</span>
@@ -451,12 +521,12 @@
     <span class="c"># [classmethod]</span></div>
 <div class="viewcode-block" id="Tree.convert"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.convert">[docs]</a>    <span class="k">def</span> <span class="nf">convert</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Convert a tree between different subtypes of Tree.  C{cls} determines</span>
+<span class="sd">        Convert a tree between different subtypes of Tree.  ``cls`` determines</span>
 <span class="sd">        which class will be used to encode the new tree.</span>
 
-<span class="sd">        @type val: L{Tree}</span>
-<span class="sd">        @param val: The tree that should be converted.</span>
-<span class="sd">        @return: The new C{Tree}.</span>
+<span class="sd">        :type val: Tree</span>
+<span class="sd">        :param val: The tree that should be converted.</span>
+<span class="sd">        :return: The new Tree.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
             <span class="n">children</span> <span class="o">=</span> <span class="p">[</span><span class="n">cls</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">child</span><span class="p">)</span> <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">val</span><span class="p">]</span>
@@ -496,48 +566,48 @@
 
 <span class="sd">          (S (NP (NNP John)) (VP (V runs)))</span>
 
-<span class="sd">        @type s: C{str}</span>
-<span class="sd">        @param s: The string to parse</span>
+<span class="sd">        :type s: str</span>
+<span class="sd">        :param s: The string to parse</span>
 <span class="sd">        </span>
-<span class="sd">        @type brackets: length-2 C{str}</span>
-<span class="sd">        @param brackets: The bracket characters used to mark the</span>
+<span class="sd">        :type brackets: str (length=2)</span>
+<span class="sd">        :param brackets: The bracket characters used to mark the</span>
 <span class="sd">            beginning and end of trees and subtrees.</span>
 <span class="sd">            </span>
-<span class="sd">        @type parse_node: C{function}</span>
-<span class="sd">        @type parse_leaf: C{function}</span>
-<span class="sd">        @param parse_node, parse_leaf: If specified, these functions</span>
-<span class="sd">            are applied to the substrings of C{s} corresponding to</span>
+<span class="sd">        :type parse_node: ``function``</span>
+<span class="sd">        :type parse_leaf: ``function``</span>
+<span class="sd">        :param parse_node, parse_leaf: If specified, these functions</span>
+<span class="sd">            are applied to the substrings of ``s`` corresponding to</span>
 <span class="sd">            nodes and leaves (respectively) to obtain the values for</span>
 <span class="sd">            those nodes and leaves.  They should have the following</span>
 <span class="sd">            signature:</span>
 
-<span class="sd">               &gt;&gt;&gt; parse_node(str) -&gt; value</span>
+<span class="sd">               parse_node(str) -&gt; value</span>
 
 <span class="sd">            For example, these functions could be used to parse nodes</span>
 <span class="sd">            and leaves whose values should be some type other than</span>
-<span class="sd">            string (such as L{FeatStruct &lt;nltk.featstruct.FeatStruct&gt;}).</span>
+<span class="sd">            string (such as ``FeatStruct``).</span>
 <span class="sd">            Note that by default, node strings and leaf strings are</span>
 <span class="sd">            delimited by whitespace and brackets; to override this</span>
-<span class="sd">            default, use the C{node_pattern} and C{leaf_pattern}</span>
+<span class="sd">            default, use the ``node_pattern`` and ``leaf_pattern``</span>
 <span class="sd">            arguments.</span>
 
-<span class="sd">        @type node_pattern: C{str}</span>
-<span class="sd">        @type leaf_pattern: C{str}</span>
-<span class="sd">        @param node_pattern, leaf_pattern: Regular expression patterns</span>
-<span class="sd">            used to find node and leaf substrings in C{s}.  By</span>
+<span class="sd">        :type node_pattern: str</span>
+<span class="sd">        :type leaf_pattern: str</span>
+<span class="sd">        :param node_pattern, leaf_pattern: Regular expression patterns</span>
+<span class="sd">            used to find node and leaf substrings in ``s``.  By</span>
 <span class="sd">            default, both nodes patterns are defined to match any</span>
 <span class="sd">            sequence of non-whitespace non-bracket characters.</span>
 
-<span class="sd">        @type remove_empty_top_bracketing: C{bool}</span>
-<span class="sd">        @param remove_empty_top_bracketing: If the resulting tree has</span>
+<span class="sd">        :type remove_empty_top_bracketing: bool</span>
+<span class="sd">        :param remove_empty_top_bracketing: If the resulting tree has</span>
 <span class="sd">            an empty node label, and is length one, then return its</span>
 <span class="sd">            single child instead.  This is useful for treebank trees,</span>
 <span class="sd">            which sometimes contain an extra level of bracketing.</span>
 
-<span class="sd">        @return: A tree corresponding to the string representation C{s}.</span>
-<span class="sd">            If this class method is called using a subclass of C{Tree},</span>
+<span class="sd">        :return: A tree corresponding to the string representation ``s``.</span>
+<span class="sd">            If this class method is called using a subclass of Tree,</span>
 <span class="sd">            then it will return a tree of that type.</span>
-<span class="sd">        @rtype: C{Tree}</span>
+<span class="sd">        :rtype: Tree</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">brackets</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">brackets</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;brackets must be a length-2 string&#39;</span><span class="p">)</span>
@@ -600,9 +670,9 @@
     <span class="k">def</span> <span class="nf">_parse_error</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">match</span><span class="p">,</span> <span class="n">expecting</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Display a friendly error message when parsing a tree string fails.</span>
-<span class="sd">        @param s: The string we&#39;re parsing.</span>
-<span class="sd">        @param match: regexp match of the problem token.</span>
-<span class="sd">        @param expecting: what we expected to see instead.</span>
+<span class="sd">        :param s: The string we&#39;re parsing.</span>
+<span class="sd">        :param match: regexp match of the problem token.</span>
+<span class="sd">        :param expecting: what we expected to see instead.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Construct a basic error message</span>
         <span class="k">if</span> <span class="n">match</span> <span class="o">==</span> <span class="s">&#39;end-of-string&#39;</span><span class="p">:</span>
@@ -641,17 +711,17 @@
     
 <div class="viewcode-block" id="Tree.pprint"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.pprint">[docs]</a>    <span class="k">def</span> <span class="nf">pprint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">margin</span><span class="o">=</span><span class="mi">70</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">nodesep</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">parens</span><span class="o">=</span><span class="s">&#39;()&#39;</span><span class="p">,</span> <span class="n">quotes</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        @return: A pretty-printed string representation of this tree.</span>
-<span class="sd">        @rtype: C{string}</span>
-<span class="sd">        @param margin: The right margin at which to do line-wrapping.</span>
-<span class="sd">        @type margin: C{int}</span>
-<span class="sd">        @param indent: The indentation level at which printing</span>
+<span class="sd">        :return: A pretty-printed string representation of this tree.</span>
+<span class="sd">        :rtype: str</span>
+<span class="sd">        :param margin: The right margin at which to do line-wrapping.</span>
+<span class="sd">        :type margin: int</span>
+<span class="sd">        :param indent: The indentation level at which printing</span>
 <span class="sd">            begins.  This number is used to decide how far to indent</span>
 <span class="sd">            subsequent lines.</span>
-<span class="sd">        @type indent: C{int}</span>
-<span class="sd">        @param nodesep: A string that is used to separate the node</span>
-<span class="sd">            from the children.  E.g., the default value C{&#39;:&#39;} gives</span>
-<span class="sd">            trees like C{(S: (NP: I) (VP: (V: saw) (NP: it)))}.</span>
+<span class="sd">        :type indent: int</span>
+<span class="sd">        :param nodesep: A string that is used to separate the node</span>
+<span class="sd">            from the children.  E.g., the default value ``&#39;:&#39;`` gives</span>
+<span class="sd">            trees like ``(S: (NP: I) (VP: (V: saw) (NP: it)))``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="c"># Try writing it on one line.</span>
@@ -679,20 +749,20 @@
 <div class="viewcode-block" id="Tree.pprint_latex_qtree"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.Tree.pprint_latex_qtree">[docs]</a>    <span class="k">def</span> <span class="nf">pprint_latex_qtree</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">r&quot;&quot;&quot;</span>
 <span class="sd">        Returns a representation of the tree compatible with the</span>
-<span class="sd">        LaTeX qtree package. This consists of the string C{\Tree}</span>
+<span class="sd">        LaTeX qtree package. This consists of the string ``\Tree``</span>
 <span class="sd">        followed by the parse tree represented in bracketed notation.</span>
 
 <span class="sd">        For example, the following result was generated from a parse tree of</span>
-<span class="sd">        the sentence C{The announcement astounded us}::</span>
+<span class="sd">        the sentence ``The announcement astounded us``::</span>
 
 <span class="sd">          \Tree [.I&#39;&#39; [.N&#39;&#39; [.D The ] [.N&#39; [.N announcement ] ] ]</span>
 <span class="sd">              [.I&#39; [.V&#39;&#39; [.V&#39; [.V astounded ] [.N&#39;&#39; [.N&#39; [.N us ] ] ] ] ] ] ]</span>
 
-<span class="sd">        See U{http://www.ling.upenn.edu/advice/latex.html} for the LaTeX</span>
+<span class="sd">        See http://www.ling.upenn.edu/advice/latex.html for the LaTeX</span>
 <span class="sd">        style file for the qtree package.</span>
 
-<span class="sd">        @return: A latex qtree representation of this tree.</span>
-<span class="sd">        @rtype: C{string}</span>
+<span class="sd">        :return: A latex qtree representation of this tree.</span>
+<span class="sd">        :rtype: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="s">r&#39;\Tree &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">nodesep</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">parens</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;[.&#39;</span><span class="p">,</span> <span class="s">&#39; ]&#39;</span><span class="p">))</span>
     </div>
@@ -768,27 +838,27 @@
 </div>
 <span class="k">class</span> <span class="nc">AbstractParentedTree</span><span class="p">(</span><span class="n">Tree</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    An abstract base class for L{Tree}s that automatically maintain</span>
-<span class="sd">    pointers to their parents.  These parent pointers are updated</span>
+<span class="sd">    An abstract base class for a ``Tree`` that automatically maintains</span>
+<span class="sd">    pointers to parent nodes.  These parent pointers are updated</span>
 <span class="sd">    whenever any change is made to a tree&#39;s structure.  Two subclasses</span>
 <span class="sd">    are currently defined:</span>
 
-<span class="sd">      - L{ParentedTree} is used for tree structures where each subtree</span>
+<span class="sd">      - ``ParentedTree`` is used for tree structures where each subtree</span>
 <span class="sd">        has at most one parent.  This class should be used in cases</span>
 <span class="sd">        where there is no&quot;sharing&quot; of subtrees.</span>
 <span class="sd">        </span>
-<span class="sd">      - L{MultiParentedTree} is used for tree structures where a</span>
+<span class="sd">      - ``MultiParentedTree`` is used for tree structures where a</span>
 <span class="sd">        subtree may have zero or more parents.  This class should be</span>
 <span class="sd">        used in cases where subtrees may be shared.</span>
 
 <span class="sd">    Subclassing</span>
 <span class="sd">    ===========</span>
-<span class="sd">    The C{AbstractParentedTree} class redefines all operations that</span>
+<span class="sd">    The ``AbstractParentedTree`` class redefines all operations that</span>
 <span class="sd">    modify a tree&#39;s structure to call two methods, which are used by</span>
 <span class="sd">    subclasses to update parent information:</span>
 <span class="sd">    </span>
-<span class="sd">      - L{_setparent()} is called whenever a new child is added.</span>
-<span class="sd">      - L{_delparent()} is called whenever a child is removed.</span>
+<span class="sd">      - ``_setparent()`` is called whenever a new child is added.</span>
+<span class="sd">      - ``_delparent()`` is called whenever a child is removed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">children</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">return</span> <span class="c"># see note in Tree.__init__()</span>
@@ -808,21 +878,21 @@
 
     <span class="k">def</span> <span class="nf">_setparent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">child</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Update C{child}&#39;s parent pointer to point to self.  This</span>
-<span class="sd">        method is only called if C{child}&#39;s type is L{Tree}; i.e., it</span>
-<span class="sd">        is not called when adding a leaf to a tree.  This method is</span>
-<span class="sd">        always called before the child is actually added to C{self}&#39;s</span>
-<span class="sd">        child list.</span>
+<span class="sd">        Update the parent pointer of ``child`` to point to ``self``.  This</span>
+<span class="sd">        method is only called if the type of ``child`` is ``Tree``;</span>
+<span class="sd">        i.e., it is not called when adding a leaf to a tree.  This method</span>
+<span class="sd">        is always called before the child is actually added to the</span>
+<span class="sd">        child list of ``self``.</span>
 
-<span class="sd">        @type child: L{Tree}</span>
-<span class="sd">        @type index: C{int}</span>
-<span class="sd">        @param index: The index of C{child} in C{self}.</span>
-<span class="sd">        @raise TypeError: If C{child} is a tree with an impropriate</span>
-<span class="sd">            type.  Typically, if C{child} is a tree, then its type needs</span>
-<span class="sd">            to match C{self}&#39;s type.  This prevents mixing of</span>
+<span class="sd">        :type child: Tree</span>
+<span class="sd">        :type index: int</span>
+<span class="sd">        :param index: The index of ``child`` in ``self``.</span>
+<span class="sd">        :raise TypeError: If ``child`` is a tree with an impropriate</span>
+<span class="sd">            type.  Typically, if ``child`` is a tree, then its type needs</span>
+<span class="sd">            to match the type of ``self``.  This prevents mixing of</span>
 <span class="sd">            different tree types (single-parented, multi-parented, and</span>
 <span class="sd">            non-parented).</span>
-<span class="sd">        @param dry_run: If true, the don&#39;t actually set the child&#39;s</span>
+<span class="sd">        :param dry_run: If true, the don&#39;t actually set the child&#39;s</span>
 <span class="sd">            parent pointer; just check for any error conditions, and</span>
 <span class="sd">            raise an exception if one is found.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -830,15 +900,15 @@
     
     <span class="k">def</span> <span class="nf">_delparent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">child</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Update C{child}&#39;s parent pointer to not point to self.  This</span>
-<span class="sd">        method is only called if C{child}&#39;s type is L{Tree}; i.e., it</span>
+<span class="sd">        Update the parent pointer of ``child`` to not point to self.  This</span>
+<span class="sd">        method is only called if the type of ``child`` is ``Tree``; i.e., it</span>
 <span class="sd">        is not called when removing a leaf from a tree.  This method</span>
-<span class="sd">        is always called before the child is actually removed from</span>
-<span class="sd">        C{self}&#39;s child list.</span>
+<span class="sd">        is always called before the child is actually removed from the</span>
+<span class="sd">        child list of ``self``.</span>
 <span class="sd">        </span>
-<span class="sd">        @type child: L{Tree}</span>
-<span class="sd">        @type index: C{int}</span>
-<span class="sd">        @param index: The index of C{child} in C{self}.</span>
+<span class="sd">        :type child: Tree</span>
+<span class="sd">        :type index: int</span>
+<span class="sd">        :param index: The index of ``child`` in ``self``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Abstract base class&#39;</span><span class="p">)</span>
 
@@ -987,27 +1057,27 @@
 
 <div class="viewcode-block" id="ParentedTree"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.ParentedTree">[docs]</a><span class="k">class</span> <span class="nc">ParentedTree</span><span class="p">(</span><span class="n">AbstractParentedTree</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A L{Tree} that automatically maintains parent pointers for</span>
+<span class="sd">    A ``Tree`` that automatically maintains parent pointers for</span>
 <span class="sd">    single-parented trees.  The following read-only property values</span>
 <span class="sd">    are automatically updated whenever the structure of a parented</span>
-<span class="sd">    tree is modified: L{parent}, L{parent_index}, L{left_sibling},</span>
-<span class="sd">    L{right_sibling}, L{root}, L{treeposition}.</span>
+<span class="sd">    tree is modified: ``parent``, ``parent_index``, ``left_sibling``,</span>
+<span class="sd">    ``right_sibling``, ``root``, ``treeposition``.</span>
 
-<span class="sd">    Each C{ParentedTree} may have at most one parent.  In</span>
+<span class="sd">    Each ``ParentedTree`` may have at most one parent.  In</span>
 <span class="sd">    particular, subtrees may not be shared.  Any attempt to reuse a</span>
-<span class="sd">    single C{ParentedTree} as a child of more than one parent (or</span>
+<span class="sd">    single ``ParentedTree`` as a child of more than one parent (or</span>
 <span class="sd">    as multiple children of the same parent) will cause a</span>
-<span class="sd">    C{ValueError} exception to be raised.</span>
+<span class="sd">    ``ValueError`` exception to be raised.</span>
 <span class="sd">    </span>
-<span class="sd">    C{ParentedTrees} should never be used in the same tree as C{Trees}</span>
-<span class="sd">    or C{MultiParentedTrees}.  Mixing tree implementations may result</span>
-<span class="sd">    in incorrect parent pointers and in C{TypeError} exceptions.</span>
+<span class="sd">    ``ParentedTrees`` should never be used in the same tree as ``Trees``</span>
+<span class="sd">    or ``MultiParentedTrees``.  Mixing tree implementations may result</span>
+<span class="sd">    in incorrect parent pointers and in ``TypeError`` exceptions.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">children</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">return</span> <span class="c"># see note in Tree.__init__()</span>
         
         <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span> <span class="o">=</span> <span class="bp">None</span>
-        <span class="sd">&quot;&quot;&quot;The parent of this Tree, or C{None} if it has no parent.&quot;&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;The parent of this Tree, or None if it has no parent.&quot;&quot;&quot;</span>
 
         <span class="nb">super</span><span class="p">(</span><span class="n">ParentedTree</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="p">)</span>
 
@@ -1045,29 +1115,29 @@
         <span class="k">else</span><span class="p">:</span> <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span><span class="o">.</span><span class="n">_get_root</span><span class="p">()</span>
 
     <span class="n">parent</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="k">lambda</span> <span class="bp">self</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
-<span class="s">        The parent of this tree, or C{None} if it has no parent.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        The parent of this tree, or None if it has no parent.&quot;&quot;&quot;</span><span class="p">)</span>
     
     <span class="n">parent_index</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_parent_index</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        The index of this tree in its parent.  I.e.,</span>
-<span class="s">        C{ptree.parent[ptree.parent_index] is ptree}.  Note that</span>
-<span class="s">        C{ptree.parent_index} is not necessarily equal to</span>
-<span class="s">        C{ptree.parent.index(ptree)}, since the C{index()} method</span>
-<span class="s">        returns the first child that is I{equal} to its argument.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        ``ptree.parent[ptree.parent_index] is ptree``.  Note that</span>
+<span class="s">        ``ptree.parent_index`` is not necessarily equal to</span>
+<span class="s">        ``ptree.parent.index(ptree)``, since the ``index()`` method</span>
+<span class="s">        returns the first child that is equal to its argument.&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="n">left_sibling</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_left_sibling</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
-<span class="s">        The left sibling of this tree, or C{None} if it has none.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        The left sibling of this tree, or None if it has none.&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="n">right_sibling</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_right_sibling</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
-<span class="s">        The right sibling of this tree, or C{None} if it has none.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        The right sibling of this tree, or None if it has none.&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="n">root</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_root</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        The root of this tree.  I.e., the unique ancestor of this tree</span>
-<span class="s">        whose parent is C{None}.  If C{ptree.parent} is C{None}, then</span>
-<span class="s">        C{ptree} is its own root.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        whose parent is None.  If ``ptree.parent`` is None, then</span>
+<span class="s">        ``ptree`` is its own root.&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="n">treeposition</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_treeposition</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        The tree position of this tree, relative to the root of the</span>
-<span class="s">        tree.  I.e., C{ptree.root[ptree.treeposition] is ptree}.&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        tree.  I.e., ``ptree.root[ptree.treeposition] is ptree``.&quot;&quot;&quot;</span><span class="p">)</span>
     <span class="n">treepos</span> <span class="o">=</span> <span class="n">treeposition</span> <span class="c"># [xx] alias -- which name should we use?</span>
 
     <span class="c">#/////////////////////////////////////////////////////////////////</span>
@@ -1100,21 +1170,21 @@
 </div>
 <div class="viewcode-block" id="MultiParentedTree"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.MultiParentedTree">[docs]</a><span class="k">class</span> <span class="nc">MultiParentedTree</span><span class="p">(</span><span class="n">AbstractParentedTree</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A L{Tree} that automatically maintains parent pointers for</span>
+<span class="sd">    A ``Tree`` that automatically maintains parent pointers for</span>
 <span class="sd">    multi-parented trees.  The following read-only property values are</span>
 <span class="sd">    automatically updated whenever the structure of a multi-parented</span>
-<span class="sd">    tree is modified: L{parents}, L{parent_indices}, L{left_siblings},</span>
-<span class="sd">    L{right_siblings}, L{roots}, L{treepositions}.</span>
+<span class="sd">    tree is modified: ``parents``, ``parent_indices``, ``left_siblings``,</span>
+<span class="sd">    ``right_siblings``, ``roots``, ``treepositions``.</span>
 <span class="sd">    </span>
-<span class="sd">    Each C{MultiParentedTree} may have zero or more parents.  In</span>
+<span class="sd">    Each ``MultiParentedTree`` may have zero or more parents.  In</span>
 <span class="sd">    particular, subtrees may be shared.  If a single</span>
-<span class="sd">    C{MultiParentedTree} is used as multiple children of the same</span>
+<span class="sd">    ``MultiParentedTree`` is used as multiple children of the same</span>
 <span class="sd">    parent, then that parent will appear multiple times in its</span>
-<span class="sd">    C{parents} property.</span>
+<span class="sd">    ``parents`` property.</span>
 
-<span class="sd">    C{MultiParentedTrees} should never be used in the same tree as</span>
-<span class="sd">    C{Trees} or C{ParentedTrees}.  Mixing tree implementations may</span>
-<span class="sd">    result in incorrect parent pointers and in C{TypeError} exceptions.</span>
+<span class="sd">    ``MultiParentedTrees`` should never be used in the same tree as</span>
+<span class="sd">    ``Trees`` or ``ParentedTrees``.  Mixing tree implementations may</span>
+<span class="sd">    result in incorrect parent pointers and in ``TypeError`` exceptions.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_or_str</span><span class="p">,</span> <span class="n">children</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">children</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">return</span> <span class="c"># see note in Tree.__init__()</span>
@@ -1161,11 +1231,11 @@
 
     <span class="n">parents</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="k">lambda</span> <span class="bp">self</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_parents</span><span class="p">),</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        The set of parents of this tree.  If this tree has no parents,</span>
-<span class="s">        then C{parents} is the empty set.  To check if a tree is used</span>
+<span class="s">        then ``parents`` is the empty set.  To check if a tree is used</span>
 <span class="s">        as multiple children of the same parent, use the</span>
-<span class="s">        L{parent_indices} property.</span>
+<span class="s">        ``parent_indices`` property.</span>
 
-<span class="s">        @type: C{list} of L{MultiParentedTree}&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        :type: list(MultiParentedTree)&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="n">left_siblings</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_left_siblings</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        A list of all left siblings of this tree, in any of its parent</span>
@@ -1174,7 +1244,7 @@
 <span class="s">        appear multiple times in this list if it is the left sibling</span>
 <span class="s">        of this tree with respect to multiple parents.</span>
 
-<span class="s">        @type: C{list} of L{MultiParentedTree}&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        :type: list(MultiParentedTree)&quot;&quot;&quot;</span><span class="p">)</span>
     
     <span class="n">right_siblings</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_right_siblings</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        A list of all right siblings of this tree, in any of its parent</span>
@@ -1183,20 +1253,20 @@
 <span class="s">        appear multiple times in this list if it is the right sibling</span>
 <span class="s">        of this tree with respect to multiple parents.</span>
 
-<span class="s">        @type: C{list} of L{MultiParentedTree}&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        :type: list(MultiParentedTree)&quot;&quot;&quot;</span><span class="p">)</span>
                               
     <span class="n">roots</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_roots</span><span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">        The set of all roots of this tree.  This set is formed by</span>
 <span class="s">        tracing all possible parent paths until trees with no parents</span>
 <span class="s">        are found.</span>
 
-<span class="s">        @type: C{list} of L{MultiParentedTree}&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="s">        :type: list(MultiParentedTree)&quot;&quot;&quot;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MultiParentedTree.parent_indices"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.MultiParentedTree.parent_indices">[docs]</a>    <span class="k">def</span> <span class="nf">parent_indices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parent</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a list of the indices where this tree occurs as a child</span>
-<span class="sd">        of C{parent}.  If this child does not occur as a child of</span>
-<span class="sd">        C{parent}, then the empty list is returned.  The following is</span>
+<span class="sd">        of ``parent``.  If this child does not occur as a child of</span>
+<span class="sd">        ``parent``, then the empty list is returned.  The following is</span>
 <span class="sd">        always true::</span>
 
 <span class="sd">          for parent_index in ptree.parent_indices(parent):</span>
@@ -1209,7 +1279,7 @@
 <div class="viewcode-block" id="MultiParentedTree.treepositions"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.MultiParentedTree.treepositions">[docs]</a>    <span class="k">def</span> <span class="nf">treepositions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a list of all tree positions that can be used to reach</span>
-<span class="sd">        this multi-parented tree starting from C{root}.  I.e., the</span>
+<span class="sd">        this multi-parented tree starting from ``root``.  I.e., the</span>
 <span class="sd">        following is always true::</span>
 
 <span class="sd">          for treepos in ptree.treepositions(root):</span>
@@ -1359,9 +1429,9 @@
     
 <div class="viewcode-block" id="bracket_parse"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.bracket_parse">[docs]</a><span class="k">def</span> <span class="nf">bracket_parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Use Tree.parse(s, remove_top_empty_bracketing=True) instead.</span>
+<span class="sd">    Use Tree.parse(s, remove_empty_top_bracketing=True) instead.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">raise</span> <span class="ne">NameError</span><span class="p">(</span><span class="s">&quot;Use Tree.parse(s, remove_top_empty_bracketing=True) instead.&quot;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">NameError</span><span class="p">(</span><span class="s">&quot;Use Tree.parse(s, remove_empty_top_bracketing=True) instead.&quot;</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="sinica_parse"><a class="viewcode-back" href="../../api/nltk.html#nltk.tree.sinica_parse">[docs]</a><span class="k">def</span> <span class="nf">sinica_parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -1369,10 +1439,10 @@
 <span class="sd">    as shown in the following example (X represents a Chinese character):</span>
 <span class="sd">    S(goal:NP(Head:Nep:XX)|theme:NP(Head:Nhaa:X)|quantity:Dab:X|Head:VL2:X)#0(PERIODCATEGORY)</span>
 
-<span class="sd">    @return: A tree corresponding to the string representation.</span>
-<span class="sd">    @rtype: C{tree}</span>
-<span class="sd">    @param s: The string to be converted</span>
-<span class="sd">    @type s: C{string}</span>
+<span class="sd">    :return: A tree corresponding to the string representation.</span>
+<span class="sd">    :rtype: Tree</span>
+<span class="sd">    :param s: The string to be converted</span>
+<span class="sd">    :type s: str</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">tokens</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">r&#39;([()| ])&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)):</span>
@@ -1388,7 +1458,7 @@
             <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
 
     <span class="n">treebank_string</span> <span class="o">=</span> <span class="n">string</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">bracket_parse</span><span class="p">(</span><span class="n">treebank_string</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">treebank_string</span><span class="p">,</span> <span class="n">remove_empty_top_bracketing</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
 
 <span class="c">#    s = re.sub(r&#39;^#[^\s]*\s&#39;, &#39;&#39;, s)  # remove leading identifier</span>
 <span class="c">#    s = re.sub(r&#39;\w+:&#39;, &#39;&#39;, s)       # remove role tags</span>
@@ -1401,9 +1471,9 @@
         </div>
 <span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A demonstration showing how C{Tree}s and C{Tree}s can be</span>
-<span class="sd">    used.  This demonstration creates a C{Tree}, and loads a</span>
-<span class="sd">    C{Tree} from the L{treebank&lt;nltk.corpus.treebank&gt;} corpus,</span>
+<span class="sd">    A demonstration showing how Trees and Trees can be</span>
+<span class="sd">    used.  This demonstration creates a Tree, and loads a</span>
+<span class="sd">    Tree from the Treebank corpus,</span>
 <span class="sd">    and shows the results of calling several of their methods.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     
@@ -1428,10 +1498,10 @@
 
     <span class="c"># Demonstrate tree modification.</span>
     <span class="n">the_cat</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">the_cat</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">tree</span><span class="o">.</span><span class="n">bracket_parse</span><span class="p">(</span><span class="s">&#39;(JJ big)&#39;</span><span class="p">))</span>
+    <span class="n">the_cat</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">tree</span><span class="o">.</span><span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s">&#39;(JJ big)&#39;</span><span class="p">))</span>
     <span class="k">print</span> <span class="s">&quot;Tree modification:&quot;</span>
     <span class="k">print</span> <span class="n">t</span>
-    <span class="n">t</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">bracket_parse</span><span class="p">(</span><span class="s">&#39;(NN cake)&#39;</span><span class="p">)</span>
+    <span class="n">t</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s">&#39;(NN cake)&#39;</span><span class="p">)</span>
     <span class="k">print</span> <span class="n">t</span>
     <span class="k">print</span>
 
@@ -1451,7 +1521,7 @@
     <span class="k">print</span>
 
     <span class="c"># Demonstrate parsing of treebank output format.</span>
-    <span class="n">t</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">bracket_parse</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">pprint</span><span class="p">())</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">Tree</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">pprint</span><span class="p">())</span>
     <span class="k">print</span> <span class="s">&quot;Convert tree to bracketed string and back again:&quot;</span>
     <span class="k">print</span> <span class="n">t</span>
     <span class="k">print</span>
@@ -1470,13 +1540,14 @@
     <span class="n">t</span><span class="o">.</span><span class="n">node</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;test&#39;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
     <span class="k">print</span> <span class="n">t</span>
 
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">demo</span><span class="p">()</span>
-
 <span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;ImmutableProbabilisticTree&#39;</span><span class="p">,</span> <span class="s">&#39;ImmutableTree&#39;</span><span class="p">,</span> <span class="s">&#39;ProbabilisticMixIn&#39;</span><span class="p">,</span>
            <span class="s">&#39;ProbabilisticTree&#39;</span><span class="p">,</span> <span class="s">&#39;Tree&#39;</span><span class="p">,</span> <span class="s">&#39;bracket_parse&#39;</span><span class="p">,</span>
            <span class="s">&#39;sinica_parse&#39;</span><span class="p">,</span> <span class="s">&#39;ParentedTree&#39;</span><span class="p">,</span> <span class="s">&#39;MultiParentedTree&#39;</span><span class="p">,</span>
            <span class="s">&#39;ImmutableParentedTree&#39;</span><span class="p">,</span> <span class="s">&#39;ImmutableMultiParentedTree&#39;</span><span class="p">]</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span>
+    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">(</span><span class="n">optionflags</span><span class="o">=</span><span class="n">doctest</span><span class="o">.</span><span class="n">NORMALIZE_WHITESPACE</span><span class="p">)</span>
 </pre></div>
 
           </div>
@@ -1516,7 +1587,7 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2011, Steven Bird.
+        &copy; Copyright 2012, NLTK Project.
       Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.
     </div>
         </div>
