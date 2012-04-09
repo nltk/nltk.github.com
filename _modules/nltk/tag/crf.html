@@ -67,15 +67,18 @@
 <span class="sd">single binary feature for Mallet.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">tempfile</span> <span class="kn">import</span> <span class="n">mkstemp</span>
-<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">import</span> <span class="nn">re</span>
-<span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">import</span> <span class="nn">subprocess</span>
 <span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">tempfile</span> <span class="kn">import</span> <span class="n">mkstemp</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">import</span> <span class="nn">zipfile</span>
-<span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span>
+
+<span class="kn">import</span> <span class="nn">nltk</span>
 
 <span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">call_mallet</span>
 
@@ -136,35 +139,39 @@
     <span class="c"># Convenience accessors (info also available via self.crf_info)</span>
     <span class="c">#/////////////////////////////////////////////////////////////////</span>
 
-    <span class="k">def</span> <span class="nf">_get_filename</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="MalletCRF.filename"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.MalletCRF.filename">[docs]</a>    <span class="k">def</span> <span class="nf">filename</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The filename of the crf model file that backs this</span>
+<span class="sd">        MalletCRF.  The crf model file is actually a zip file, and</span>
+<span class="sd">        it contains one file for the serialized model</span>
+<span class="sd">        ``crf-model.ser`` and one file for information about the</span>
+<span class="sd">        structure of the CRF ``crf-info.xml``).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">crf_info</span><span class="o">.</span><span class="n">model_filename</span>
-    <span class="n">filename</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_filename</span> <span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
-<span class="s">        The filename of the crf model file that backs this</span>
-<span class="s">        MalletCRF.  The crf model file is actually a zip file, and</span>
-<span class="s">        it contains one file for the serialized model</span>
-<span class="s">        ``crf-model.ser`` and one file for information about the</span>
-<span class="s">        structure of the CRF ``crf-info.xml``).&quot;&quot;&quot;</span><span class="p">)</span>
+</div>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="MalletCRF.feature_detector"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.MalletCRF.feature_detector">[docs]</a>    <span class="k">def</span> <span class="nf">feature_detector</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The feature detector function that is used to convert tokens</span>
+<span class="sd">        to featuresets.  This function has the signature::</span>
 
-    <span class="k">def</span> <span class="nf">_get_feature_detector</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="sd">        feature_detector(tokens, index) -&gt; featureset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">crf_info</span><span class="o">.</span><span class="n">model_feature_detector</span>
-    <span class="n">feature_detector</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_feature_detector</span> <span class="p">,</span> <span class="n">doc</span><span class="o">=</span><span class="s">&quot;&quot;&quot;</span>
-<span class="s">        The feature detector function that is used to convert tokens</span>
-<span class="s">        to featuresets.  This function has the signature::</span>
-
-<span class="s">            feature_detector(tokens, index) -&gt; featureset&quot;&quot;&quot;</span><span class="p">)</span>
 
     <span class="c">#/////////////////////////////////////////////////////////////////</span>
     <span class="c"># Tagging</span>
     <span class="c">#/////////////////////////////////////////////////////////////////</span>
 
-    <span class="c">#: The name of the java script used to run MalletCRFs.</span>
+    <span class="c">#: The name of the java script used to run MalletCRFs.</span></div>
     <span class="n">_RUN_CRF</span> <span class="o">=</span> <span class="s">&quot;org.nltk.mallet.RunCRF&quot;</span>
 
 <div class="viewcode-block" id="MalletCRF.batch_tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.MalletCRF.batch_tag">[docs]</a>    <span class="k">def</span> <span class="nf">batch_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
         <span class="c"># Write the test corpus to a temporary file</span>
         <span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">test_file</span><span class="p">)</span> <span class="o">=</span> <span class="n">mkstemp</span><span class="p">(</span><span class="s">&#39;.txt&#39;</span><span class="p">,</span> <span class="s">&#39;test&#39;</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">write_test_corpus</span><span class="p">(</span><span class="n">sentences</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">))</span>
-        
+
         <span class="k">try</span><span class="p">:</span>
             <span class="c"># Run mallet on the test file.</span>
             <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">call_mallet</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_RUN_CRF</span><span class="p">,</span>
@@ -185,7 +192,7 @@
             <span class="c"># Combine the labels and the original sentences.</span>
             <span class="k">return</span> <span class="p">[</span><span class="nb">zip</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">sent</span><span class="p">,</span><span class="n">label</span><span class="p">)</span> <span class="ow">in</span>
                     <span class="nb">zip</span><span class="p">(</span><span class="n">sentences</span><span class="p">,</span> <span class="n">labels</span><span class="p">)]</span>
-            
+
         <span class="k">finally</span><span class="p">:</span>
             <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">test_file</span><span class="p">)</span>
 
@@ -195,7 +202,7 @@
 
     <span class="c">#: The name of the java script used to train MalletCRFs.</span></div>
     <span class="n">_TRAIN_CRF</span> <span class="o">=</span> <span class="s">&quot;org.nltk.mallet.TrainCRF&quot;</span>
-    
+
     <span class="nd">@classmethod</span>
 <div class="viewcode-block" id="MalletCRF.train"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.MalletCRF.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">feature_detector</span><span class="p">,</span> <span class="n">corpus</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
               <span class="n">weight_groups</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">gaussian_variance</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">default_label</span><span class="o">=</span><span class="s">&#39;O&#39;</span><span class="p">,</span>
@@ -261,23 +268,23 @@
         <span class="c"># Ensure that the filename ends with &#39;.zip&#39;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.crf&#39;</span><span class="p">):</span>
             <span class="n">filename</span> <span class="o">+=</span> <span class="s">&#39;.crf&#39;</span>
-        
+
         <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">print</span> <span class="s">&#39;[MalletCRF] Training a new CRF: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">filename</span>
-                
+
         <span class="c"># Create crf-info object describing the new CRF.</span>
         <span class="n">crf_info</span> <span class="o">=</span> <span class="n">MalletCRF</span><span class="o">.</span><span class="n">_build_crf_info</span><span class="p">(</span>
             <span class="n">corpus</span><span class="p">,</span> <span class="n">gaussian_variance</span><span class="p">,</span> <span class="n">default_label</span><span class="p">,</span> <span class="n">max_iterations</span><span class="p">,</span>
             <span class="n">transduction_type</span><span class="p">,</span> <span class="n">weight_groups</span><span class="p">,</span> <span class="n">add_start_state</span><span class="p">,</span>
             <span class="n">add_end_state</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">feature_detector</span><span class="p">)</span>
-        
+
         <span class="c"># Create a zipfile, and write crf-info to it.</span>
         <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
             <span class="k">print</span> <span class="s">&#39;[MalletCRF] Adding crf-info.xml to </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">filename</span>
         <span class="n">zf</span> <span class="o">=</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;w&#39;</span><span class="p">)</span>
         <span class="n">zf</span><span class="o">.</span><span class="n">writestr</span><span class="p">(</span><span class="s">&#39;crf-info.xml&#39;</span><span class="p">,</span> <span class="n">crf_info</span><span class="o">.</span><span class="n">toxml</span><span class="p">()</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
         <span class="n">zf</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-        
+
         <span class="c"># Create the CRF object.</span>
         <span class="n">crf</span> <span class="o">=</span> <span class="n">MalletCRF</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">feature_detector</span><span class="p">)</span>
 
@@ -303,14 +310,14 @@
         <span class="k">finally</span><span class="p">:</span>
             <span class="c"># Delete the temp file containing the training corpus.</span>
             <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">train_file</span><span class="p">)</span>
-            
+
         <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">print</span> <span class="s">&#39;[MalletCRF] Training complete.&#39;</span>
             <span class="k">print</span> <span class="s">&#39;[MalletCRF]   Model stored in: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">filename</span>
         <span class="k">if</span> <span class="n">trace</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
             <span class="n">dt</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">t0</span>
             <span class="k">print</span> <span class="s">&#39;[MalletCRF]   Total training time: </span><span class="si">%d</span><span class="s"> seconds&#39;</span> <span class="o">%</span> <span class="n">dt</span>
-                
+
         <span class="c"># Return the completed CRF.</span>
         <span class="k">return</span> <span class="n">crf</span>
 </div>
@@ -375,13 +382,13 @@
                 <span class="n">state_info</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                     <span class="n">CRFInfo</span><span class="o">.</span><span class="n">Transition</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">dst</span><span class="p">,</span> <span class="n">state_weight_groups</span><span class="p">))</span>
             <span class="n">state_info_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">state_info</span><span class="p">)</span>
-                
+
         <span class="k">return</span> <span class="n">CRFInfo</span><span class="p">(</span><span class="n">state_info_list</span><span class="p">,</span> <span class="n">gaussian_variance</span><span class="p">,</span>
                        <span class="n">default_label</span><span class="p">,</span> <span class="n">max_iterations</span><span class="p">,</span>
                        <span class="n">transduction_type</span><span class="p">,</span> <span class="n">weight_groups</span><span class="p">,</span>
                        <span class="n">add_start_state</span><span class="p">,</span> <span class="n">add_end_state</span><span class="p">,</span>
                        <span class="n">model_filename</span><span class="p">,</span> <span class="n">feature_detector</span><span class="p">)</span>
-                 
+
     <span class="c">#: A table used to filter the output that mallet generates during</span>
     <span class="c">#: training.  By default, mallet generates very verbose output.</span>
     <span class="c">#: This table is used to select which lines of output are actually</span>
@@ -447,7 +454,7 @@
                 <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;__end__ __end__</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
             <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">close_stream</span><span class="p">:</span> <span class="n">stream</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-                    </div>
+</div>
 <div class="viewcode-block" id="MalletCRF.write_test_corpus"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.MalletCRF.write_test_corpus">[docs]</a>    <span class="k">def</span> <span class="nf">write_test_corpus</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corpus</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">close_stream</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Write a given test corpus to a given stream, in a format that</span>
@@ -486,7 +493,7 @@
                 <span class="n">corpus</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
         <span class="k">if</span> <span class="n">corpus</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="p">[]:</span> <span class="n">corpus</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">corpus</span>
-        </div>
+</div>
     <span class="n">_ESCAPE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;[^a-zA-Z0-9]&#39;</span><span class="p">)</span>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">_escape_sub</span><span class="p">(</span><span class="n">m</span><span class="p">):</span>
@@ -605,7 +612,7 @@
         <span class="k">if</span> <span class="n">fd</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;pickle&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span> <span class="n">feature_detector</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">fd</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;pickle&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
             <span class="k">except</span> <span class="n">pickle</span><span class="o">.</span><span class="n">PicklingError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span> <span class="k">pass</span> <span class="c"># unable to unpickle it.</span>
-            
+
         <span class="k">return</span> <span class="n">CRFInfo</span><span class="p">(</span><span class="n">states</span><span class="p">,</span>
                        <span class="nb">float</span><span class="p">(</span><span class="n">etree</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;gaussianVariance&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">),</span>
                        <span class="n">etree</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;defaultLabel&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">,</span>
@@ -616,7 +623,7 @@
                        <span class="nb">bool</span><span class="p">(</span><span class="n">etree</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;addEndState&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">),</span>
                        <span class="n">etree</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;modelFile&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">,</span>
                        <span class="n">feature_detector</span><span class="p">)</span>
-        
+
 <div class="viewcode-block" id="CRFInfo.write"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.CRFInfo.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
         <span class="n">out</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
         <span class="n">out</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">toxml</span><span class="p">())</span>
@@ -674,7 +681,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">destination</span> <span class="o">=</span> <span class="n">destination</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">weightgroups</span> <span class="o">=</span> <span class="n">weightgroups</span>
-        
+
         <span class="n">_XML_TEMPLATE</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;        &lt;transition label=&quot;</span><span class="si">%(label)s</span><span class="s">&quot; &#39;</span>
                          <span class="s">&#39;destination=&quot;</span><span class="si">%(destination)s</span><span class="s">&quot; &#39;</span>
                          <span class="s">&#39;weightGroups=&quot;</span><span class="si">%(w_groups)s</span><span class="s">&quot;/&gt;&#39;</span><span class="p">)</span>
@@ -695,7 +702,7 @@
 <span class="sd">        input-features (which are a function of only the input) should be</span>
 <span class="sd">        mapped to joint-features (which are a function of both the input</span>
 <span class="sd">        and the output tags).</span>
-<span class="sd">        </span>
+
 <span class="sd">        Each weight group specifies that a given set of input features</span>
 <span class="sd">        should be paired with all transitions from a given set of source</span>
 <span class="sd">        tags to a given set of destination tags.</span>
@@ -738,7 +745,7 @@
                                        <span class="n">etree</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;src&#39;</span><span class="p">),</span>
                                        <span class="n">etree</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;dst&#39;</span><span class="p">),</span>
                                        <span class="n">etree</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;features&#39;</span><span class="p">))</span>
-            
+
         <span class="c"># [xx] feature name????</span>
 <div class="viewcode-block" id="CRFInfo.WeightGroup.match"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.CRFInfo.WeightGroup.match">[docs]</a>        <span class="k">def</span> <span class="nf">match</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">):</span>
             <span class="c"># Check if the source matches</span>
@@ -749,7 +756,7 @@
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">src_match</span> <span class="o">=</span> <span class="n">src</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">src</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_src_match_cache</span><span class="p">[</span><span class="n">src</span><span class="p">]</span> <span class="o">=</span> <span class="n">src_match</span>
-    
+
             <span class="c"># Check if the dest matches</span>
             <span class="n">dst_match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dst_match_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">dst_match</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
@@ -758,7 +765,7 @@
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">dst_match</span> <span class="o">=</span> <span class="n">dst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">dst</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_dst_match_cache</span><span class="p">[</span><span class="n">dst</span><span class="p">]</span> <span class="o">=</span> <span class="n">dst_match</span>
-    
+
             <span class="c"># Return true if both matched.</span>
             <span class="k">return</span> <span class="n">src_match</span> <span class="ow">and</span> <span class="n">dst_match</span>
 
@@ -766,12 +773,10 @@
 <span class="c">## Demonstration code</span>
 <span class="c">###########################################################################</span>
 </div></div></div>
-<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">train_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
-         <span class="n">java_home</span><span class="o">=</span><span class="s">&#39;/usr/local/jdk1.5.0/&#39;</span><span class="p">,</span>
-         <span class="n">mallet_home</span><span class="o">=</span><span class="s">&#39;/usr/local/mallet-0.4&#39;</span><span class="p">):</span>
+<div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.crf.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">train_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">java_home</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">mallet_home</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
     <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">brown</span>
     <span class="kn">import</span> <span class="nn">textwrap</span>
-    
+
     <span class="c"># Define a very simple feature detector</span>
     <span class="k">def</span> <span class="nf">fd</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="n">word</span> <span class="o">=</span> <span class="n">sentence</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
@@ -805,8 +810,7 @@
 
 </div>
 <span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">doctest</span>
-    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">(</span><span class="n">optionflags</span><span class="o">=</span><span class="n">doctest</span><span class="o">.</span><span class="n">NORMALIZE_WHITESPACE</span><span class="p">)</span>
+    <span class="n">demo</span><span class="p">()</span>
 </pre></div>
 
           </div>
@@ -849,7 +853,7 @@
           
     <div class="footer">
         &copy; Copyright 2012, NLTK Project.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
     </div>
         </div>
         <div class="clearer"></div>
