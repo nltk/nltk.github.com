@@ -1,0 +1,394 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.tag.senna &mdash; NLTK 2.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '2.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="up" title="nltk.tag" href="../tag.html" /> 
+  </head>
+  <body>
+    <div class="header-wrapper">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 2.0 documentation</a></div>
+        <div class="rel">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.tag.senna</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: Interface to the Senna tagger</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Author: Rami Al-Rfou&#39; &lt;ralrfou@cs.stonybrook.edu&gt;</span>
+<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A module for interfacing with the SENNA pipeline.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">path</span><span class="p">,</span> <span class="n">sep</span>
+<span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">Popen</span><span class="p">,</span> <span class="n">PIPE</span> 
+<span class="kn">from</span> <span class="nn">platform</span> <span class="kn">import</span> <span class="n">architecture</span><span class="p">,</span> <span class="n">system</span>
+<span class="kn">from</span> <span class="nn">nltk.tag.api</span> <span class="kn">import</span> <span class="n">TaggerI</span>
+
+<span class="n">_senna_url</span> <span class="o">=</span> <span class="s">&#39;http://ml.nec-labs.com/senna/&#39;</span>
+
+
+<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Basic error handling class to be extended by the module specific</span>
+<span class="sd">    exceptions&quot;&quot;&quot;</span>
+
+</div>
+<div class="viewcode-block" id="ExecutableNotFound"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.ExecutableNotFound">[docs]</a><span class="k">class</span> <span class="nc">ExecutableNotFound</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Raised if the senna executable does not exist&quot;&quot;&quot;</span>
+
+</div>
+<div class="viewcode-block" id="RunFailure"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.RunFailure">[docs]</a><span class="k">class</span> <span class="nc">RunFailure</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Raised if the pipeline fails to execute&quot;&quot;&quot;</span>
+
+</div>
+<div class="viewcode-block" id="SentenceMisalignment"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.SentenceMisalignment">[docs]</a><span class="k">class</span> <span class="nc">SentenceMisalignment</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Raised if the new sentence is shorter than the original one or the number</span>
+<span class="sd">    of sentences in the result is less than the input.&quot;&quot;&quot;</span>
+
+</div>
+<div class="viewcode-block" id="SennaTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.SennaTagger">[docs]</a><span class="k">class</span> <span class="nc">SennaTagger</span><span class="p">(</span><span class="n">TaggerI</span><span class="p">):</span>
+    <span class="sd">u&quot;&quot;&quot;</span>
+<span class="sd">    A general interface of the SENNA pipeline that supports any of the</span>
+<span class="sd">    operations specified in SUPPORTED_OPERATIONS.</span>
+
+<span class="sd">    Applying multiple operations at once has the speed advantage. For example,</span>
+<span class="sd">    senna v2.0 will calculate the POS tags in case you are extracting the named</span>
+<span class="sd">    entities. Applying both of the operations will cost only the time of</span>
+<span class="sd">    extracting the named entities.</span>
+
+<span class="sd">    SENNA pipeline has a fixed maximum size of the sentences that it can read.</span>
+<span class="sd">    By default it is 1024 token/sentence. If you have larger sentences, changing</span>
+<span class="sd">    the MAX_SENTENCE_SIZE value in SENNA_main.c should be considered and your</span>
+<span class="sd">    system specific binary should be rebuilt. Otherwise this could introduce</span>
+<span class="sd">    misalignment errors.</span>
+
+<span class="sd">    The input is:</span>
+<span class="sd">    - path to the directory that contains SENNA executables.</span>
+<span class="sd">    - List of the operations needed to be performed.</span>
+<span class="sd">    - (optionally) the encoding of the input data (default:utf-8)</span>
+
+<span class="sd">    Example:</span>
+
+<span class="sd">    .. doctest::</span>
+<span class="sd">        :options: +SKIP</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag.senna import SennaTagger</span>
+<span class="sd">        &gt;&gt;&gt; pipeline = SennaTagger(&#39;/usr/share/senna-v2.0&#39;, [&#39;pos&#39;, &#39;chk&#39;, &#39;ner&#39;])</span>
+<span class="sd">        &gt;&gt;&gt; sent = u&#39;D\xfcsseldorf is an international business center&#39;.split()</span>
+<span class="sd">        &gt;&gt;&gt; pipeline.tag(sent)</span>
+<span class="sd">        [{&#39;word&#39;: u&#39;D\xfcsseldorf&#39;, &#39;chk&#39;: u&#39;B-NP&#39;, &#39;ner&#39;: u&#39;B-PER&#39;, &#39;pos&#39;: u&#39;NNP&#39;},</span>
+<span class="sd">        {&#39;word&#39;: u&#39;is&#39;, &#39;chk&#39;: u&#39;B-VP&#39;, &#39;ner&#39;: u&#39;O&#39;, &#39;pos&#39;: u&#39;VBZ&#39;},</span>
+<span class="sd">        {&#39;word&#39;: u&#39;an&#39;, &#39;chk&#39;: u&#39;B-NP&#39;, &#39;ner&#39;: u&#39;O&#39;, &#39;pos&#39;: u&#39;DT&#39;},</span>
+<span class="sd">        {&#39;word&#39;: u&#39;international&#39;, &#39;chk&#39;: u&#39;I-NP&#39;, &#39;ner&#39;: u&#39;O&#39;, &#39;pos&#39;: u&#39;JJ&#39;},</span>
+<span class="sd">        {&#39;word&#39;: u&#39;business&#39;, &#39;chk&#39;: u&#39;I-NP&#39;, &#39;ner&#39;: u&#39;O&#39;, &#39;pos&#39;: u&#39;NN&#39;},</span>
+<span class="sd">        {&#39;word&#39;: u&#39;center&#39;, &#39;chk&#39;: u&#39;I-NP&#39;, &#39;ner&#39;: u&#39;O&#39;,&#39;pos&#39;: u&#39;NN&#39;}]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">SUPPORTED_OPERATIONS</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;pos&#39;</span><span class="p">,</span> <span class="s">&#39;chk&#39;</span><span class="p">,</span> <span class="s">&#39;ner&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">senna_path</span><span class="p">,</span> <span class="n">operations</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf-8&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">encoding</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">senna_path</span><span class="p">)</span> <span class="o">+</span> <span class="n">sep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">operations</span> <span class="o">=</span> <span class="n">operations</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="SennaTagger.executable"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.SennaTagger.executable">[docs]</a>    <span class="k">def</span> <span class="nf">executable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A property that determines the system specific binary that should be</span>
+<span class="sd">        used in the pipeline. In case, the system is not known the senna binary will</span>
+<span class="sd">        be used.</span>
+<span class="sd">        &quot;&quot;&quot;</span>        
+        <span class="n">os_name</span> <span class="o">=</span> <span class="n">system</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">os_name</span> <span class="o">==</span> <span class="s">&#39;Linux&#39;</span><span class="p">:</span>
+            <span class="n">bits</span> <span class="o">=</span> <span class="n">architecture</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">bits</span> <span class="o">==</span> <span class="s">&#39;64bit&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;senna-linux64&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;senna-linux32&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os_name</span> <span class="o">==</span> <span class="s">&#39;Windows&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;senna-win32.exe&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os_name</span> <span class="o">==</span> <span class="s">&#39;Darwin&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;senna-osx&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;senna&#39;</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A method that calculates the order of the columns that SENNA pipeline</span>
+<span class="sd">        will output the tags into. This depends on the operations being ordered.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_map</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">operation</span> <span class="ow">in</span> <span class="n">SennaTagger</span><span class="o">.</span><span class="n">SUPPORTED_OPERATIONS</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">operation</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">operations</span><span class="p">:</span>
+                <span class="n">_map</span><span class="p">[</span><span class="n">operation</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+                <span class="n">i</span><span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">_map</span>
+
+<div class="viewcode-block" id="SennaTagger.tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.SennaTagger.tag">[docs]</a>    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Applies the specified operation(s) on a list of tokens.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_tag</span><span class="p">([</span><span class="n">tokens</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="SennaTagger.batch_tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.SennaTagger.batch_tag">[docs]</a>    <span class="k">def</span> <span class="nf">batch_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Applies the tag method over a list of sentences. This method will return a</span>
+<span class="sd">        list of dictionaries. Every dictionary will contain a word with its</span>
+<span class="sd">        calculated annotations/tags.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span>
+
+        <span class="c"># Verifies the existence of the executable</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">executable</span><span class="p">):</span>
+          <span class="k">raise</span> <span class="n">ExecutableNotFound</span><span class="p">(</span><span class="s">&quot;Senna executable expected at </span><span class="si">%s</span><span class="s"> but not found&quot;</span> <span class="o">%</span>
+                                   <span class="bp">self</span><span class="o">.</span><span class="n">executable</span><span class="p">)</span>
+
+        <span class="c"># Build the senna command to run the tagger</span>
+        <span class="n">_senna_cmd</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s">&#39;-path&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="s">&#39;-usrtokens&#39;</span><span class="p">,</span> <span class="s">&#39;-iobtags&#39;</span><span class="p">]</span>
+        <span class="n">_senna_cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s">&#39;-&#39;</span><span class="o">+</span><span class="n">op</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">operations</span><span class="p">])</span>
+
+        <span class="c"># Serialize the actual sentences to a temporary string</span>
+        <span class="n">_input</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">))</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">_input</span><span class="p">,</span> <span class="nb">unicode</span><span class="p">)</span> <span class="ow">and</span> <span class="n">encoding</span><span class="p">:</span>
+            <span class="n">_input</span> <span class="o">=</span> <span class="n">_input</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+
+        <span class="c"># Run the tagger and get the output</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">Popen</span><span class="p">(</span><span class="n">_senna_cmd</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">communicate</span><span class="p">(</span><span class="nb">input</span><span class="o">=</span><span class="n">_input</span><span class="p">)</span>
+        <span class="n">senna_output</span> <span class="o">=</span> <span class="n">stdout</span>
+
+        <span class="c"># Check the return code.</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">RunFailure</span><span class="p">(</span><span class="s">&#39;Senna command failed! Details: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">stderr</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">encoding</span><span class="p">:</span>
+            <span class="n">senna_output</span> <span class="o">=</span> <span class="n">stdout</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+
+        <span class="c"># Output the tagged sentences</span>
+        <span class="n">map_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_map</span><span class="p">()</span>
+        <span class="n">tagged_sentences</span> <span class="o">=</span> <span class="p">[[]]</span>
+        <span class="n">sentence_index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">token_index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">tagged_word</span> <span class="ow">in</span> <span class="n">senna_output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">tagged_word</span><span class="p">:</span>
+                <span class="n">tagged_sentences</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+                <span class="n">sentence_index</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">token_index</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">continue</span>
+            <span class="n">tags</span> <span class="o">=</span> <span class="n">tagged_word</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">map_</span><span class="p">:</span>
+              <span class="n">result</span><span class="p">[</span><span class="n">tag</span><span class="p">]</span> <span class="o">=</span> <span class="n">tags</span><span class="p">[</span><span class="n">map_</span><span class="p">[</span><span class="n">tag</span><span class="p">]]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+              <span class="n">result</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sentences</span><span class="p">[</span><span class="n">sentence_index</span><span class="p">][</span><span class="n">token_index</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+              <span class="k">raise</span> <span class="n">SentenceMisalignment</span><span class="p">(</span>
+                <span class="s">&quot;Misalignment error occurred at sentence number </span><span class="si">%d</span><span class="s">. Possible reason&quot;</span>
+                <span class="s">&quot; is that the sentence size exceeded the maximum size. Check the &quot;</span>
+                <span class="s">&quot;documentation of SennaTagger class for more information.&quot;</span>
+                <span class="o">%</span> <span class="n">sentence_index</span><span class="p">)</span>
+            <span class="n">tagged_sentences</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+            <span class="n">token_index</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">tagged_sentences</span>
+
+</div></div>
+<div class="viewcode-block" id="POSTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.POSTagger">[docs]</a><span class="k">class</span> <span class="nc">POSTagger</span><span class="p">(</span><span class="n">SennaTagger</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A Part of Speech tagger.</span>
+
+<span class="sd">    The input is:</span>
+<span class="sd">    - path to the directory that contains SENNA executables.</span>
+<span class="sd">    - (optionally) the encoding of the input data (default:utf-8)</span>
+
+<span class="sd">    Example:</span>
+
+<span class="sd">    .. doctest::</span>
+<span class="sd">        :options: +SKIP</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag.senna import POSTagger</span>
+<span class="sd">        &gt;&gt;&gt; postagger = POSTagger(&#39;/usr/share/senna-v2.0&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; postagger.tag(&#39;What is the airspeed of an unladen swallow ?&#39;.split())</span>
+<span class="sd">        [(&#39;What&#39;, &#39;WP&#39;), (&#39;is&#39;, &#39;VBZ&#39;), (&#39;the&#39;, &#39;DT&#39;), (&#39;airspeed&#39;, &#39;NN&#39;),</span>
+<span class="sd">        (&#39;of&#39;, &#39;IN&#39;), (&#39;an&#39;, &#39;DT&#39;), (&#39;unladen&#39;, &#39;JJ&#39;), (&#39;swallow&#39;, &#39;VB&#39;), (&#39;?&#39;, &#39;.&#39;)]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf-8&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">POSTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;pos&#39;</span><span class="p">],</span> <span class="n">encoding</span><span class="p">)</span>
+
+<div class="viewcode-block" id="POSTagger.batch_tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.POSTagger.batch_tag">[docs]</a>    <span class="k">def</span> <span class="nf">batch_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Applies the tag method over a list of sentences. This method will return</span>
+<span class="sd">        for each sentence a list of tuples of (word, tag).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tagged_sents</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">POSTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">batch_tag</span><span class="p">(</span><span class="n">sentences</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">])):</span>
+                <span class="n">annotations</span> <span class="o">=</span> <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+                <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">annotations</span><span class="p">[</span><span class="s">&#39;pos&#39;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">tagged_sents</span>
+
+</div></div>
+<div class="viewcode-block" id="NERTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.NERTagger">[docs]</a><span class="k">class</span> <span class="nc">NERTagger</span><span class="p">(</span><span class="n">SennaTagger</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A named entity extractor.</span>
+
+<span class="sd">    The input is:</span>
+<span class="sd">    - path to the directory that contains SENNA executables.</span>
+<span class="sd">    - (optionally) the encoding of the input data (default:utf-8)</span>
+
+<span class="sd">    Example:</span>
+
+<span class="sd">    .. doctest::</span>
+<span class="sd">        :options: +SKIP</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag.senna import NERTagger</span>
+<span class="sd">        &gt;&gt;&gt; nertagger = NERTagger(&#39;/usr/share/senna-v2.0&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; nertagger.tag(&#39;Shakespeare theatre was in London .&#39;.split())</span>
+<span class="sd">        [(&#39;Shakespeare&#39;, u&#39;B-PER&#39;), (&#39;theatre&#39;, u&#39;O&#39;), (&#39;was&#39;, u&#39;O&#39;), (&#39;in&#39;, u&#39;O&#39;),</span>
+<span class="sd">        (&#39;London&#39;, u&#39;B-LOC&#39;), (&#39;.&#39;, u&#39;O&#39;)] </span>
+<span class="sd">        &gt;&gt;&gt; nertagger.tag(&#39;UN headquarters are in NY , USA .&#39;.split())</span>
+<span class="sd">        [(&#39;UN&#39;, u&#39;B-ORG&#39;), (&#39;headquarters&#39;, u&#39;O&#39;), (&#39;are&#39;, u&#39;O&#39;), (&#39;in&#39;, u&#39;O&#39;),</span>
+<span class="sd">        (&#39;NY&#39;, u&#39;B-LOC&#39;), (&#39;,&#39;, u&#39;O&#39;), (&#39;USA&#39;, u&#39;B-LOC&#39;), (&#39;.&#39;, u&#39;O&#39;)]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf-8&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">NERTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;ner&#39;</span><span class="p">],</span> <span class="n">encoding</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NERTagger.batch_tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.NERTagger.batch_tag">[docs]</a>    <span class="k">def</span> <span class="nf">batch_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Applies the tag method over a list of sentences. This method will return</span>
+<span class="sd">        for each sentence a list of tuples of (word, tag).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tagged_sents</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">NERTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">batch_tag</span><span class="p">(</span><span class="n">sentences</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">])):</span>
+                <span class="n">annotations</span> <span class="o">=</span> <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+                <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">annotations</span><span class="p">[</span><span class="s">&#39;ner&#39;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">tagged_sents</span>
+
+</div></div>
+<div class="viewcode-block" id="CHKTagger"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.CHKTagger">[docs]</a><span class="k">class</span> <span class="nc">CHKTagger</span><span class="p">(</span><span class="n">SennaTagger</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A chunker.</span>
+
+<span class="sd">    The input is:</span>
+<span class="sd">    - path to the directory that contains SENNA executables.</span>
+<span class="sd">    - (optionally) the encoding of the input data (default:utf-8)</span>
+
+<span class="sd">    Example:</span>
+
+<span class="sd">    .. doctest::</span>
+<span class="sd">        :options: +SKIP</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag.senna import CHKTagger</span>
+<span class="sd">        &gt;&gt;&gt; chktagger = CHKTagger(&#39;/usr/share/senna-v2.0&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; chktagger.tag(&#39;What is the airspeed of an unladen swallow ?&#39;.split())</span>
+<span class="sd">        [(&#39;What&#39;, u&#39;B-NP&#39;), (&#39;is&#39;, u&#39;B-VP&#39;), (&#39;the&#39;, u&#39;B-NP&#39;), (&#39;airspeed&#39;, u&#39;I-NP&#39;),</span>
+<span class="sd">        (&#39;of&#39;, u&#39;B-PP&#39;), (&#39;an&#39;, u&#39;B-NP&#39;), (&#39;unladen&#39;, u&#39;I-NP&#39;), (&#39;swallow&#39;,u&#39;I-NP&#39;),</span>
+<span class="sd">        (&#39;?&#39;, u&#39;O&#39;)]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf-8&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">CHKTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;chk&#39;</span><span class="p">],</span> <span class="n">encoding</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CHKTagger.batch_tag"><a class="viewcode-back" href="../../../api/nltk.tag.html#nltk.tag.senna.CHKTagger.batch_tag">[docs]</a>    <span class="k">def</span> <span class="nf">batch_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Applies the tag method over a list of sentences. This method will return</span>
+<span class="sd">        for each sentence a list of tuples of (word, tag).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tagged_sents</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">CHKTagger</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">batch_tag</span><span class="p">(</span><span class="n">sentences</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">])):</span>
+                <span class="n">annotations</span> <span class="o">=</span> <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+                <span class="n">tagged_sents</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">annotations</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">annotations</span><span class="p">[</span><span class="s">&#39;chk&#39;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">tagged_sents</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">nltk Package</a></li>
+</ul>
+
+          <h3 style="margin-top: 1.5em;">Search</h3>
+          <form class="search" action="../../../search.html" method="get">
+            <input type="text" name="q" />
+            <input type="submit" value="Go" />
+            <input type="hidden" name="check_keywords" value="yes" />
+            <input type="hidden" name="area" value="default" />
+          </form>
+          <p class="searchtip" style="font-size: 90%">
+            Enter search terms or a module, class or function name.
+          </p>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             >index</a>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer">
+        &copy; Copyright 2012, NLTK Project.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

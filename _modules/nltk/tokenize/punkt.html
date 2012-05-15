@@ -61,8 +61,6 @@
 <span class="c">#         Joel Nothman &lt;jnothman@student.usyd.edu.au&gt; (almost rewrite)</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
-<span class="c">#</span>
-<span class="c"># $Id: probability.py 4865 2007-07-11 22:6:07Z edloper $</span>
 
 <span class="sd">r&quot;&quot;&quot;</span>
 <span class="sd">Punkt Sentence Tokenizer</span>
@@ -79,7 +77,7 @@
 <span class="sd">    &gt;&gt;&gt; import nltk.data</span>
 <span class="sd">    &gt;&gt;&gt; text = &#39;&#39;&#39;</span>
 <span class="sd">    ... Punkt knows that the periods in Mr. Smith and Johann S. Bach</span>
-<span class="sd">    ... do not mark sentence boundaries.  And sometimes sentences </span>
+<span class="sd">    ... do not mark sentence boundaries.  And sometimes sentences</span>
 <span class="sd">    ... can start with non-capitalized words.  i is a good variable</span>
 <span class="sd">    ... name.</span>
 <span class="sd">    ... &#39;&#39;&#39;</span>
@@ -88,7 +86,7 @@
 <span class="sd">    Punkt knows that the periods in Mr. Smith and Johann S. Bach</span>
 <span class="sd">    do not mark sentence boundaries.</span>
 <span class="sd">    -----</span>
-<span class="sd">    And sometimes sentences </span>
+<span class="sd">    And sometimes sentences</span>
 <span class="sd">    can start with non-capitalized words.</span>
 <span class="sd">    -----</span>
 <span class="sd">    i is a good variable</span>
@@ -99,7 +97,7 @@
 
 <span class="sd">Punctuation following sentences can be included with the realign_boundaries</span>
 <span class="sd">flag:</span>
-<span class="sd">   </span>
+
 <span class="sd">    &gt;&gt;&gt; text = &#39;&#39;&#39;</span>
 <span class="sd">    ... (How does it deal with this parenthesis?)  &quot;It should be part of the</span>
 <span class="sd">    ... previous sentence.&quot;</span>
@@ -111,9 +109,20 @@
 <span class="sd">    &quot;It should be part of the</span>
 <span class="sd">    previous sentence.&quot;</span>
 
+<span class="sd">However, Punkt is designed to learn parameters (a list of abbreviations, etc.)</span>
+<span class="sd">unsupervised from a corpus similar to the target domain. The pre-packaged models</span>
+<span class="sd">may therefore be unsuitable: use ``PunktSentenceTokenizer(text)`` to learn</span>
+<span class="sd">parameters from the given text.</span>
+
+<span class="sd">:class:`.PunktTrainer` learns parameters such as a list of abbreviations</span>
+<span class="sd">(without supervision) from portions of text. Using a ``PunktTrainer`` directly</span>
+<span class="sd">allows for incremental training and modification of the hyper-parameters used</span>
+<span class="sd">to decide what is considered an abbreviation, etc.</span>
+
 <span class="sd">:class:`.PunktWordTokenizer` uses a regular expression to divide a text into tokens,</span>
 <span class="sd">leaving all periods attached to words, but separating off other punctuation:</span>
 
+<span class="sd">    &gt;&gt;&gt; from nltk.tokenize.punkt import PunktWordTokenizer</span>
 <span class="sd">    &gt;&gt;&gt; s = &quot;Good muffins cost $3.88\nin New York.  Please buy me\ntwo of them.\n\nThanks.&quot;</span>
 <span class="sd">    &gt;&gt;&gt; PunktWordTokenizer().tokenize(s)</span>
 <span class="sd">    [&#39;Good&#39;, &#39;muffins&#39;, &#39;cost&#39;, &#39;$3.88&#39;, &#39;in&#39;, &#39;New&#39;, &#39;York.&#39;, &#39;Please&#39;,</span>
@@ -180,7 +189,22 @@
 
 <span class="c">#} (end orthographic context constants)</span>
 <span class="c">######################################################################</span>
-        
+
+<span class="c">######################################################################</span>
+<span class="c">#{ Decision reasons for debugging</span>
+<span class="c">######################################################################</span>
+
+<span class="n">REASON_DEFAULT_DECISION</span> <span class="o">=</span> <span class="s">&#39;default decision&#39;</span>
+<span class="n">REASON_KNOWN_COLLOCATION</span> <span class="o">=</span> <span class="s">&#39;known collocation (both words)&#39;</span>
+<span class="n">REASON_ABBR_WITH_ORTHOGRAPHIC_HEURISTIC</span> <span class="o">=</span> <span class="s">&#39;abbreviation + orthographic heuristic&#39;</span>
+<span class="n">REASON_ABBR_WITH_SENTENCE_STARTER</span> <span class="o">=</span> <span class="s">&#39;abbreviation + frequent sentence starter&#39;</span>
+<span class="n">REASON_INITIAL_WITH_ORTHOGRAPHIC_HEURISTIC</span> <span class="o">=</span> <span class="s">&#39;initial + orthographic heuristic&#39;</span>
+<span class="n">REASON_NUMBER_WITH_ORTHOGRAPHIC_HEURISTIC</span> <span class="o">=</span> <span class="s">&#39;initial + orthographic heuristic&#39;</span>
+<span class="n">REASON_INITIAL_WITH_SPECIAL_ORTHOGRAPHIC_HEURISTIC</span> <span class="o">=</span> <span class="s">&#39;initial + special orthographic heuristic&#39;</span>
+
+<span class="c">#} (end decision reasons for debugging)</span>
+<span class="c">######################################################################</span>
+
 <span class="c">######################################################################</span>
 <span class="c">#{ Language-dependent variables</span>
 <span class="c">######################################################################</span>
@@ -301,7 +325,7 @@
 
 <span class="c">#}</span>
 <span class="c">######################################################################</span>
-        
+
 
 <span class="c">######################################################################</span>
 <span class="c">#{ Punkt Word Tokenizer</span>
@@ -346,18 +370,18 @@
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">abbrev_types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A set of word types for known abbreviations.&quot;&quot;&quot;</span>
-        
+
         <span class="bp">self</span><span class="o">.</span><span class="n">collocations</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A set of word type tuples for known common collocations</span>
 <span class="sd">        where the first word ends in a period.  E.g., (&#39;S.&#39;, &#39;Bach&#39;)</span>
 <span class="sd">        is a common collocation in a text that discusses &#39;Johann</span>
 <span class="sd">        S. Bach&#39;.  These count as negative evidence for sentence</span>
 <span class="sd">        boundaries.&quot;&quot;&quot;</span>
-        
+
         <span class="bp">self</span><span class="o">.</span><span class="n">sent_starters</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A set of word types for words that often appear at the</span>
 <span class="sd">        beginning of sentences.&quot;&quot;&quot;</span>
-        
+
         <span class="bp">self</span><span class="o">.</span><span class="n">ortho_context</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
         <span class="sd">&quot;&quot;&quot;A dictionary mapping word types to the set of orthographic</span>
 <span class="sd">        contexts that word type appears in.  Contexts are represented</span>
@@ -377,11 +401,26 @@
 </div>
 <div class="viewcode-block" id="PunktParameters.add_ortho_context"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktParameters.add_ortho_context">[docs]</a>    <span class="k">def</span> <span class="nf">add_ortho_context</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">typ</span><span class="p">,</span> <span class="n">flag</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ortho_context</span><span class="p">[</span><span class="n">typ</span><span class="p">]</span> <span class="o">|=</span> <span class="n">flag</span>
+</div>
+    <span class="k">def</span> <span class="nf">_debug_ortho_context</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">typ</span><span class="p">):</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ortho_context</span><span class="p">[</span><span class="n">typ</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_BEG_UC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;BEG-UC&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_MID_UC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;MID-UC&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_UNK_UC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;UNK-UC&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_BEG_LC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;BEG-LC&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_MID_LC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;MID-LC&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&amp;</span> <span class="n">_ORTHO_UNK_LC</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s">&#39;UNK-LC&#39;</span>
 
 <span class="c">######################################################################</span>
 <span class="c">#{ PunktToken</span>
 <span class="c">######################################################################</span>
-</div></div>
+</div>
 <div class="viewcode-block" id="PunktToken"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktToken">[docs]</a><span class="k">class</span> <span class="nc">PunktToken</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Stores a token of text with annotations produced during</span>
 <span class="sd">    sentence boundary detection.&quot;&quot;&quot;</span>
@@ -480,7 +519,7 @@
 <div class="viewcode-block" id="PunktToken.is_non_punct"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktToken.is_non_punct">[docs]</a>    <span class="k">def</span> <span class="nf">is_non_punct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;True if the token is either a number or is alphabetic.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">_re_non_punct</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>
-    
+
     <span class="c">#////////////////////////////////////////////////////////////</span>
     <span class="c">#{ String representation</span>
     <span class="c">#////////////////////////////////////////////////////////////</span>
@@ -526,7 +565,7 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Includes common components of PunktTrainer and PunktSentenceTokenizer.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    
+
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang_vars</span><span class="o">=</span><span class="n">PunktLanguageVars</span><span class="p">(),</span> <span class="n">token_cls</span><span class="o">=</span><span class="n">PunktToken</span><span class="p">,</span>
             <span class="n">params</span><span class="o">=</span><span class="n">PunktParameters</span><span class="p">()):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="n">params</span>
@@ -570,7 +609,7 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Perform the first pass of annotation, which makes decisions</span>
 <span class="sd">        based purely based on the word type of each word:</span>
-<span class="sd">        </span>
+
 <span class="sd">          - &#39;?&#39;, &#39;!&#39;, and &#39;.&#39; are marked as sentence breaks.</span>
 <span class="sd">          - sequences of two or more periods are marked as ellipsis.</span>
 <span class="sd">          - any word ending in &#39;.&#39; that&#39;s a known abbreviation is</span>
@@ -578,7 +617,7 @@
 <span class="sd">          - any other word ending in &#39;.&#39; is marked as a sentence break.</span>
 
 <span class="sd">        Return these annotations as a tuple of three sets:</span>
-<span class="sd">        </span>
+
 <span class="sd">          - sentbreak_toks: The indices of all sentence breaks.</span>
 <span class="sd">          - abbrev_toks: The indices of all abbreviations.</span>
 <span class="sd">          - ellipsis_toks: The indices of all ellipsis marks.</span>
@@ -625,25 +664,24 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_type_fdist</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A frequency distribution giving the frequency of each</span>
 <span class="sd">        case-normalized token type in the training data.&quot;&quot;&quot;</span>
-        
+
         <span class="bp">self</span><span class="o">.</span><span class="n">_num_period_toks</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="sd">&quot;&quot;&quot;The number of words ending in period in the training data.&quot;&quot;&quot;</span>
-        
+
         <span class="bp">self</span><span class="o">.</span><span class="n">_collocation_fdist</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A frequency distribution giving the frequency of all</span>
 <span class="sd">        bigrams in the training data where the first word ends in a</span>
 <span class="sd">        period.  Bigrams are encoded as tuples of word types.</span>
 <span class="sd">        Especially common collocations are extracted from this</span>
 <span class="sd">        frequency distribution, and stored in</span>
-<span class="sd">        L{_params}.L{collocations &lt;PunktParameters.collocations&gt;}.&quot;&quot;&quot;</span>
-        
+<span class="sd">        ``_params``.``collocations &lt;PunktParameters.collocations&gt;``.&quot;&quot;&quot;</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">_sent_starter_fdist</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">()</span>
         <span class="sd">&quot;&quot;&quot;A frequency distribution giving the frequency of all words</span>
 <span class="sd">        that occur at the training data at the beginning of a sentence</span>
 <span class="sd">        (after the first pass of annotation).  Especially common</span>
 <span class="sd">        sentence starters are extracted from this frequency</span>
-<span class="sd">        distribution, and stored in L{_params}.L{sent_starters</span>
-<span class="sd">        &lt;PunktParameters.sent_starters&gt;}.</span>
+<span class="sd">        distribution, and stored in ``_params.sent_starters``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_sentbreak_count</span> <span class="o">=</span> <span class="mi">0</span>
@@ -693,7 +731,7 @@
     <span class="sd">&quot;&quot;&quot;this includes as potential collocations all word pairs where the first</span>
 <span class="sd">    word ends in a period. It may be useful in corpora where there is a lot</span>
 <span class="sd">    of variation that makes abbreviations like Mr difficult to identify.&quot;&quot;&quot;</span>
-    
+
     <span class="n">INCLUDE_ABBREV_COLLOCS</span> <span class="o">=</span> <span class="bp">False</span>
     <span class="sd">&quot;&quot;&quot;this includes as potential collocations all word pairs where the first</span>
 <span class="sd">    word is an abbreviation. Such collocations override the orthographic</span>
@@ -796,7 +834,7 @@
 
     <span class="k">def</span> <span class="nf">_unique_types</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">aug_tok</span><span class="o">.</span><span class="n">type</span> <span class="k">for</span> <span class="n">aug_tok</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">)</span>
-        
+
 <div class="viewcode-block" id="PunktTrainer.finalize_training"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktTrainer.finalize_training">[docs]</a>    <span class="k">def</span> <span class="nf">finalize_training</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Uses data that has been gathered in training to determine likely</span>
@@ -873,7 +911,7 @@
         <span class="c"># &#39;initial&#39; or &#39;internal&#39; or &#39;unknown&#39;</span>
         <span class="n">context</span> <span class="o">=</span> <span class="s">&#39;internal&#39;</span>
         <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
-        
+
         <span class="k">for</span> <span class="n">aug_tok</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
             <span class="c"># If we encounter a paragraph break, then it&#39;s a good sign</span>
             <span class="c"># that it&#39;s a sentence break.  But err on the side of</span>
@@ -906,7 +944,7 @@
                 <span class="n">context</span> <span class="o">=</span> <span class="s">&#39;unknown&#39;</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">context</span> <span class="o">=</span> <span class="s">&#39;internal&#39;</span>
-        
+
     <span class="c">#////////////////////////////////////////////////////////////</span>
     <span class="c">#{ Abbreviations</span>
     <span class="c">#////////////////////////////////////////////////////////////</span>
@@ -934,7 +972,7 @@
             <span class="c"># clearly not abbrev_types.</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">_re_non_punct</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">typ</span><span class="p">)</span> <span class="ow">or</span> <span class="n">typ</span> <span class="o">==</span> <span class="s">&#39;##number##&#39;</span><span class="p">:</span>
                 <span class="k">continue</span>
-            
+
             <span class="k">if</span> <span class="n">typ</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">typ</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">abbrev_types</span><span class="p">:</span>
                     <span class="k">continue</span>
@@ -949,7 +987,7 @@
             <span class="c"># candidate.</span>
             <span class="n">num_periods</span> <span class="o">=</span> <span class="n">typ</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
             <span class="n">num_nonperiods</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">typ</span><span class="p">)</span> <span class="o">-</span> <span class="n">num_periods</span> <span class="o">+</span> <span class="mi">1</span>
-            
+
             <span class="c"># Let &lt;a&gt; be the candidate without the period, and &lt;b&gt;</span>
             <span class="c"># be the period.  Find a log likelihood ratio that</span>
             <span class="c"># indicates whether &lt;ab&gt; occurs as a single unit (high</span>
@@ -966,7 +1004,7 @@
             <span class="c"># likelihood ratio:</span>
             <span class="c">#   F_length: long word -&gt; less likely to be an abbrev</span>
             <span class="c">#   F_periods: more periods -&gt; more likely to be an abbrev</span>
-            <span class="c">#   F_penalty: penalize occurances w/o a period</span>
+            <span class="c">#   F_penalty: penalize occurrences w/o a period</span>
             <span class="n">f_length</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">num_nonperiods</span><span class="p">)</span>
             <span class="n">f_periods</span> <span class="o">=</span> <span class="n">num_periods</span>
             <span class="n">f_penalty</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IGNORE_ABBREV_PENALTY</span><span class="p">)</span>
@@ -1006,7 +1044,7 @@
         <span class="c"># Find the case-normalized type of the token.  If it&#39;s</span>
         <span class="c"># a sentence-final token, strip off the period.</span>
         <span class="n">typ</span> <span class="o">=</span> <span class="n">cur_tok</span><span class="o">.</span><span class="n">type_no_sentperiod</span>
-        
+
         <span class="c"># Proceed only if the type hasn&#39;t been categorized as an</span>
         <span class="c"># abbreviation already, and is sufficiently rare...</span>
         <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_type_fdist</span><span class="p">[</span><span class="n">typ</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_type_fdist</span><span class="p">[</span><span class="n">typ</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
@@ -1046,28 +1084,28 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">p1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">count_b</span><span class="p">)</span> <span class="o">/</span> <span class="n">N</span>
         <span class="n">p2</span> <span class="o">=</span> <span class="mf">0.99</span>
-        
+
         <span class="n">null_hypo</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p1</span><span class="p">)</span> <span class="o">+</span>
                      <span class="p">(</span><span class="n">count_a</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">p1</span><span class="p">))</span>
         <span class="n">alt_hypo</span>  <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p2</span><span class="p">)</span> <span class="o">+</span>
                      <span class="p">(</span><span class="n">count_a</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">p2</span><span class="p">))</span>
-        
+
         <span class="n">likelihood</span> <span class="o">=</span> <span class="n">null_hypo</span> <span class="o">-</span> <span class="n">alt_hypo</span>
-        
+
         <span class="k">return</span> <span class="p">(</span><span class="o">-</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">likelihood</span><span class="p">)</span>
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">_col_log_likelihood</span><span class="p">(</span><span class="n">count_a</span><span class="p">,</span> <span class="n">count_b</span><span class="p">,</span> <span class="n">count_ab</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A function that will just compute log-likelihood estimate, in</span>
-<span class="sd">        the original paper it&#39;s decribed in algorithm 6 and 7.</span>
+<span class="sd">        the original paper it&#39;s described in algorithm 6 and 7.</span>
 
 <span class="sd">        This *should* be the original Dunning log-likelihood values,</span>
 <span class="sd">        unlike the previous log_l function where it used modified</span>
 <span class="sd">        Dunning log-likelihood values</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="kn">import</span> <span class="nn">math</span>
-        
+
         <span class="n">p</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">*</span> <span class="n">count_b</span> <span class="o">/</span> <span class="n">N</span>
         <span class="n">p1</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">*</span> <span class="n">count_ab</span> <span class="o">/</span> <span class="n">count_a</span>
         <span class="n">p2</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">*</span> <span class="p">(</span><span class="n">count_b</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="n">count_a</span><span class="p">)</span>
@@ -1077,23 +1115,23 @@
 
         <span class="n">summand2</span> <span class="o">=</span> <span class="p">((</span><span class="n">count_b</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">+</span>
                     <span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="n">count_a</span> <span class="o">-</span> <span class="n">count_b</span> <span class="o">+</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">p</span><span class="p">))</span>
-    
+
         <span class="k">if</span> <span class="n">count_a</span> <span class="o">==</span> <span class="n">count_ab</span><span class="p">:</span>
             <span class="n">summand3</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">summand3</span> <span class="o">=</span> <span class="p">(</span><span class="n">count_ab</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p1</span><span class="p">)</span> <span class="o">+</span>
                         <span class="p">(</span><span class="n">count_a</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">p1</span><span class="p">))</span>
-    
+
         <span class="k">if</span> <span class="n">count_b</span> <span class="o">==</span> <span class="n">count_ab</span><span class="p">:</span>
             <span class="n">summand4</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">summand4</span> <span class="o">=</span> <span class="p">((</span><span class="n">count_b</span> <span class="o">-</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p2</span><span class="p">)</span> <span class="o">+</span>
                         <span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="n">count_a</span> <span class="o">-</span> <span class="n">count_b</span> <span class="o">+</span> <span class="n">count_ab</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">p2</span><span class="p">))</span>
-    
+
         <span class="n">likelihood</span> <span class="o">=</span> <span class="n">summand1</span> <span class="o">+</span> <span class="n">summand2</span> <span class="o">-</span> <span class="n">summand3</span> <span class="o">-</span> <span class="n">summand4</span>
-    
+
         <span class="k">return</span> <span class="p">(</span><span class="o">-</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">likelihood</span><span class="p">)</span>
-    
+
     <span class="c">#////////////////////////////////////////////////////////////</span>
     <span class="c">#{ Collocation Finder</span>
     <span class="c">#////////////////////////////////////////////////////////////</span>
@@ -1132,7 +1170,7 @@
                 <span class="n">ll</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_col_log_likelihood</span><span class="p">(</span><span class="n">typ1_count</span><span class="p">,</span> <span class="n">typ2_count</span><span class="p">,</span>
                                               <span class="n">col_count</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_type_fdist</span><span class="o">.</span><span class="n">N</span><span class="p">())</span>
                 <span class="c"># Filter out the not-so-collocative</span>
-                <span class="k">if</span> <span class="p">(</span><span class="n">ll</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">COLLOCATION</span> <span class="ow">and</span> 
+                <span class="k">if</span> <span class="p">(</span><span class="n">ll</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">COLLOCATION</span> <span class="ow">and</span>
                     <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_type_fdist</span><span class="o">.</span><span class="n">N</span><span class="p">())</span><span class="o">/</span><span class="n">typ1_count</span> <span class="o">&gt;</span>
                      <span class="nb">float</span><span class="p">(</span><span class="n">typ2_count</span><span class="p">)</span><span class="o">/</span><span class="n">col_count</span><span class="p">)):</span>
                     <span class="k">yield</span> <span class="p">(</span><span class="n">typ1</span><span class="p">,</span> <span class="n">typ2</span><span class="p">),</span> <span class="n">ll</span>
@@ -1146,10 +1184,10 @@
 <span class="sd">        Returns True given a token and the token that preceds it if it</span>
 <span class="sd">        seems clear that the token is beginning a sentence.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c"># If a token (i) is preceeded by a sentece break that is</span>
+        <span class="c"># If a token (i) is preceded by a sentece break that is</span>
         <span class="c"># not a potential ordinal number or initial, and (ii) is</span>
         <span class="c"># alphabetic, then it is a a sentence-starter.</span>
-        <span class="k">return</span> <span class="p">(</span> <span class="n">prev_tok</span><span class="o">.</span><span class="n">sentbreak</span> <span class="ow">and</span> 
+        <span class="k">return</span> <span class="p">(</span> <span class="n">prev_tok</span><span class="o">.</span><span class="n">sentbreak</span> <span class="ow">and</span>
              <span class="ow">not</span> <span class="p">(</span><span class="n">prev_tok</span><span class="o">.</span><span class="n">is_number</span> <span class="ow">or</span> <span class="n">prev_tok</span><span class="o">.</span><span class="n">is_initial</span><span class="p">)</span> <span class="ow">and</span>
              <span class="n">cur_tok</span><span class="o">.</span><span class="n">is_alpha</span> <span class="p">)</span>
 
@@ -1206,7 +1244,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">PunktBaseClass</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang_vars</span><span class="o">=</span><span class="n">lang_vars</span><span class="p">,</span>
                 <span class="n">token_cls</span><span class="o">=</span><span class="n">token_cls</span><span class="p">)</span>
-        
+
         <span class="k">if</span> <span class="n">train_text</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">train_text</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
 
@@ -1220,7 +1258,7 @@
             <span class="k">return</span> <span class="n">train_text</span>
         <span class="k">return</span> <span class="n">PunktTrainer</span><span class="p">(</span><span class="n">train_text</span><span class="p">,</span> <span class="n">lang_vars</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="p">,</span>
                 <span class="n">token_cls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_Token</span><span class="p">)</span><span class="o">.</span><span class="n">get_params</span><span class="p">()</span>
-    
+
     <span class="c">#////////////////////////////////////////////////////////////</span>
     <span class="c">#{ Tokenization</span>
     <span class="c">#////////////////////////////////////////////////////////////</span>
@@ -1230,6 +1268,35 @@
 <span class="sd">        Given a text, returns a list of the sentences in that text.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sentences_from_text</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">realign_boundaries</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="PunktSentenceTokenizer.debug_decisions"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktSentenceTokenizer.debug_decisions">[docs]</a>    <span class="k">def</span> <span class="nf">debug_decisions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classifies candidate periods as sentence breaks, yielding a dict for</span>
+<span class="sd">        each that may be used to understand why the decision was made.</span>
+
+<span class="sd">        See format_debug_decision() to help make this output readable.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="o">.</span><span class="n">period_context_re</span><span class="p">()</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+            <span class="n">decision_text</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="o">+</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s">&#39;after_tok&#39;</span><span class="p">)</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tokenize_words</span><span class="p">(</span><span class="n">decision_text</span><span class="p">)</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_annotate_first_pass</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">period_final</span><span class="p">:</span>
+                <span class="n">tokens</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="nb">dict</span><span class="p">(</span><span class="n">period_index</span><span class="o">=</span><span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">()</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="n">text</span><span class="o">=</span><span class="n">decision_text</span><span class="p">,</span>
+                <span class="n">type1</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">type</span><span class="p">,</span>
+                <span class="n">type2</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">type</span><span class="p">,</span>
+                <span class="n">type1_in_abbrs</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">abbr</span><span class="p">),</span>
+                <span class="n">type1_is_initial</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_initial</span><span class="p">),</span>
+                <span class="n">type2_is_sent_starter</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">type_no_sentperiod</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">sent_starters</span><span class="p">,</span>
+                <span class="n">type2_ortho_heuristic</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_ortho_heuristic</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+                <span class="n">type2_ortho_contexts</span><span class="o">=</span><span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">_debug_ortho_context</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">type_no_sentperiod</span><span class="p">)),</span>
+                <span class="n">collocation</span><span class="o">=</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">type_no_sentperiod</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">type_no_sentperiod</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">collocations</span><span class="p">,</span>
+
+                <span class="n">reason</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_second_pass_annotation</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span> <span class="n">REASON_DEFAULT_DECISION</span><span class="p">,</span>
+                <span class="n">break_decision</span><span class="o">=</span><span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">sentbreak</span><span class="p">,</span>
+            <span class="p">)</span>
 </div>
 <div class="viewcode-block" id="PunktSentenceTokenizer.span_tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktSentenceTokenizer.span_tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">span_tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1270,11 +1337,11 @@
 <span class="sd">        should otherwise be included in the same sentence.</span>
 
 <span class="sd">        For example: &quot;(Sent1.) Sent2.&quot; will otherwise be split as::</span>
-<span class="sd">        </span>
+
 <span class="sd">            [&quot;(Sent1.&quot;, &quot;) Sent1.&quot;].</span>
-<span class="sd">            </span>
+
 <span class="sd">        This method will produce::</span>
-<span class="sd">        </span>
+
 <span class="sd">            [&quot;(Sent1.)&quot;, &quot;Sent2.&quot;].</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">realign</span> <span class="o">=</span> <span class="mi">0</span>
@@ -1305,12 +1372,12 @@
             <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">sentbreak</span><span class="p">:</span>
                 <span class="n">found</span> <span class="o">=</span> <span class="bp">True</span>
         <span class="k">return</span> <span class="bp">False</span>
-   </div>
+</div>
 <div class="viewcode-block" id="PunktSentenceTokenizer.sentences_from_text_legacy"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.PunktSentenceTokenizer.sentences_from_text_legacy">[docs]</a>    <span class="k">def</span> <span class="nf">sentences_from_text_legacy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Given a text, generates the sentences in that text. Annotates all</span>
 <span class="sd">        tokens, rather than just those with possible sentence breaks. Should</span>
-<span class="sd">        produce the same results as L{sentences_from_text}.</span>
+<span class="sd">        produce the same results as ``sentences_from_text``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_annotate_tokens</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tokenize_words</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_sentence_list</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">tokens</span><span class="p">)</span>
@@ -1329,7 +1396,7 @@
                 <span class="n">sentence</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">if</span> <span class="n">sentence</span><span class="p">:</span>
             <span class="k">yield</span> <span class="n">sentence</span>
-            </div>
+</div>
     <span class="k">def</span> <span class="nf">_annotate_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Given a set of tokens augmented with markers for line-start and</span>
@@ -1365,7 +1432,7 @@
 
         <span class="c"># A regular expression that finds pieces of whitespace:</span>
         <span class="n">WS_REGEXP</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*&#39;</span><span class="p">)</span>
-        
+
         <span class="n">sentence</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
         <span class="k">for</span> <span class="n">aug_tok</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
             <span class="n">tok</span> <span class="o">=</span> <span class="n">aug_tok</span><span class="o">.</span><span class="n">tok</span>
@@ -1443,7 +1510,7 @@
     <span class="k">def</span> <span class="nf">_second_pass_annotation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aug_tok1</span><span class="p">,</span> <span class="n">aug_tok2</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Performs token-based classification over a pair of contiguous tokens</span>
-<span class="sd">        returning an updated augmented token for the first of them.</span>
+<span class="sd">        updating the first.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Is it the last token? We can&#39;t do anything then.</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">aug_tok2</span><span class="p">:</span>
@@ -1459,7 +1526,7 @@
         <span class="n">next_typ</span> <span class="o">=</span> <span class="n">aug_tok2</span><span class="o">.</span><span class="n">type_no_sentperiod</span>
         <span class="n">tok_is_initial</span> <span class="o">=</span> <span class="n">aug_tok1</span><span class="o">.</span><span class="n">is_initial</span>
 
-        <span class="c"># [4.1.2. Collocational Heuristic] If there&#39;s a</span>
+        <span class="c"># [4.1.2. Collocation Heuristic] If there&#39;s a</span>
         <span class="c"># collocation between the word before and after the</span>
         <span class="c"># period, then label tok as an abbreviation and NOT</span>
         <span class="c"># a sentence break. Note that collocations with</span>
@@ -1468,7 +1535,7 @@
         <span class="k">if</span> <span class="p">(</span><span class="n">typ</span><span class="p">,</span> <span class="n">next_typ</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">collocations</span><span class="p">:</span>
             <span class="n">aug_tok1</span><span class="o">.</span><span class="n">sentbreak</span> <span class="o">=</span> <span class="bp">False</span>
             <span class="n">aug_tok1</span><span class="o">.</span><span class="n">abbr</span> <span class="o">=</span> <span class="bp">True</span>
-            <span class="k">return</span>
+            <span class="k">return</span> <span class="n">REASON_KNOWN_COLLOCATION</span>
 
         <span class="c"># [4.2. Token-Based Reclassification of Abbreviations] If</span>
         <span class="c"># the token is an abbreviation or an ellipsis, then decide</span>
@@ -1481,7 +1548,7 @@
             <span class="n">is_sent_starter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortho_heuristic</span><span class="p">(</span><span class="n">aug_tok2</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">is_sent_starter</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">sentbreak</span> <span class="o">=</span> <span class="bp">True</span>
-                <span class="k">return</span>
+                <span class="k">return</span> <span class="n">REASON_ABBR_WITH_ORTHOGRAPHIC_HEURISTIC</span>
 
             <span class="c"># [4.1.3. Frequent Sentence Starter Heruistic] If the</span>
             <span class="c"># next word is capitalized, and is a member of the</span>
@@ -1490,7 +1557,7 @@
             <span class="k">if</span> <span class="p">(</span> <span class="n">aug_tok2</span><span class="o">.</span><span class="n">first_upper</span> <span class="ow">and</span>
                  <span class="n">next_typ</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">sent_starters</span><span class="p">):</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">sentbreak</span> <span class="o">=</span> <span class="bp">True</span>
-                <span class="k">return</span>
+                <span class="k">return</span> <span class="n">REASON_ABBR_WITH_SENTENCE_STARTER</span>
 
         <span class="c"># [4.3. Token-Based Detection of Initials and Ordinals]</span>
         <span class="c"># Check if any initials or ordinals tokens that are marked</span>
@@ -1505,7 +1572,10 @@
             <span class="k">if</span> <span class="n">is_sent_starter</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">sentbreak</span> <span class="o">=</span> <span class="bp">False</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">abbr</span> <span class="o">=</span> <span class="bp">True</span>
-                <span class="k">return</span>
+                <span class="k">if</span> <span class="n">tok_is_initial</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">REASON_INITIAL_WITH_ORTHOGRAPHIC_HEURISTIC</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">REASON_NUMBER_WITH_ORTHOGRAPHIC_HEURISTIC</span>
 
             <span class="c"># Special heuristic for initials: if orthogrpahic</span>
             <span class="c"># heuristc is unknown, and next word is always</span>
@@ -1515,7 +1585,7 @@
                  <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="o">.</span><span class="n">ortho_context</span><span class="p">[</span><span class="n">next_typ</span><span class="p">]</span> <span class="o">&amp;</span> <span class="n">_ORTHO_LC</span><span class="p">)</span> <span class="p">):</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">sentbreak</span> <span class="o">=</span> <span class="bp">False</span>
                 <span class="n">aug_tok1</span><span class="o">.</span><span class="n">abbr</span> <span class="o">=</span> <span class="bp">True</span>
-                <span class="k">return</span>
+                <span class="k">return</span> <span class="n">REASON_INITIAL_WITH_SPECIAL_ORTHOGRAPHIC_HEURISTIC</span>
 
         <span class="k">return</span>
 
@@ -1549,6 +1619,20 @@
         <span class="c"># Otherwise, we&#39;re not sure.</span>
         <span class="k">return</span> <span class="s">&#39;unknown&#39;</span>
 
+</div>
+<span class="n">DEBUG_DECISION_FMT</span> <span class="o">=</span> <span class="s">&#39;&#39;&#39;Text: </span><span class="si">%(text)r</span><span class="s"> (at offset </span><span class="si">%(period_index)d</span><span class="s">)</span>
+<span class="s">Sentence break? </span><span class="si">%(break_decision)s</span><span class="s"> (</span><span class="si">%(reason)s</span><span class="s">)</span>
+<span class="s">Collocation? </span><span class="si">%(collocation)s</span><span class="s"></span>
+<span class="si">%(type1)r</span><span class="s">:</span>
+<span class="s">    known abbreviation: </span><span class="si">%(type1_in_abbrs)s</span><span class="s"></span>
+<span class="s">    is initial: </span><span class="si">%(type1_is_initial)s</span><span class="s"></span>
+<span class="si">%(type2)r</span><span class="s">:</span>
+<span class="s">    known sentence starter: </span><span class="si">%(type2_is_sent_starter)s</span><span class="s"></span>
+<span class="s">    orthographic heuristic suggests is a sentence starter? </span><span class="si">%(type2_ortho_heuristic)s</span><span class="s"></span>
+<span class="s">    orthographic contexts in training: </span><span class="si">%(type2_ortho_contexts)s</span><span class="s"></span>
+<span class="s">&#39;&#39;&#39;</span>
+<div class="viewcode-block" id="format_debug_decision"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.format_debug_decision">[docs]</a><span class="k">def</span> <span class="nf">format_debug_decision</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">DEBUG_DECISION_FMT</span> <span class="o">%</span> <span class="n">d</span>
 </div>
 <div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.punkt.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">tok_cls</span><span class="o">=</span><span class="n">PunktSentenceTokenizer</span><span class="p">,</span> <span class="n">train_cls</span><span class="o">=</span><span class="n">PunktTrainer</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Builds a punkt model and applies it to the same text&quot;&quot;&quot;</span>
