@@ -80,10 +80,13 @@
 <span class="sd">indicating the distance between them.  If not supplied, the default is binary</span>
 <span class="sd">comparison between the arguments.</span>
 
-<span class="sd">The simplest way to initialize an AnnotationTask is with a list of equal-length</span>
-<span class="sd">lists, each containing a coder&#39;s assignments for all objects in the task:</span>
+<span class="sd">The simplest way to initialize an AnnotationTask is with a list of triples,</span>
+<span class="sd">each containing a coder&#39;s assignment for one object in the task:</span>
 
-<span class="sd">    task = AnnotationTask([],[],[])</span>
+<span class="sd">    task = AnnotationTask(data=[(&#39;c1&#39;, &#39;1&#39;, &#39;v1&#39;),(&#39;c2&#39;, &#39;1&#39;, &#39;v1&#39;),...])</span>
+
+<span class="sd">Note that the data list needs to contain the same number of triples for each</span>
+<span class="sd">individual coder, containing category values for the same set of items.</span>
 
 <span class="sd">Alpha (Krippendorff 1980)</span>
 <span class="sd">Kappa (Cohen 1960)</span>
@@ -104,12 +107,25 @@
 <span class="sd">    &gt;&gt;&gt; t.avg_Ao()</span>
 <span class="sd">    0.88</span>
 <span class="sd">    &gt;&gt;&gt; t.pi()</span>
-<span class="sd">    0.79953224189776151</span>
+<span class="sd">    0.7995322418977615</span>
 <span class="sd">    &gt;&gt;&gt; t.S()</span>
-<span class="sd">    0.81999999999999984</span>
+<span class="sd">    0.8199999999999998</span>
+<span class="sd">    </span>
+<span class="sd">    This would have returned a wrong value (0.0) in @785fb79 as coders are in</span>
+<span class="sd">    the wrong order. Subsequently, all values for pi(), S(), and kappa() would</span>
+<span class="sd">    have been wrong as they are computed with avg_Ao().</span>
+<span class="sd">    &gt;&gt;&gt; t2 = AnnotationTask(data=[(&#39;b&#39;,&#39;1&#39;,&#39;stat&#39;),(&#39;a&#39;,&#39;1&#39;,&#39;stat&#39;)])</span>
+<span class="sd">    &gt;&gt;&gt; t2.avg_Ao()</span>
+<span class="sd">    1.0</span>
+
+<span class="sd">    The following, of course, also works.</span>
+<span class="sd">    &gt;&gt;&gt; t3 = AnnotationTask(data=[(&#39;a&#39;,&#39;1&#39;,&#39;othr&#39;),(&#39;b&#39;,&#39;1&#39;,&#39;othr&#39;)])</span>
+<span class="sd">    &gt;&gt;&gt; t3.avg_Ao()</span>
+<span class="sd">    1.0</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
 <span class="kn">import</span> <span class="nn">logging</span>
 <span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">groupby</span>
 <span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">itemgetter</span>
@@ -168,13 +184,20 @@
 
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">data</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
-        <span class="n">kA</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">cA</span> <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;item&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="n">kB</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">cB</span> <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;item&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="n">ret</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">distance</span><span class="p">(</span><span class="n">kA</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="n">kB</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">]))</span>
+        <span class="c"># cfedermann: we don&#39;t know what combination of coder/item will come</span>
+        <span class="c"># first in x; to avoid StopIteration problems due to assuming an order</span>
+        <span class="c"># cA,cB, we allow either for k1 and then look up the missing as k2.</span>
+        <span class="n">k1</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="p">(</span><span class="n">cA</span><span class="p">,</span><span class="n">cB</span><span class="p">)</span> <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;item&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">k1</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">cA</span><span class="p">:</span>
+            <span class="n">k2</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">cB</span> <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;item&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">k2</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;coder&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">cA</span> <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s">&#39;item&#39;</span><span class="p">]</span><span class="o">==</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+        
+        <span class="n">ret</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">distance</span><span class="p">(</span><span class="n">k1</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="n">k2</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">]))</span>
         <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Observed agreement between </span><span class="si">%s</span><span class="s"> and </span><span class="si">%s</span><span class="s"> on </span><span class="si">%s</span><span class="s">: </span><span class="si">%f</span><span class="s">&quot;</span><span class="p">,</span>
                       <span class="n">cA</span><span class="p">,</span> <span class="n">cB</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>
         <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Distance between </span><span class="se">\&quot;</span><span class="si">%r</span><span class="se">\&quot;</span><span class="s"> and </span><span class="se">\&quot;</span><span class="si">%r</span><span class="se">\&quot;</span><span class="s">: </span><span class="si">%f</span><span class="s">&quot;</span><span class="p">,</span>
-                      <span class="n">kA</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="n">kB</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">ret</span><span class="p">)</span>
+                      <span class="n">k1</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="n">k2</span><span class="p">[</span><span class="s">&#39;labels&#39;</span><span class="p">],</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">ret</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">ret</span>
 </div>
 <div class="viewcode-block" id="AnnotationTask.Nk"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.agreement.AnnotationTask.Nk">[docs]</a>    <span class="k">def</span> <span class="nf">Nk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
@@ -425,7 +448,7 @@
     <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">thorough</span><span class="p">:</span>
         <span class="k">pass</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">print</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">agreement</span><span class="p">)()</span>
+        <span class="k">print</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">agreement</span><span class="p">)())</span>
 
     <span class="n">logging</span><span class="o">.</span><span class="n">shutdown</span><span class="p">()</span>
 </pre></div>
