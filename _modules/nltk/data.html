@@ -53,7 +53,7 @@
   <h1>Source code for nltk.data</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Utility functions</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -83,14 +83,15 @@
 <span class="sd">adds it to a resource cache; and ``retrieve()`` copies a given resource</span>
 <span class="sd">to a local file.</span>
 <span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span><span class="p">,</span> <span class="n">unicode_literals</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
 
-<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
 <span class="kn">import</span> <span class="nn">sys</span>
-<span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">io</span>
+<span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">textwrap</span>
 <span class="kn">import</span> <span class="nn">weakref</span>
 <span class="kn">import</span> <span class="nn">re</span>
-<span class="kn">import</span> <span class="nn">urllib2</span>
 <span class="kn">import</span> <span class="nn">zipfile</span>
 <span class="kn">import</span> <span class="nn">codecs</span>
 
@@ -98,20 +99,16 @@
 
 <span class="k">try</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">zlib</span> <span class="kn">import</span> <span class="n">Z_SYNC_FLUSH</span> <span class="k">as</span> <span class="n">FLUSH</span>
-<span class="k">except</span><span class="p">:</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="kn">from</span> <span class="nn">zlib</span> <span class="kn">import</span> <span class="n">Z_FINISH</span> <span class="k">as</span> <span class="n">FLUSH</span>
 
 <span class="k">try</span><span class="p">:</span>
     <span class="kn">import</span> <span class="nn">cPickle</span> <span class="kn">as</span> <span class="nn">pickle</span>
-<span class="k">except</span><span class="p">:</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="kn">import</span> <span class="nn">pickle</span>
 
-<span class="k">try</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">cStringIO</span> <span class="kn">import</span> <span class="n">StringIO</span>
-<span class="k">except</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">StringIO</span> <span class="kn">import</span> <span class="n">StringIO</span>
-
 <span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Search Path</span>
@@ -125,23 +122,23 @@
 <span class="sd">   (e.g., in their home directory under ~/nltk_data).&quot;&quot;&quot;</span>
 
 <span class="c"># User-specified locations:</span>
-<span class="n">path</span> <span class="o">+=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;NLTK_DATA&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="p">)</span> <span class="k">if</span> <span class="n">d</span><span class="p">]</span>
+<span class="n">path</span> <span class="o">+=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;NLTK_DATA&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="p">)</span> <span class="k">if</span> <span class="n">d</span><span class="p">]</span>
 <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s">&#39;~/&#39;</span><span class="p">)</span> <span class="o">!=</span> <span class="s">&#39;~/&#39;</span><span class="p">:</span> <span class="n">path</span> <span class="o">+=</span> <span class="p">[</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s">&#39;~/nltk_data&#39;</span><span class="p">)]</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="s">&#39;~/nltk_data&#39;</span><span class="p">))]</span>
 
 <span class="c"># Common locations on Windows:</span>
 <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;win&#39;</span><span class="p">):</span> <span class="n">path</span> <span class="o">+=</span> <span class="p">[</span>
-    <span class="s">r&#39;C:\nltk_data&#39;</span><span class="p">,</span> <span class="s">r&#39;D:\nltk_data&#39;</span><span class="p">,</span> <span class="s">r&#39;E:\nltk_data&#39;</span><span class="p">,</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="s">&#39;nltk_data&#39;</span><span class="p">),</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="s">&#39;lib&#39;</span><span class="p">,</span> <span class="s">&#39;nltk_data&#39;</span><span class="p">),</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;APPDATA&#39;</span><span class="p">,</span> <span class="s">&#39;C:</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">),</span> <span class="s">&#39;nltk_data&#39;</span><span class="p">)]</span>
+    <span class="nb">str</span><span class="p">(</span><span class="s">r&#39;C:\nltk_data&#39;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="s">r&#39;D:\nltk_data&#39;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="s">r&#39;E:\nltk_data&#39;</span><span class="p">),</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;nltk_data&#39;</span><span class="p">)),</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;lib&#39;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;nltk_data&#39;</span><span class="p">)),</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="s">&#39;APPDATA&#39;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;C:</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">)),</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;nltk_data&#39;</span><span class="p">))]</span>
 
 <span class="c"># Common locations on UNIX &amp; OS X:</span>
 <span class="k">else</span><span class="p">:</span> <span class="n">path</span> <span class="o">+=</span> <span class="p">[</span>
-    <span class="s">&#39;/usr/share/nltk_data&#39;</span><span class="p">,</span>
-    <span class="s">&#39;/usr/local/share/nltk_data&#39;</span><span class="p">,</span>
-    <span class="s">&#39;/usr/lib/nltk_data&#39;</span><span class="p">,</span>
-    <span class="s">&#39;/usr/local/lib/nltk_data&#39;</span><span class="p">]</span>
+    <span class="nb">str</span><span class="p">(</span><span class="s">&#39;/usr/share/nltk_data&#39;</span><span class="p">),</span>
+    <span class="nb">str</span><span class="p">(</span><span class="s">&#39;/usr/local/share/nltk_data&#39;</span><span class="p">),</span>
+    <span class="nb">str</span><span class="p">(</span><span class="s">&#39;/usr/lib/nltk_data&#39;</span><span class="p">),</span>
+    <span class="nb">str</span><span class="p">(</span><span class="s">&#39;/usr/local/lib/nltk_data&#39;</span><span class="p">)]</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Path Pointers</span>
@@ -194,8 +191,8 @@
 <span class="sd">    subclass of ``str`` for backwards compatibility purposes --</span>
 <span class="sd">    this allows old code that expected ``nltk.data.find()`` to expect a</span>
 <span class="sd">    string to usually work (assuming the resource is not found in a</span>
-<span class="sd">    zipfile).  It also permits ``open()`` to work on a ``FileSystemPathPointer``.</span>
-
+<span class="sd">    zipfile).  It also permits ``open()`` to work on a</span>
+<span class="sd">    ``FileSystemPathPointer``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -203,6 +200,10 @@
 
 <span class="sd">        :raise IOError: If the given path does not exist.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c"># XXX: ``path`` must be a bytestring under Python 2.x because</span>
+        <span class="c"># FileSystemPathPointer is a str subclass.</span>
+
         <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;No such file or directory: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">path</span><span class="p">)</span>
@@ -226,14 +227,17 @@
         <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">)</span><span class="o">.</span><span class="n">st_size</span>
 </div>
 <div class="viewcode-block" id="FileSystemPathPointer.join"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.FileSystemPathPointer.join">[docs]</a>    <span class="k">def</span> <span class="nf">join</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">):</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="o">*</span><span class="n">fileid</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">))</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">,</span> <span class="o">*</span><span class="n">fileid</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">FileSystemPathPointer</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
 </div>
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s">&#39;FileSystemPathPointer(</span><span class="si">%r</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path</span>
+        <span class="c"># This should be a byte string under Python 2.x;</span>
+        <span class="c"># we don&#39;t want transliteration here so</span>
+        <span class="c"># @python_2_unicode_compatible is not used.</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;FileSystemPathPointer(</span><span class="si">%r</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path</span>
+    <span class="c"># there is no need for __str__ method because FileSystemPathPointer</span>
+    <span class="c"># is a str subclass and str.__str__ does the right thing</span>
 
 </div>
 <div class="viewcode-block" id="BufferedGzipFile"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.BufferedGzipFile">[docs]</a><span class="k">class</span> <span class="nc">BufferedGzipFile</span><span class="p">(</span><span class="n">GzipFile</span><span class="p">):</span>
@@ -264,22 +268,22 @@
 <span class="sd">            produces the least compression, and 9 is slowest and produces the</span>
 <span class="sd">            most compression. The default is 9.</span>
 <span class="sd">        :type compresslevel: int</span>
-<span class="sd">        :param fileobj: a StringIO stream to read from instead of a file.</span>
-<span class="sd">        :type fileobj: StringIO</span>
+<span class="sd">        :param fileobj: a BytesIO stream to read from instead of a file.</span>
+<span class="sd">        :type fileobj: BytesIO</span>
 <span class="sd">        :param size: number of bytes to buffer during calls to read() and write()</span>
 <span class="sd">        :type size: int</span>
 <span class="sd">        :rtype: BufferedGzipFile</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">GzipFile</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="n">compresslevel</span><span class="p">,</span> <span class="n">fileobj</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_size</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;size&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIZE</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
         <span class="c"># cStringIO does not support len.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">=</span> <span class="mi">0</span>
 
     <span class="k">def</span> <span class="nf">_reset_buffer</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># For some reason calling StringIO.truncate() here will lead to</span>
-        <span class="c"># inconsistent writes so just set _buffer to a new StringIO object.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+        <span class="c"># For some reason calling BytesIO.truncate() here will lead to</span>
+        <span class="c"># inconsistent writes so just set _buffer to a new BytesIO object.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">=</span> <span class="mi">0</span>
 
     <span class="k">def</span> <span class="nf">_write_buffer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
@@ -309,7 +313,7 @@
 <div class="viewcode-block" id="BufferedGzipFile.read"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.BufferedGzipFile.read">[docs]</a>    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">size</span><span class="p">:</span>
             <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_size</span>
-            <span class="n">contents</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+            <span class="n">contents</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
             <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
                 <span class="n">blocks</span> <span class="o">=</span> <span class="n">GzipFile</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="n">blocks</span><span class="p">:</span>
@@ -322,8 +326,8 @@
 </div>
 <div class="viewcode-block" id="BufferedGzipFile.write"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.BufferedGzipFile.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">size</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param data: str to write to file or buffer</span>
-<span class="sd">        :type data: str</span>
+<span class="sd">        :param data: bytes to write to file or buffer</span>
+<span class="sd">        :type data: bytes</span>
 <span class="sd">        :param size: buffer at least size bytes before writing to file</span>
 <span class="sd">        :type size: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -348,6 +352,16 @@
         <span class="k">return</span> <span class="n">stream</span>
 
 </div></div>
+<span class="k">class</span> <span class="nc">GzipUnicodeFile</span><span class="p">(</span><span class="n">GzipFile</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    text mode support for python version &lt;3.3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">compresslevel</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span>
+                 <span class="n">fileobj</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf-8&#39;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">=</span><span class="n">GzipFile</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="n">compresslevel</span><span class="p">,</span> <span class="n">fileobj</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">io</span><span class="o">.</span><span class="n">TextIOWrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="n">errors</span><span class="p">,</span> <span class="n">newline</span><span class="p">)</span>
+
+
 <span class="k">class</span> <span class="nc">ZipFilePathPointer</span><span class="p">(</span><span class="n">PathPointer</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A path pointer that identifies a file contained within a zipfile,</span>
@@ -361,7 +375,7 @@
 <span class="sd">        :raise IOError: If the given zipfile does not exist, or if it</span>
 <span class="sd">        does not contain the specified entry.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">zipfile</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">zipfile</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
             <span class="n">zipfile</span> <span class="o">=</span> <span class="n">OpenOnDemandZipFile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">zipfile</span><span class="p">))</span>
 
         <span class="c"># Normalize the entry string:</span>
@@ -369,8 +383,9 @@
 
         <span class="c"># Check that the entry exists:</span>
         <span class="k">if</span> <span class="n">entry</span><span class="p">:</span>
-            <span class="k">try</span><span class="p">:</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">getinfo</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
-            <span class="k">except</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">zipfile</span><span class="o">.</span><span class="n">getinfo</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                 <span class="c"># Sometimes directories aren&#39;t explicitly listed in</span>
                 <span class="c"># the zip file.  So if `entry` is a directory name,</span>
                 <span class="c"># then check if the zipfile contains any files that</span>
@@ -386,7 +401,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_entry</span> <span class="o">=</span> <span class="n">entry</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">zipfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+    <span class="k">def</span> <span class="nf">zipfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        The zipfile.ZipFile object used to access the zip file</span>
 <span class="sd">        containing the entry identified by this path pointer.</span>
@@ -403,7 +418,7 @@
 
     <span class="k">def</span> <span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_zipfile</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="p">)</span>
-        <span class="n">stream</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.gz&#39;</span><span class="p">):</span>
             <span class="n">stream</span> <span class="o">=</span> <span class="n">BufferedGzipFile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="p">,</span> <span class="n">fileobj</span><span class="o">=</span><span class="n">stream</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
@@ -418,11 +433,11 @@
         <span class="k">return</span> <span class="n">ZipFilePathPointer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_zipfile</span><span class="p">,</span> <span class="n">entry</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s">&#39;ZipFilePathPointer(</span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;ZipFilePathPointer(</span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">)&#39;</span><span class="p">)</span> <span class="o">%</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_zipfile</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s">&#39;</span><span class="si">%r</span><span class="s">/</span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_zipfile</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%r</span><span class="s">/</span><span class="si">%r</span><span class="s">&#39;</span><span class="p">)</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_zipfile</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entry</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Access Functions</span>
@@ -464,7 +479,7 @@
 <span class="sd">        character.  Otherwise, ``find()`` will not locate the</span>
 <span class="sd">        directory.</span>
 
-<span class="sd">    :type resource_name: str</span>
+<span class="sd">    :type resource_name: str or unicode</span>
 <span class="sd">    :param resource_name: The name of the resource to search for.</span>
 <span class="sd">        Resource names are posix-style relative path names, such as</span>
 <span class="sd">        ``corpora/brown``.  In particular, directory names should always</span>
@@ -545,17 +560,15 @@
 
     <span class="c"># Open the input &amp; output streams.</span>
     <span class="n">infile</span> <span class="o">=</span> <span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span>
-    <span class="n">outfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;wb&#39;</span><span class="p">)</span>
 
     <span class="c"># Copy infile -&gt; outfile, using 64k blocks.</span>
-    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-        <span class="n">s</span> <span class="o">=</span> <span class="n">infile</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">1024</span><span class="o">*</span><span class="mi">64</span><span class="p">)</span> <span class="c"># 64k blocks.</span>
-        <span class="n">outfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">s</span><span class="p">:</span> <span class="k">break</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfile</span><span class="p">:</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">infile</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">1024</span><span class="o">*</span><span class="mi">64</span><span class="p">)</span> <span class="c"># 64k blocks.</span>
+            <span class="n">outfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">s</span><span class="p">:</span> <span class="k">break</span>
 
-    <span class="c"># Close both files.</span>
     <span class="n">infile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-    <span class="n">outfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 
 <span class="c">#: A dictionary describing the formats that are supported by NLTK&#39;s</span>
 <span class="c">#: load() method.  Keys are format names, and values are format</span>
@@ -573,6 +586,7 @@
             <span class="s">&quot;parameter&quot;</span><span class="p">,</span>
     <span class="s">&#39;val&#39;</span><span class="p">:</span> <span class="s">&quot;A semantic valuation, parsed by nltk.sem.parse_valuation().&quot;</span><span class="p">,</span>
     <span class="s">&#39;raw&#39;</span><span class="p">:</span> <span class="s">&quot;The raw (byte string) contents of a file.&quot;</span><span class="p">,</span>
+    <span class="s">&#39;text&#39;</span><span class="p">:</span> <span class="s">&quot;The raw (unicode string) contents of a file. &quot;</span>
     <span class="p">}</span>
 
 <span class="c">#: A dictionary mapping from file extensions to format names, used</span>
@@ -586,10 +600,15 @@
     <span class="s">&#39;fcfg&#39;</span><span class="p">:</span> <span class="s">&#39;fcfg&#39;</span><span class="p">,</span>
     <span class="s">&#39;fol&#39;</span><span class="p">:</span> <span class="s">&#39;fol&#39;</span><span class="p">,</span>
     <span class="s">&#39;logic&#39;</span><span class="p">:</span> <span class="s">&#39;logic&#39;</span><span class="p">,</span>
-    <span class="s">&#39;val&#39;</span><span class="p">:</span> <span class="s">&#39;val&#39;</span><span class="p">}</span>
+    <span class="s">&#39;val&#39;</span><span class="p">:</span> <span class="s">&#39;val&#39;</span><span class="p">,</span>
+    <span class="s">&#39;txt&#39;</span><span class="p">:</span> <span class="s">&#39;text&#39;</span><span class="p">,</span>
+    <span class="s">&#39;text&#39;</span><span class="p">:</span> <span class="s">&#39;text&#39;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+<span class="c"># TODO: load() should be able to read zipfiles too</span>
 
 <div class="viewcode-block" id="load"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.load">[docs]</a><span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="s">&#39;auto&#39;</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
-         <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+         <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Load a given resource from the NLTK data package.  The following</span>
 <span class="sd">    resource formats are currently supported:</span>
@@ -602,11 +621,17 @@
 <span class="sd">      - ``fol`` (formulas of First Order Logic)</span>
 <span class="sd">      - ``logic`` (Logical formulas to be parsed by the given logic_parser)</span>
 <span class="sd">      - ``val`` (valuation of First Order Logic model)</span>
-<span class="sd">      - ``raw``</span>
+<span class="sd">      - ``text`` (the file contents as a unicode string)</span>
+<span class="sd">      - ``raw`` (the raw file contents as a byte string)</span>
 
 <span class="sd">    If no format is specified, ``load()`` will attempt to determine a</span>
 <span class="sd">    format based on the resource name&#39;s file extension.  If that</span>
 <span class="sd">    fails, ``load()`` will raise a ``ValueError`` exception.</span>
+
+<span class="sd">    For all text formats (everything except ``pickle``, ``yaml`` and ``raw``),</span>
+<span class="sd">    it tries to decode the raw contents using UTF-8, and if that doesn&#39;t</span>
+<span class="sd">    work, it tries with ISO-8859-1 (Latin-1), unless the ``encoding``</span>
+<span class="sd">    is specified.</span>
 
 <span class="sd">    :type resource_url: str</span>
 <span class="sd">    :param resource_url: A URL specifying where the resource should be</span>
@@ -628,18 +653,9 @@
 <span class="sd">    :type fstruct_parser: FeatStructParser</span>
 <span class="sd">    :param fstruct_parser: The parser that will be used to parse the</span>
 <span class="sd">        feature structure of an fcfg.</span>
+<span class="sd">    :type encoding: str</span>
+<span class="sd">    :param encoding: the encoding of the input; only used for text formats.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c"># If we&#39;ve cached the resource, then just return it.</span>
-    <span class="k">if</span> <span class="n">cache</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">_resource_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">resource_val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="k">print</span><span class="p">(</span><span class="s">&#39;&lt;&lt;Using cached copy of </span><span class="si">%s</span><span class="s">&gt;&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">resource_url</span><span class="p">,))</span>
-            <span class="k">return</span> <span class="n">resource_val</span>
-
-    <span class="c"># Let the user know what&#39;s going on.</span>
-    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;&lt;&lt;Loading </span><span class="si">%s</span><span class="s">&gt;&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">resource_url</span><span class="p">,))</span>
 
     <span class="c"># Determine the format of the resource.</span>
     <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;auto&#39;</span><span class="p">:</span>
@@ -654,38 +670,75 @@
                              <span class="s">&#39;argument to specify the format explicitly.&#39;</span>
                              <span class="o">%</span> <span class="n">resource_url</span><span class="p">)</span>
 
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">FORMATS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unknown format type: </span><span class="si">%s</span><span class="s">!&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">format</span><span class="p">,))</span>
+
+    <span class="c"># If we&#39;ve cached the resource, then just return it.</span>
+    <span class="k">if</span> <span class="n">cache</span><span class="p">:</span>
+        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">_resource_cache</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">resource_val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;&lt;&lt;Using cached copy of </span><span class="si">%s</span><span class="s">&gt;&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">resource_url</span><span class="p">,))</span>
+            <span class="k">return</span> <span class="n">resource_val</span>
+
+    <span class="c"># Let the user know what&#39;s going on.</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;&lt;&lt;Loading </span><span class="si">%s</span><span class="s">&gt;&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">resource_url</span><span class="p">,))</span>
+
     <span class="c"># Load the resource.</span>
-    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pickle&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">))</span>
+    <span class="n">opened_resource</span> <span class="o">=</span> <span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;raw&#39;</span><span class="p">:</span>
+        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">opened_resource</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pickle&#39;</span><span class="p">:</span>
+        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">opened_resource</span><span class="p">)</span>
     <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;yaml&#39;</span><span class="p">:</span>
         <span class="kn">import</span> <span class="nn">yaml</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">))</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cfg&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_cfg</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pcfg&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_pcfg</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fcfg&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_fcfg</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span>
-                                      <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">,</span>
-                                      <span class="n">fstruct_parser</span><span class="o">=</span><span class="n">fstruct_parser</span><span class="p">)</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fol&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_logic</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span>
-                                       <span class="n">logic_parser</span><span class="o">=</span><span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">logic</span><span class="o">.</span><span class="n">LogicParser</span><span class="p">())</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;logic&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_logic</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span>
-                                       <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">)</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;val&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_valuation</span><span class="p">(</span><span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
-    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;raw&#39;</span><span class="p">:</span>
-        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">_open</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">opened_resource</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">assert</span> <span class="n">format</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">FORMATS</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unknown format type!&#39;</span><span class="p">)</span>
+        <span class="c"># The resource is a text format.</span>
+        <span class="n">binary_data</span> <span class="o">=</span> <span class="n">opened_resource</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">string_data</span> <span class="o">=</span> <span class="n">binary_data</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">string_data</span> <span class="o">=</span> <span class="n">binary_data</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">UnicodeDecodeError</span><span class="p">:</span>
+                <span class="n">string_data</span> <span class="o">=</span> <span class="n">binary_data</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;latin-1&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;text&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">string_data</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cfg&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_cfg</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pcfg&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_pcfg</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fcfg&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_fcfg</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">,</span>
+                <span class="n">fstruct_parser</span><span class="o">=</span><span class="n">fstruct_parser</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fol&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_logic</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">logic</span><span class="o">.</span><span class="n">LogicParser</span><span class="p">(),</span>
+                <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;logic&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_logic</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;val&#39;</span><span class="p">:</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_valuation</span><span class="p">(</span>
+                <span class="n">string_data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&quot;Internal NLTK error: Format </span><span class="si">%s</span><span class="s"> isn&#39;t &quot;</span>
+                                 <span class="s">&quot;handled by nltk.data.load()&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">format</span><span class="p">,))</span>
+
+    <span class="n">opened_resource</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 
     <span class="c"># If requested, add it to the cache.</span>
     <span class="k">if</span> <span class="n">cache</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">_resource_cache</span><span class="p">[</span><span class="n">resource_url</span><span class="p">]</span> <span class="o">=</span> <span class="n">resource_val</span>
+            <span class="n">_resource_cache</span><span class="p">[(</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="p">)]</span> <span class="o">=</span> <span class="n">resource_val</span>
+            <span class="c"># TODO: add this line</span>
+            <span class="c"># print(&#39;&lt;&lt;Caching a copy of %s&gt;&gt;&#39; % (resource_url,))</span>
         <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
             <span class="c"># We can&#39;t create weak references to some object types, like</span>
             <span class="c"># strings and tuples.  For now, just don&#39;t cache them.</span>
@@ -704,7 +757,7 @@
 <span class="sd">    :type escape: str</span>
 <span class="sd">    :param escape: Prepended string that signals lines to be ignored</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">resource_val</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="s">&#39;raw&#39;</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">resource_val</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="s">&#39;text&#39;</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
     <span class="n">lines</span> <span class="o">=</span> <span class="n">resource_val</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">escape</span><span class="p">):</span> <span class="k">continue</span>
@@ -742,11 +795,14 @@
         <span class="c"># urllib might not use mode=&#39;rb&#39;, so handle this one ourselves:</span>
         <span class="k">return</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s">&#39;rb&#39;</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">compat</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">resource_url</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Lazy Resource Loader</span>
 <span class="c">######################################################################</span>
+
+<span class="c"># We shouldn&#39;t apply @python_2_unicode_compatible</span>
+<span class="c"># decorator to LazyLoader, this is resource.__class__ responsibility.</span>
 
 <div class="viewcode-block" id="LazyLoader"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.LazyLoader">[docs]</a><span class="k">class</span> <span class="nc">LazyLoader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
@@ -770,11 +826,12 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">__load</span><span class="p">()</span>
         <span class="c"># This looks circular, but its not, since __load() changes our</span>
         <span class="c"># __class__ to something new:</span>
-        <span class="k">return</span> <span class="s">&#39;</span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span>
+        <span class="k">return</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Open-On-Demand ZipFile</span>
 <span class="c">######################################################################</span>
+
 </div>
 <div class="viewcode-block" id="OpenOnDemandZipFile"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.OpenOnDemandZipFile">[docs]</a><span class="k">class</span> <span class="nc">OpenOnDemandZipFile</span><span class="p">(</span><span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -787,7 +844,7 @@
 <span class="sd">    read-only (i.e. ``write()`` and ``writestr()`` are disabled.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;ReopenableZipFile filename must be a string&#39;</span><span class="p">)</span>
         <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
         <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span> <span class="o">==</span> <span class="n">filename</span>
@@ -809,7 +866,7 @@
         <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&#39;OpenOnDemandZipfile is read-only&#39;</span><span class="p">)</span>
 </div>
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="s">&#39;OpenOnDemandZipFile(</span><span class="si">%r</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span>
+        <span class="k">return</span> <span class="nb">repr</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="s">&#39;OpenOnDemandZipFile(</span><span class="si">%r</span><span class="s">)&#39;</span><span class="p">)</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c">#{ Seekable Unicode Stream Reader</span>
@@ -853,7 +910,7 @@
         <span class="sd">&quot;&quot;&quot;The function that is used to decode byte strings into</span>
 <span class="sd">           unicode strings.&quot;&quot;&quot;</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">bytebuffer</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bytebuffer</span> <span class="o">=</span> <span class="n">b</span><span class="s">&#39;&#39;</span>
         <span class="sd">&quot;&quot;&quot;A buffer to use bytes that have been read but have not yet</span>
 <span class="sd">           been decoded.  This is only used when the final bytes from</span>
 <span class="sd">           a read do not form a complete encoding for a character.&quot;&quot;&quot;</span>
@@ -986,6 +1043,9 @@
         <span class="k">if</span> <span class="n">line</span><span class="p">:</span> <span class="k">return</span> <span class="n">line</span>
         <span class="k">else</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">StopIteration</span>
 </div>
+    <span class="k">def</span> <span class="nf">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+
     <span class="k">def</span> <span class="nf">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Return self&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span>
@@ -1041,7 +1101,7 @@
                              <span class="s">&#39;using char_seek_forward() instead.&#39;</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">whence</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">linebuffer</span> <span class="o">=</span> <span class="bp">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bytebuffer</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bytebuffer</span> <span class="o">=</span> <span class="n">b</span><span class="s">&#39;&#39;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span> <span class="o">=</span> <span class="bp">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rewind_checkpoint</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
 </div>
@@ -1066,7 +1126,7 @@
 <span class="sd">            Defaults to ``offset``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">est_bytes</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">est_bytes</span> <span class="o">=</span> <span class="n">offset</span>
-        <span class="nb">bytes</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="nb">bytes</span> <span class="o">=</span> <span class="n">b</span><span class="s">&#39;&#39;</span>
 
         <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
             <span class="c"># Read in a block of bytes.</span>
@@ -1115,9 +1175,9 @@
         <span class="c"># Calculate an estimate of where we think the newline is.</span>
         <span class="n">bytes_read</span> <span class="o">=</span> <span class="p">(</span> <span class="p">(</span><span class="n">orig_filepos</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bytebuffer</span><span class="p">))</span> <span class="o">-</span>
                        <span class="bp">self</span><span class="o">.</span><span class="n">_rewind_checkpoint</span> <span class="p">)</span>
-        <span class="n">buf_size</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">linebuffer</span><span class="p">])</span>
-        <span class="n">est_bytes</span> <span class="o">=</span> <span class="p">(</span><span class="n">bytes_read</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span> <span class="o">/</span>
-                     <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span> <span class="o">+</span> <span class="n">buf_size</span><span class="p">))</span>
+        <span class="n">buf_size</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">linebuffer</span><span class="p">)</span>
+        <span class="n">est_bytes</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">bytes_read</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span> <span class="o">/</span>
+                     <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span> <span class="o">+</span> <span class="n">buf_size</span><span class="p">)))</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rewind_checkpoint</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_char_seek_forward</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rewind_numchars</span><span class="p">,</span> <span class="n">est_bytes</span><span class="p">)</span>
@@ -1147,7 +1207,7 @@
 <span class="sd">        them using this reader&#39;s encoding, and return the resulting</span>
 <span class="sd">        unicode string.  ``linebuffer`` is not included in the result.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="s">u&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="k">return</span> <span class="s">&#39;&#39;</span>
 
         <span class="c"># Skip past the byte order marker, if present.</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bom</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>

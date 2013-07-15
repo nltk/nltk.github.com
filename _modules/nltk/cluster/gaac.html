@@ -53,21 +53,21 @@
   <h1>Source code for nltk.cluster.gaac</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Group Average Agglomerative Clusterer</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Trevor Cohn &lt;tacohn@cs.mu.oz.au&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
-
-<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
-<span class="kn">import</span> <span class="nn">copy</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span><span class="p">,</span> <span class="n">unicode_literals</span>
 
 <span class="k">try</span><span class="p">:</span>
     <span class="kn">import</span> <span class="nn">numpy</span>
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="k">pass</span>
 
-<span class="kn">from</span> <span class="nn">nltk.cluster.util</span> <span class="kn">import</span> <span class="n">VectorSpaceClusterer</span><span class="p">,</span> <span class="n">Dendrogram</span>
+<span class="kn">from</span> <span class="nn">nltk.cluster.util</span> <span class="kn">import</span> <span class="n">VectorSpaceClusterer</span><span class="p">,</span> <span class="n">Dendrogram</span><span class="p">,</span> <span class="n">cosine_distance</span>
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">python_2_unicode_compatible</span>
 
+<span class="nd">@python_2_unicode_compatible</span>
 <div class="viewcode-block" id="GAAClusterer"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer">[docs]</a><span class="k">class</span> <span class="nc">GAAClusterer</span><span class="p">(</span><span class="n">VectorSpaceClusterer</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The Group Average Agglomerative starts with each of the N vectors as singleton</span>
@@ -94,38 +94,60 @@
         <span class="k">return</span> <span class="n">VectorSpaceClusterer</span><span class="o">.</span><span class="n">cluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">assign_clusters</span><span class="p">,</span> <span class="n">trace</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="GAAClusterer.cluster_vectorspace"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.cluster_vectorspace">[docs]</a>    <span class="k">def</span> <span class="nf">cluster_vectorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vectors</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="c"># create a cluster for each vector</span>
-        <span class="n">clusters</span> <span class="o">=</span> <span class="p">[[</span><span class="n">vector</span><span class="p">]</span> <span class="k">for</span> <span class="n">vector</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">]</span>
+        <span class="c"># variables describing the initial situation</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vectors</span><span class="p">)</span>
+        <span class="n">cluster_len</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">N</span>
+        <span class="n">cluster_count</span> <span class="o">=</span> <span class="n">N</span>
+        <span class="n">index_map</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)</span>
 
-        <span class="c"># the sum vectors</span>
-        <span class="n">vector_sum</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">vectors</span><span class="p">)</span>
+        <span class="c"># construct the similarity matrix</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dims</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float</span><span class="p">)</span><span class="o">*</span><span class="n">numpy</span><span class="o">.</span><span class="n">inf</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+                <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">cosine_distance</span><span class="p">(</span><span class="n">vectors</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">vectors</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
 
-        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="c"># find the two best candidate clusters to merge, based on their</span>
-            <span class="c"># S(union c_i, c_j)</span>
-            <span class="n">best</span> <span class="o">=</span> <span class="bp">None</span>
-            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)):</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)):</span>
-                    <span class="n">sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_average_similarity</span><span class="p">(</span>
-                                <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span>
-                                <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span>
-                    <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">sim</span> <span class="o">&gt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
-                        <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">cluster_count</span> <span class="o">&gt;</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">dist</span><span class="o">.</span><span class="n">argmin</span><span class="p">(),</span> <span class="n">dims</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;merging </span><span class="si">%d</span><span class="s"> and </span><span class="si">%d</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span>
 
-            <span class="c"># merge them and replace in cluster list</span>
-            <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">best</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
-            <span class="nb">sum</span> <span class="o">=</span> <span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
-            <span class="k">if</span> <span class="n">trace</span><span class="p">:</span> <span class="k">print</span><span class="p">(</span><span class="s">&#39;merging </span><span class="si">%d</span><span class="s"> and </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span>
+            <span class="c"># update similarities for merging i and j</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_merge_similarities</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">cluster_len</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
 
-            <span class="n">clusters</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">sum</span>
-            <span class="k">del</span> <span class="n">clusters</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
-            <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
-            <span class="k">del</span> <span class="n">vector_sum</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="c"># remove j</span>
+            <span class="n">dist</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">inf</span>
+            <span class="n">dist</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">inf</span>
 
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+            <span class="c"># merge the clusters</span>
+            <span class="n">cluster_len</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">cluster_len</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">+</span><span class="n">cluster_len</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">index_map</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">index_map</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+            <span class="n">cluster_count</span> <span class="o">-=</span> <span class="mi">1</span>
+
+            <span class="c"># update the index map to reflect the indexes if we</span>
+            <span class="c"># had removed j</span>
+            <span class="n">index_map</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="n">index_map</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">N</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">update_clusters</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">)</span>
 </div>
+    <span class="k">def</span> <span class="nf">_merge_similarities</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dist</span><span class="p">,</span> <span class="n">cluster_len</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">):</span>
+        <span class="c"># the new cluster i merged from i and j adopts the average of</span>
+        <span class="c"># i and j&#39;s similarity to each other cluster, weighted by the</span>
+        <span class="c"># number of points in the clusters i and j</span>
+        <span class="n">i_weight</span> <span class="o">=</span> <span class="n">cluster_len</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">j_weight</span> <span class="o">=</span> <span class="n">cluster_len</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+        <span class="n">weight_sum</span> <span class="o">=</span> <span class="n">i_weight</span><span class="o">+</span><span class="n">j_weight</span>
+
+        <span class="c"># update for x&lt;i</span>
+        <span class="n">dist</span><span class="p">[:</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">dist</span><span class="p">[:</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">*</span><span class="n">i_weight</span> <span class="o">+</span> <span class="n">dist</span><span class="p">[:</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span><span class="o">*</span><span class="n">j_weight</span>
+        <span class="n">dist</span><span class="p">[:</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">/=</span> <span class="n">weight_sum</span>
+        <span class="c"># update for i&lt;x&lt;j</span>
+        <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">j</span><span class="p">]</span><span class="o">*</span><span class="n">i_weight</span> <span class="o">+</span> <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">j</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span><span class="o">*</span><span class="n">j_weight</span>
+        <span class="c"># update for i&lt;j&lt;x</span>
+        <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span><span class="o">*</span><span class="n">i_weight</span> <span class="o">+</span> <span class="n">dist</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span><span class="o">*</span><span class="n">j_weight</span>
+        <span class="n">dist</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span> <span class="o">/=</span> <span class="n">weight_sum</span>
+
 <div class="viewcode-block" id="GAAClusterer.update_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.update_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">update_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_clusters</span><span class="p">):</span>
         <span class="n">clusters</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dendrogram</span><span class="o">.</span><span class="n">groups</span><span class="p">(</span><span class="n">num_clusters</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span> <span class="o">=</span> <span class="p">[]</span>
@@ -148,9 +170,9 @@
         <span class="n">best</span> <span class="o">=</span> <span class="bp">None</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span><span class="p">):</span>
             <span class="n">centroid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_centroids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-            <span class="n">sim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_average_similarity</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">centroid</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">sim</span> <span class="o">&gt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
-                <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">dist</span> <span class="o">=</span> <span class="n">cosine_distance</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">centroid</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">best</span> <span class="ow">or</span> <span class="n">dist</span> <span class="o">&lt;</span> <span class="n">best</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">best</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 </div>
 <div class="viewcode-block" id="GAAClusterer.dendrogram"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.dendrogram">[docs]</a>    <span class="k">def</span> <span class="nf">dendrogram</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -163,11 +185,6 @@
 <div class="viewcode-block" id="GAAClusterer.num_clusters"><a class="viewcode-back" href="../../../api/nltk.cluster.html#nltk.cluster.gaac.GAAClusterer.num_clusters">[docs]</a>    <span class="k">def</span> <span class="nf">num_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
 </div>
-    <span class="k">def</span> <span class="nf">_average_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v1</span><span class="p">,</span> <span class="n">l1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">l2</span><span class="p">):</span>
-        <span class="nb">sum</span> <span class="o">=</span> <span class="n">v1</span> <span class="o">+</span> <span class="n">v2</span>
-        <span class="n">length</span> <span class="o">=</span> <span class="n">l1</span> <span class="o">+</span> <span class="n">l2</span>
-        <span class="k">return</span> <span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="nb">sum</span><span class="p">,</span> <span class="nb">sum</span><span class="p">)</span> <span class="o">-</span> <span class="n">length</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">length</span> <span class="o">*</span> <span class="p">(</span><span class="n">length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
-
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s">&#39;&lt;GroupAverageAgglomerative Clusterer n=</span><span class="si">%d</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_clusters</span>
 </div>

@@ -53,7 +53,7 @@
   <h1>Source code for nltk.app.wordnet_app</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: WordNet Browser Application</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="c">#         Paul Bone &lt;pbone@students.csse.unimelb.edu.au&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
@@ -93,20 +93,17 @@
 <span class="sd">        Do not start a web browser, and do not allow a user to</span>
 <span class="sd">        shotdown the server through the web interface.</span>
 <span class="sd">&quot;&quot;&quot;</span>
-
 <span class="c"># TODO: throughout this package variable names and docstrings need</span>
 <span class="c"># modifying to be compliant with NLTK&#39;s coding standards.  Tests also</span>
 <span class="c"># need to be develop to ensure this continues to work in the face of</span>
 <span class="c"># changes to other NLTK packages.</span>
-
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
 <span class="c"># Allow this program to run inside the NLTK source tree.</span>
 <span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">path</span>
 
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">argv</span>
-<span class="kn">from</span> <span class="nn">BaseHTTPServer</span> <span class="kn">import</span> <span class="n">HTTPServer</span><span class="p">,</span> <span class="n">BaseHTTPRequestHandler</span>
-<span class="kn">from</span> <span class="nn">urllib</span> <span class="kn">import</span> <span class="n">quote_plus</span><span class="p">,</span> <span class="n">unquote_plus</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 <span class="kn">import</span> <span class="nn">webbrowser</span>
 <span class="kn">import</span> <span class="nn">datetime</span>
@@ -115,12 +112,17 @@
 <span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">import</span> <span class="nn">getopt</span>
 <span class="kn">import</span> <span class="nn">base64</span>
-<span class="kn">import</span> <span class="nn">cPickle</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">import</span> <span class="nn">copy</span>
 
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">wordnet</span> <span class="k">as</span> <span class="n">wn</span>
 <span class="kn">from</span> <span class="nn">nltk.corpus.reader.wordnet</span> <span class="kn">import</span> <span class="n">Synset</span><span class="p">,</span> <span class="n">Lemma</span>
 
+<span class="k">if</span> <span class="n">compat</span><span class="o">.</span><span class="n">PY3</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">http.server</span> <span class="kn">import</span> <span class="n">HTTPServer</span><span class="p">,</span> <span class="n">BaseHTTPRequestHandler</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">BaseHTTPServer</span> <span class="kn">import</span> <span class="n">HTTPServer</span><span class="p">,</span> <span class="n">BaseHTTPRequestHandler</span>
 
 <span class="c"># now included in local file</span>
 <span class="c"># from util import html_header, html_trailer, \</span>
@@ -145,17 +147,13 @@
     <span class="k">def</span> <span class="nf">do_GET</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">global</span> <span class="n">firstClient</span>
         <span class="n">sp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
-        <span class="k">if</span> <span class="n">unquote_plus</span><span class="p">(</span><span class="n">sp</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;SHUTDOWN THE SERVER&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">compat</span><span class="o">.</span><span class="n">unquote_plus</span><span class="p">(</span><span class="n">sp</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;SHUTDOWN THE SERVER&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">server_mode</span><span class="p">:</span>
                 <span class="n">page</span> <span class="o">=</span> <span class="s">&quot;Server must be killed with SIGTERM.&quot;</span>
                 <span class="nb">type</span> <span class="o">=</span> <span class="s">&quot;text/plain&quot;</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">print</span><span class="p">(</span><span class="s">&#39;Server shutting down!&#39;</span><span class="p">)</span>
                 <span class="n">os</span><span class="o">.</span><span class="n">_exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-
-        <span class="k">elif</span> <span class="n">sp</span> <span class="o">==</span> <span class="s">&#39;favicon.ico&#39;</span><span class="p">:</span>
-            <span class="nb">type</span> <span class="o">=</span> <span class="s">&#39;image/x-icon&#39;</span>
-            <span class="n">page</span> <span class="o">=</span> <span class="n">favicon_data</span><span class="p">()</span>
 
         <span class="k">elif</span> <span class="n">sp</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span> <span class="c"># First request.</span>
             <span class="nb">type</span> <span class="o">=</span> <span class="s">&#39;text/html&#39;</span>
@@ -168,7 +166,7 @@
 
         <span class="k">elif</span> <span class="n">sp</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.html&#39;</span><span class="p">):</span> <span class="c"># Trying to fetch a HTML file TODO:</span>
             <span class="nb">type</span> <span class="o">=</span> <span class="s">&#39;text/html&#39;</span>
-            <span class="n">usp</span> <span class="o">=</span> <span class="n">unquote_plus</span><span class="p">(</span><span class="n">sp</span><span class="p">)</span>
+            <span class="n">usp</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">unquote_plus</span><span class="p">(</span><span class="n">sp</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">usp</span> <span class="o">==</span> <span class="s">&#39;NLTK Wordnet Browser Database Info.html&#39;</span><span class="p">:</span>
                 <span class="n">word</span> <span class="o">=</span> <span class="s">&#39;* Database Info *&#39;</span>
                 <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">usp</span><span class="p">):</span>
@@ -207,7 +205,7 @@
 
         <span class="c"># Send result.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">send_head</span><span class="p">(</span><span class="nb">type</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">))</span>
 
 
     <span class="k">def</span> <span class="nf">send_head</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
@@ -224,58 +222,6 @@
                 <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">address_string</span><span class="p">(),</span>
                  <span class="bp">self</span><span class="o">.</span><span class="n">log_date_time_string</span><span class="p">(),</span>
                  <span class="n">format</span><span class="o">%</span><span class="n">args</span><span class="p">))</span>
-
-
-<span class="c"># This data was encoded with the following procedure</span>
-<span class="k">def</span> <span class="nf">encode_icon</span><span class="p">():</span>
-    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&quot;favicon.ico&quot;</span><span class="p">,</span> <span class="s">&quot;rb&quot;</span><span class="p">)</span>
-    <span class="n">s</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
-    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-
-    <span class="k">def</span> <span class="nf">split</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">72</span><span class="p">:</span>
-            <span class="k">return</span> <span class="p">[</span><span class="n">s</span><span class="p">]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">72</span><span class="p">]]</span> <span class="o">+</span> <span class="n">split</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">72</span><span class="p">:])</span>
-
-    <span class="k">print</span><span class="p">(</span><span class="n">split</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64encode</span><span class="p">(</span><span class="n">s</span><span class="p">)))</span>
-
-
-<span class="n">FAVICON_BASE64_DATA</span> <span class="o">=</span> \
-<span class="p">[</span><span class="s">&#39;AAABAAEAEBAAAAAAAABoBQAAFgAAACgAAAAQAAAAIAAAAAEACAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAD___8A9___ANb3_wDO9_8AjPf_ALXv_wCc7_8AjO__AHvv_wBz7_8Aa-__AKXn&#39;</span><span class="p">,</span>
- <span class="s">&#39;_wCc5_8AlOf_AITn_wBz5_8Aa-f_AGPn_wBa5_8Ac97_AGve_wBj3v8AWt7_AFLe_wBK3v8A&#39;</span><span class="p">,</span>
- <span class="s">&#39;Qt7_AFrW_wBS1v8AStb_AELW_wA51v8AMdb_ACnO_wAhzv8AGM7_ABjG_wD___cA__f3APf3&#39;</span><span class="p">,</span>
- <span class="s">&#39;9wB73vcAUtb3AErW9wAhxvcAAMb3AFLO7wAYxu8AEMbvACG95wAYvecA9-fWAHPG1gBKvdYA&#39;</span><span class="p">,</span>
- <span class="s">&#39;Ob3WACG91gDv3s4Axt7OACm1zgCMtb0ASq29ACGlvQBStbUAUq21ADGttQA5pbUA3satAEqc&#39;</span><span class="p">,</span>
- <span class="s">&#39;rQDWvaUAY62lAOfGnADWvZwAtbWcAJStnADGrZQAzq2MAIycjABznIwAa5yMAN61hADWrXsA&#39;</span><span class="p">,</span>
- <span class="s">&#39;zq17AMalewCtpXsAa4x7AMaccwC9nHMAtZRzAISUcwBrjHMAzqVrALWUawCtlGsArYxrAHuE&#39;</span><span class="p">,</span>
- <span class="s">&#39;awBre2sAY3trAHuEYwBzhGMAc3tjAGt7YwDGlFoAvYxaAGNzWgBSa1oAxpRSAK2MUgDGjEoA&#39;</span><span class="p">,</span>
- <span class="s">&#39;vYxKAL2ESgC1hEoArYRKAIRzSgB7a0oAc2tKAGtrSgBaY0oAtYRCAK17QgCle0IApXM5AJxz&#39;</span><span class="p">,</span>
- <span class="s">&#39;OQCcazkAjGMxAIRaMQBzWjEAa1oxAIRaKQB7ShAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAAAAAAAAAAAAGFh4YLAYAAAAAAAAAAAAHGB4gIBYWBgAAAAAAAAAAFhgzQR45MixGMQAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAAAABQYTF0WbzplWQAAAABFVEgKFExdFG59eywWCwBAdHRJCgpLXRhxe3IvIiIDT2p0VAdh&#39;</span><span class="p">,</span>
- <span class="s">&#39;fn5xbzplciAwFFNqanQ3BwoKChYYGB4gICxYanRqalRPWVRZRhMYHiAYTmlqdnZ2dnh5eX1G&#39;</span><span class="p">,</span>
- <span class="s">&#39;FhgeFEVjaT1SVithKzg7WhMYGAsATmM9UjgwXDt2eFsIFgcAAAAAFDRDLUo-bnhZAAAAAAAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAgwRS1cO3Z2WgAAAAAAAAADUTZHbVJ0d0kAAAAAAAAAADFPY2pqZEgAAAAAAAAA__8AAP__&#39;</span><span class="p">,</span>
- <span class="s">&#39;AAD__wAAsaEAAE5eAABOXgAA__4AAPv_AAD__wAA__8AAM3-AADw_wAA__8AAML-AAD__wAA&#39;</span><span class="p">,</span>
- <span class="s">&#39;xf4=&#39;</span><span class="p">]</span>
-
-
-<span class="k">def</span> <span class="nf">favicon_data</span><span class="p">():</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Return the data for the favicon image.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64decode</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">FAVICON_BASE64_DATA</span><span class="p">))</span>
 
 
 <span class="k">def</span> <span class="nf">get_unique_counter_from_url</span><span class="p">(</span><span class="n">sp</span><span class="p">):</span>
@@ -377,7 +323,8 @@
 <span class="sd">This provides a backend to both wxbrowse and browserver.py.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-
+
+
 <span class="c">################################################################################</span>
 <span class="c">#</span>
 <span class="c"># Main logic for wordnet browser.</span>
@@ -641,7 +588,7 @@
     <span class="n">ref</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">Reference</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span><span class="p">))</span>
     <span class="n">ref</span><span class="o">.</span><span class="n">toggle_synset</span><span class="p">(</span><span class="n">synset</span><span class="p">)</span>
     <span class="n">synset_label</span> <span class="o">=</span> <span class="n">typ</span> <span class="o">+</span> <span class="s">&quot;;&quot;</span>
-    <span class="k">if</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">synset_relations</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+    <span class="k">if</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">synset_relations</span><span class="p">:</span>
         <span class="n">synset_label</span> <span class="o">=</span> <span class="n">_bold</span><span class="p">(</span><span class="n">synset_label</span><span class="p">)</span>
     <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;&lt;li&gt;</span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">) &#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">make_lookup_link</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">synset_label</span><span class="p">),</span> <span class="n">descr</span><span class="p">)</span>
     <span class="k">def</span> <span class="nf">format_lemma</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
@@ -652,11 +599,11 @@
             <span class="n">ref</span> <span class="o">=</span> <span class="n">Reference</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">make_lookup_link</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
 
-    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">format_lemma</span><span class="p">(</span><span class="n">l</span><span class="o">.</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">synset</span><span class="o">.</span><span class="n">lemmas</span><span class="p">])</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">format_lemma</span><span class="p">(</span><span class="n">l</span><span class="o">.</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">synset</span><span class="o">.</span><span class="n">lemmas</span><span class="p">)</span>
 
     <span class="n">gl</span> <span class="o">=</span> <span class="s">&quot; (</span><span class="si">%s</span><span class="s">) &lt;i&gt;</span><span class="si">%s</span><span class="s">&lt;/i&gt; &quot;</span> <span class="o">%</span> \
         <span class="p">(</span><span class="n">synset</span><span class="o">.</span><span class="n">definition</span><span class="p">,</span>
-         <span class="s">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&quot;</span><span class="se">\&quot;</span><span class="si">%s</span><span class="se">\&quot;</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">synset</span><span class="o">.</span><span class="n">examples</span><span class="p">]))</span>
+         <span class="s">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\&quot;</span><span class="si">%s</span><span class="se">\&quot;</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">synset</span><span class="o">.</span><span class="n">examples</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">s</span> <span class="o">+</span> <span class="n">gl</span> <span class="o">+</span> <span class="n">_synset_relations</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset</span><span class="p">,</span> <span class="n">synset_relations</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;&lt;/li&gt;</span><span class="se">\n</span><span class="s">&#39;</span>
 
 <span class="k">def</span> <span class="nf">_collect_all_synsets</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">synset_relations</span><span class="o">=</span><span class="nb">dict</span><span class="p">()):</span>
@@ -683,16 +630,16 @@
 <span class="sd">    :rtype: str</span>
 <span class="sd">    &#39;&#39;&#39;</span>
 
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">synset_relations</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">synset_relations</span><span class="p">:</span>
         <span class="k">return</span> <span class="s">&quot;&quot;</span>
     <span class="n">ref</span> <span class="o">=</span> <span class="n">Reference</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">relation_html</span><span class="p">(</span><span class="n">r</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="n">Synset</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">Synset</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">make_lookup_link</span><span class="p">(</span><span class="n">Reference</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">lemma_names</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">r</span><span class="o">.</span><span class="n">lemma_names</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-        <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="n">Lemma</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">Lemma</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">relation_html</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">synset</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
             <span class="c"># It&#39;s probably a tuple containing a Synset and a list of</span>
             <span class="c"># similar tuples.  This forms a tree of synsets.</span>
             <span class="k">return</span> <span class="s">&quot;</span><span class="si">%s</span><span class="se">\n</span><span class="s">&lt;ul&gt;</span><span class="si">%s</span><span class="s">&lt;/ul&gt;</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> \
@@ -701,7 +648,7 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;r must be a synset, lemma or list, it was: type(r) = </span><span class="si">%s</span><span class="s">, r = </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">),</span> <span class="n">r</span><span class="p">))</span>
 
-    <span class="k">def</span> <span class="nf">make_synset_html</span><span class="p">((</span><span class="n">db_name</span><span class="p">,</span> <span class="n">disp_name</span><span class="p">,</span> <span class="n">rels</span><span class="p">)):</span>
+    <span class="k">def</span> <span class="nf">make_synset_html</span><span class="p">(</span><span class="n">db_name</span><span class="p">,</span> <span class="n">disp_name</span><span class="p">,</span> <span class="n">rels</span><span class="p">):</span>
         <span class="n">synset_html</span> <span class="o">=</span> <span class="s">&#39;&lt;i&gt;</span><span class="si">%s</span><span class="s">&lt;/i&gt;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> \
             <span class="n">make_lookup_link</span><span class="p">(</span>
                 <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span><span class="o">.</span><span class="n">toggle_synset_relation</span><span class="p">(</span><span class="n">synset</span><span class="p">,</span> <span class="n">db_name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span>
@@ -714,9 +661,9 @@
         <span class="k">return</span> <span class="n">synset_html</span>
 
     <span class="n">html</span> <span class="o">=</span> <span class="s">&#39;&lt;ul&gt;&#39;</span> <span class="o">+</span> \
-        <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s">&quot;&lt;li&gt;</span><span class="si">%s</span><span class="s">&lt;/li&gt;&quot;</span> <span class="o">%</span> <span class="n">make_synset_html</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span>
+        <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s">&quot;&lt;li&gt;</span><span class="si">%s</span><span class="s">&lt;/li&gt;&quot;</span> <span class="o">%</span> <span class="n">make_synset_html</span><span class="p">(</span><span class="o">*</span><span class="n">rel_data</span><span class="p">)</span> <span class="k">for</span> <span class="n">rel_data</span>
                    <span class="ow">in</span> <span class="n">get_relations_data</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset</span><span class="p">)</span>
-                   <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">!=</span> <span class="p">[]))</span> <span class="o">+</span> \
+                   <span class="k">if</span> <span class="n">rel_data</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">!=</span> <span class="p">[]))</span> <span class="o">+</span> \
         <span class="s">&#39;&lt;/ul&gt;&#39;</span>
 
     <span class="k">return</span> <span class="n">html</span>
@@ -748,7 +695,7 @@
         <span class="c"># This uses a tuple rather than an object since the python</span>
         <span class="c"># pickle representation is much smaller and there is no need</span>
         <span class="c"># to represent the complete object.</span>
-        <span class="n">string</span> <span class="o">=</span> <span class="n">cPickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">word</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">word</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64encode</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">toggle_synset_relation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset</span><span class="p">,</span> <span class="n">relation</span><span class="p">):</span>
@@ -770,7 +717,7 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Toggle displaying of the relation types for the given synset</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">synset</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="p">:</span>
             <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="p">[</span><span class="n">synset</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">synset_relations</span><span class="p">[</span><span class="n">synset</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -783,7 +730,7 @@
 <span class="sd">    Decode a reference encoded with Reference.encode</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">string</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64decode</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
-    <span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span> <span class="o">=</span> <span class="n">cPickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+    <span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">Reference</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span><span class="p">)</span>
 
 <span class="k">def</span> <span class="nf">make_lookup_link</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
@@ -839,10 +786,11 @@
 
     <span class="c"># This looks up multiple words at once.  This is probably not</span>
     <span class="c"># necessary and may lead to problems.</span>
-    <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="p">[</span><span class="n">wn</span><span class="o">.</span><span class="n">NOUN</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">VERB</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">ADJ</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">ADV</span><span class="p">]:</span>
-        <span class="n">form</span> <span class="o">=</span> <span class="n">wn</span><span class="o">.</span><span class="n">morphy</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">form</span> <span class="ow">and</span> <span class="n">form</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pos_forms</span><span class="p">[</span><span class="n">pos</span><span class="p">]:</span>
-            <span class="n">pos_forms</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">form</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="p">[</span><span class="n">wn</span><span class="o">.</span><span class="n">NOUN</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">VERB</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">ADJ</span><span class="p">,</span> <span class="n">wn</span><span class="o">.</span><span class="n">ADV</span><span class="p">]:</span>
+            <span class="n">form</span> <span class="o">=</span> <span class="n">wn</span><span class="o">.</span><span class="n">morphy</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">form</span> <span class="ow">and</span> <span class="n">form</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pos_forms</span><span class="p">[</span><span class="n">pos</span><span class="p">]:</span>
+                <span class="n">pos_forms</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">form</span><span class="p">)</span>
     <span class="n">body</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
     <span class="k">for</span> <span class="n">pos</span><span class="p">,</span><span class="n">pos_str</span><span class="p">,</span><span class="n">name</span> <span class="ow">in</span> <span class="n">_pos_tuples</span><span class="p">():</span>
         <span class="k">if</span> <span class="n">pos</span> <span class="ow">in</span> <span class="n">pos_forms</span><span class="p">:</span>
@@ -859,7 +807,8 @@
     <span class="k">return</span> <span class="n">body</span><span class="p">,</span> <span class="n">word</span>
 
 
-
+
+
 <span class="c">#####################################################################</span>
 <span class="c"># Static pages</span>
 <span class="c">#####################################################################</span>
@@ -900,7 +849,7 @@
 <span class="sd">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01//EN&quot; &quot;http://www.w3.org/TR/html4/strict.dtd&quot;&gt;</span>
 <span class="sd">&lt;html&gt;</span>
 <span class="sd">     &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="sd">            Copyright (C) 2001-2012 NLTK Project</span>
+<span class="sd">            Copyright (C) 2001-2013 NLTK Project</span>
 <span class="sd">            Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="sd">            URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="sd">            For license information, see LICENSE.TXT --&gt;</span>
@@ -971,7 +920,7 @@
 <span class="sd">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01 Frameset//EN&quot;  &quot;http://www.w3.org/TR/html4/frameset.dtd&quot;&gt;</span>
 <span class="sd">&lt;HTML&gt;</span>
 <span class="sd">     &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="sd">            Copyright (C) 2001-2012 NLTK Project</span>
+<span class="sd">            Copyright (C) 2001-2013 NLTK Project</span>
 <span class="sd">            Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="sd">            URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="sd">            For license information, see LICENSE.TXT --&gt;</span>
@@ -1005,7 +954,7 @@
 <span class="sd">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01//EN&quot; &quot;http://www.w3.org/TR/html4/strict.dtd&quot;&gt;</span>
 <span class="sd">&lt;html&gt;</span>
 <span class="sd">    &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="sd">        Copyright (C) 2001-2012 NLTK Project</span>
+<span class="sd">        Copyright (C) 2001-2013 NLTK Project</span>
 <span class="sd">        Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="sd">        URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="sd">        For license information, see LICENSE.TXT --&gt;</span>

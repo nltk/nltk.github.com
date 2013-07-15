@@ -53,30 +53,31 @@
   <h1>Source code for nltk.corpus.reader.util</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Corpus Reader Utilities</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Steven Bird &lt;sb@ldc.upenn.edu&gt;</span>
 <span class="c">#         Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 
 <span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">sys</span>
 <span class="kn">import</span> <span class="nn">bisect</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">tempfile</span>
-<span class="k">try</span><span class="p">:</span> <span class="kn">import</span> <span class="nn">cPickle</span> <span class="kn">as</span> <span class="nn">pickle</span>
-<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span> <span class="kn">import</span> <span class="nn">pickle</span>
-<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">islice</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="nb">reduce</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">cPickle</span> <span class="kn">as</span> <span class="nn">pickle</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">pickle</span>
 
 <span class="c"># Use the c version of ElementTree, which is faster, if possible:</span>
 <span class="k">try</span><span class="p">:</span> <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">cElementTree</span> <span class="k">as</span> <span class="n">ElementTree</span>
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span> <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span>
 
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 <span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">wordpunct_tokenize</span>
 <span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">slice_bounds</span>
 <span class="kn">from</span> <span class="nn">nltk.data</span> <span class="kn">import</span> <span class="n">PathPointer</span><span class="p">,</span> <span class="n">FileSystemPathPointer</span><span class="p">,</span> <span class="n">ZipFilePathPointer</span>
 <span class="kn">from</span> <span class="nn">nltk.data</span> <span class="kn">import</span> <span class="n">SeekableUnicodeStreamReader</span>
-<span class="kn">from</span> <span class="nn">nltk.sourcedstring</span> <span class="kn">import</span> <span class="n">SourcedStringStream</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">AbstractLazySequence</span><span class="p">,</span> <span class="n">LazySubsequence</span><span class="p">,</span> <span class="n">LazyConcatenation</span><span class="p">,</span> <span class="n">py25</span>
 
 <span class="c">######################################################################</span>
@@ -176,7 +177,7 @@
 <span class="sd">       block; and tokens is a list of the tokens in the block.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">,</span> <span class="n">block_reader</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">startpos</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-                 <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+                 <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Create a new corpus view, based on the file ``fileid``, and</span>
 <span class="sd">        read with ``block_reader``.  See the class documentation</span>
@@ -194,11 +195,6 @@
 <span class="sd">            read the file&#39;s contents.  If no encoding is specified,</span>
 <span class="sd">            then the file&#39;s contents will be read as a non-unicode</span>
 <span class="sd">            string (i.e., a str).</span>
-
-<span class="sd">        :param source: If specified, then use an ``SourcedStringStream``</span>
-<span class="sd">            to annotate all strings read from the file with</span>
-<span class="sd">            information about their start offset, end ofset,</span>
-<span class="sd">            and docid.  The value of ``source`` will be used as the docid.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">block_reader</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">read_block</span> <span class="o">=</span> <span class="n">block_reader</span>
@@ -206,7 +202,6 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_toknum</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_filepos</span> <span class="o">=</span> <span class="p">[</span><span class="n">startpos</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">encoding</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_source</span> <span class="o">=</span> <span class="n">source</span>
         <span class="c"># We don&#39;t know our length (number of tokens) yet.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_len</span> <span class="o">=</span> <span class="bp">None</span>
 
@@ -270,8 +265,6 @@
                 <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fileid</span><span class="p">,</span> <span class="s">&#39;rb&#39;</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fileid</span><span class="p">,</span> <span class="s">&#39;rb&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">SourcedStringStream</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_source</span><span class="p">)</span>
 
 <div class="viewcode-block" id="StreamBackedCorpusView.close"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.util.StreamBackedCorpusView.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -312,7 +305,7 @@
                 <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="n">i</span><span class="o">-</span><span class="n">offset</span><span class="p">]</span>
             <span class="c"># Use iterate_from to extract it.</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+                <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
             <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;index out of range&#39;</span><span class="p">)</span>
 
@@ -473,11 +466,11 @@
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">docs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;concat() expects at least one object!&#39;</span><span class="p">)</span>
 
-    <span class="n">types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">d</span><span class="o">.</span><span class="n">__class__</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">])</span>
+    <span class="n">types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">__class__</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">)</span>
 
     <span class="c"># If they&#39;re all strings, use string concatenation.</span>
-    <span class="k">if</span> <span class="n">types</span><span class="o">.</span><span class="n">issubset</span><span class="p">([</span><span class="nb">str</span><span class="p">,</span> <span class="nb">unicode</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">]):</span>
-        <span class="k">return</span> <span class="nb">reduce</span><span class="p">((</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">:</span><span class="n">a</span><span class="o">+</span><span class="n">b</span><span class="p">),</span> <span class="n">docs</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">docs</span><span class="p">)</span>
 
     <span class="c"># If they&#39;re all corpus views, then use ConcatenatedCorpusView.</span>
     <span class="k">for</span> <span class="n">typ</span> <span class="ow">in</span> <span class="n">types</span><span class="p">:</span>
@@ -526,14 +519,11 @@
 <span class="sd">    don&#39;t want to repeat it); but the corpus is too large to store in</span>
 <span class="sd">    memory.  The following example illustrates this technique:</span>
 
-<span class="sd">    .. doctest::</span>
-<span class="sd">        :options: +SKIP</span>
-
 <span class="sd">        &gt;&gt;&gt; from nltk.corpus.reader.util import PickleCorpusView</span>
 <span class="sd">        &gt;&gt;&gt; from nltk.util import LazyMap</span>
-<span class="sd">        &gt;&gt;&gt; feature_corpus = LazyMap(detect_features, corpus)</span>
-<span class="sd">        &gt;&gt;&gt; PickleCorpusView.write(feature_corpus, some_fileid)</span>
-<span class="sd">        &gt;&gt;&gt; pcv = PickleCorpusView(some_fileid)</span>
+<span class="sd">        &gt;&gt;&gt; feature_corpus = LazyMap(detect_features, corpus) # doctest: +SKIP</span>
+<span class="sd">        &gt;&gt;&gt; PickleCorpusView.write(feature_corpus, some_fileid)  # doctest: +SKIP</span>
+<span class="sd">        &gt;&gt;&gt; pcv = PickleCorpusView(some_fileid) # doctest: +SKIP</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">BLOCK_SIZE</span> <span class="o">=</span> <span class="mi">100</span>
     <span class="n">PROTOCOL</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
@@ -571,7 +561,7 @@
 
     <span class="nd">@classmethod</span>
 <div class="viewcode-block" id="PickleCorpusView.write"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.util.PickleCorpusView.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sequence</span><span class="p">,</span> <span class="n">output_file</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
             <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s">&#39;wb&#39;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">sequence</span><span class="p">:</span>
             <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">output_file</span><span class="p">,</span> <span class="n">cls</span><span class="o">.</span><span class="n">PROTOCOL</span><span class="p">)</span>
@@ -706,7 +696,7 @@
     <span class="n">start</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">tell</span><span class="p">()</span>
     <span class="n">block</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">block_size</span><span class="p">)</span>
     <span class="n">encoding</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="s">&#39;encoding&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
-    <span class="k">assert</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">text_type</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">encoding</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;utf-8&#39;</span><span class="p">):</span>
         <span class="kn">import</span> <span class="nn">warnings</span>
         <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s">&#39;Parsing may fail, depending on the properties &#39;</span>

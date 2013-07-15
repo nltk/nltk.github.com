@@ -53,7 +53,7 @@
   <h1>Source code for nltk.corpus.util</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Corpus Reader Utility Functions</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -62,11 +62,15 @@
 <span class="c">#{ Lazy Corpus Loader</span>
 <span class="c">######################################################################</span>
 
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">unicode_literals</span>
 <span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">gc</span>
 <span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">python_2_unicode_compatible</span>
 
 <span class="n">TRY_ZIPFILE_FIRST</span> <span class="o">=</span> <span class="bp">False</span>
 
+<span class="nd">@python_2_unicode_compatible</span>
 <div class="viewcode-block" id="LazyCorpusLoader"><a class="viewcode-back" href="../../../api/nltk.corpus.html#nltk.corpus.util.LazyCorpusLoader">[docs]</a><span class="k">class</span> <span class="nc">LazyCorpusLoader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A proxy object which is used to stand in for a corpus object</span>
@@ -114,10 +118,33 @@
         <span class="c"># This is where the magic happens!  Transform ourselves into</span>
         <span class="c"># the corpus by modifying our own __dict__ and __class__ to</span>
         <span class="c"># match that of the corpus.</span>
+
+        <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span>  <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__kwargs</span>
+        <span class="n">name</span><span class="p">,</span> <span class="n">reader_cls</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">__dict__</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">=</span> <span class="n">corpus</span><span class="o">.</span><span class="n">__class__</span>
 
+        <span class="c"># _unload support: assign __dict__ and __class__ back, then do GC.</span>
+        <span class="c"># after reassigning __dict__ there shouldn&#39;t be any references to</span>
+        <span class="c"># corpus data so the memory should be deallocated after gc.collect()</span>
+        <span class="k">def</span> <span class="nf">_unload</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">lazy_reader</span> <span class="o">=</span> <span class="n">LazyCorpusLoader</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">reader_cls</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="n">lazy_reader</span><span class="o">.</span><span class="n">__dict__</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">=</span> <span class="n">lazy_reader</span><span class="o">.</span><span class="n">__class__</span>
+            <span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unload</span> <span class="o">=</span> <span class="n">_make_bound_method</span><span class="p">(</span><span class="n">_unload</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+
     <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+
+        <span class="c"># Fix for inspect.isclass under Python 2.6</span>
+        <span class="c"># (see http://bugs.python.org/issue1225107).</span>
+        <span class="c"># Without this fix tests may take extra 1.5GB RAM</span>
+        <span class="c"># because all corpora gets loaded during test collection.</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="o">==</span> <span class="s">&#39;__bases__&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s">&quot;LazyCorpusLoader object has no attribute &#39;__bases__&#39;&quot;</span><span class="p">)</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">__load</span><span class="p">()</span>
         <span class="c"># This looks circular, but its not, since __load() changes our</span>
         <span class="c"># __class__ to something new:</span>
@@ -125,7 +152,28 @@
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s">&#39;&lt;</span><span class="si">%s</span><span class="s"> in </span><span class="si">%r</span><span class="s"> (not loaded yet)&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="s">&#39;.../corpora/&#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__reader_cls</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="s">&#39;.../corpora/&#39;</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">__name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_unload</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># If an exception occures during corpus loading then</span>
+        <span class="c"># &#39;_unload&#39; method may be unattached, so __getattr__ can be called;</span>
+        <span class="c"># we shouldn&#39;t trigger corpus loading again in this case.</span>
+        <span class="k">pass</span>
+
+</div>
+<span class="k">def</span> <span class="nf">_make_bound_method</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="bp">self</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Magic for creating bound methods (used for _unload).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">class</span> <span class="nc">Foo</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">meth</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">pass</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">Foo</span><span class="p">()</span>
+    <span class="n">bound_method</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">meth</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">bound_method</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span> <span class="c"># python3</span>
+        <span class="k">return</span> <span class="n">bound_method</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
 </pre></div>
 
           </div>

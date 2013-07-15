@@ -53,9 +53,9 @@
   <h1>Source code for nltk.metrics.segmentation</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Text Segmentation Metrics</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gradient.cis.upenn.edu&gt;</span>
-<span class="c">#         Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c">#         Steven Bird &lt;stevenbird1@gmail.com&gt;</span>
 <span class="c">#         David Doukhan &lt;david.doukhan@gmail.com&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -95,26 +95,28 @@
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="k">try</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">numpy</span>
+    <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="k">pass</span>
 
-<div class="viewcode-block" id="windowdiff"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.segmentation.windowdiff">[docs]</a><span class="k">def</span> <span class="nf">windowdiff</span><span class="p">(</span><span class="n">seg1</span><span class="p">,</span> <span class="n">seg2</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">boundary</span><span class="o">=</span><span class="s">&quot;1&quot;</span><span class="p">):</span>
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="nb">xrange</span>
+
+<div class="viewcode-block" id="windowdiff"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.segmentation.windowdiff">[docs]</a><span class="k">def</span> <span class="nf">windowdiff</span><span class="p">(</span><span class="n">seg1</span><span class="p">,</span> <span class="n">seg2</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">boundary</span><span class="o">=</span><span class="s">&quot;1&quot;</span><span class="p">,</span> <span class="n">weighted</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compute the windowdiff score for a pair of segmentations.  A</span>
 <span class="sd">    segmentation is any sequence over a vocabulary of two items</span>
 <span class="sd">    (e.g. &quot;0&quot;, &quot;1&quot;), where the specified boundary value is used to</span>
 <span class="sd">    mark the edge of a segmentation.</span>
 
-<span class="sd">    &gt;&gt;&gt; s1 = &quot;00000010000000001000000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; s2 = &quot;00000001000000010000000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; s3 = &quot;00010000000000000001000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; windowdiff(s1, s1, 3)</span>
-<span class="sd">    0</span>
-<span class="sd">    &gt;&gt;&gt; windowdiff(s1, s2, 3)</span>
-<span class="sd">    4</span>
-<span class="sd">    &gt;&gt;&gt; windowdiff(s2, s3, 3)</span>
-<span class="sd">    16</span>
+<span class="sd">        &gt;&gt;&gt; s1 = &quot;000100000010&quot;</span>
+<span class="sd">        &gt;&gt;&gt; s2 = &quot;000010000100&quot;</span>
+<span class="sd">        &gt;&gt;&gt; s3 = &quot;100000010000&quot;</span>
+<span class="sd">        &gt;&gt;&gt; &#39;%.2f&#39; % windowdiff(s1, s1, 3)</span>
+<span class="sd">        &#39;0.00&#39;</span>
+<span class="sd">        &gt;&gt;&gt; &#39;%.2f&#39; % windowdiff(s1, s2, 3)</span>
+<span class="sd">        &#39;0.30&#39;</span>
+<span class="sd">        &gt;&gt;&gt; &#39;%.2f&#39; % windowdiff(s2, s3, 3)</span>
+<span class="sd">        &#39;0.80&#39;</span>
 
 <span class="sd">    :param seg1: a segmentation</span>
 <span class="sd">    :type seg1: str or list</span>
@@ -124,29 +126,38 @@
 <span class="sd">    :type k: int</span>
 <span class="sd">    :param boundary: boundary value</span>
 <span class="sd">    :type boundary: str or int or bool</span>
-<span class="sd">    :rtype: int</span>
+<span class="sd">    :param weighted: use the weighted variant of windowdiff</span>
+<span class="sd">    :type weighted: boolean</span>
+<span class="sd">    :rtype: float</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">seg1</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">seg2</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Segmentations have unequal length&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">k</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">seg1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Window width k should be smaller or equal than segmentation lengths&quot;</span><span class="p">)</span>
     <span class="n">wd</span> <span class="o">=</span> <span class="mi">0</span>
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">seg1</span><span class="p">)</span> <span class="o">-</span> <span class="n">k</span><span class="p">):</span>
-        <span class="n">wd</span> <span class="o">+=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">seg1</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span> <span class="o">-</span> <span class="n">seg2</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">wd</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">seg1</span><span class="p">)</span> <span class="o">-</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">ndiff</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">seg1</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span> <span class="o">-</span> <span class="n">seg2</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">weighted</span><span class="p">:</span>
+            <span class="n">wd</span> <span class="o">+=</span> <span class="n">ndiff</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">wd</span> <span class="o">+=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">ndiff</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wd</span> <span class="o">/</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">seg1</span><span class="p">)</span> <span class="o">-</span> <span class="n">k</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span>
 
 
 
 <span class="c"># Generalized Hamming Distance</span>
 </div>
 <span class="k">def</span> <span class="nf">_init_mat</span><span class="p">(</span><span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">,</span> <span class="n">ins_cost</span><span class="p">,</span> <span class="n">del_cost</span><span class="p">):</span>
-    <span class="n">mat</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">))</span>
-    <span class="n">mat</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="o">*</span> <span class="n">ins_cost</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">ncols</span><span class="p">)]</span>
-    <span class="n">mat</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="o">*</span> <span class="n">del_cost</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">nrows</span><span class="p">)]</span>
+    <span class="n">mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">))</span>
+    <span class="n">mat</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">ins_cost</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ncols</span><span class="p">)</span>
+    <span class="n">mat</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">del_cost</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nrows</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">mat</span>
+
 
 <span class="k">def</span> <span class="nf">_ghd_aux</span><span class="p">(</span><span class="n">mat</span><span class="p">,</span> <span class="n">rowv</span><span class="p">,</span> <span class="n">colv</span><span class="p">,</span> <span class="n">ins_cost</span><span class="p">,</span> <span class="n">del_cost</span><span class="p">,</span> <span class="n">shift_cost_coeff</span><span class="p">):</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">rowi</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">rowv</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">colj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">colv</span><span class="p">):</span>          
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">colj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">colv</span><span class="p">):</span>
             <span class="n">shift_cost</span> <span class="o">=</span> <span class="n">shift_cost_coeff</span> <span class="o">*</span> <span class="nb">abs</span><span class="p">(</span><span class="n">rowi</span> <span class="o">-</span> <span class="n">colj</span><span class="p">)</span> <span class="o">+</span> <span class="n">mat</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">rowi</span> <span class="o">==</span> <span class="n">colj</span><span class="p">:</span>
                 <span class="c"># boundaries are at the same location, no transformation required</span>
@@ -175,19 +186,19 @@
 <span class="sd">    Associated with a ins_cost, and del_cost equal to the mean segment</span>
 <span class="sd">    length in the reference segmentation.</span>
 
-<span class="sd">    &gt;&gt;&gt; # Same examples as Kulyukin C++ implementation</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;1100100000&#39;, &#39;1100010000&#39;, 1.0, 1.0, 0.5)</span>
-<span class="sd">    0.5</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;1100100000&#39;, &#39;1100000001&#39;, 1.0, 1.0, 0.5)</span>
-<span class="sd">    2.0</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;011&#39;, &#39;110&#39;, 1.0, 1.0, 0.5)</span>
-<span class="sd">    1.0</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;1&#39;, &#39;0&#39;, 1.0, 1.0, 0.5)</span>
-<span class="sd">    1.0</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;111&#39;, &#39;000&#39;, 1.0, 1.0, 0.5)</span>
-<span class="sd">    3.0</span>
-<span class="sd">    &gt;&gt;&gt; ghd(&#39;000&#39;, &#39;111&#39;, 1.0, 2.0, 0.5)</span>
-<span class="sd">    6.0</span>
+<span class="sd">        &gt;&gt;&gt; # Same examples as Kulyukin C++ implementation</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;1100100000&#39;, &#39;1100010000&#39;, 1.0, 1.0, 0.5)</span>
+<span class="sd">        0.5</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;1100100000&#39;, &#39;1100000001&#39;, 1.0, 1.0, 0.5)</span>
+<span class="sd">        2.0</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;011&#39;, &#39;110&#39;, 1.0, 1.0, 0.5)</span>
+<span class="sd">        1.0</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;1&#39;, &#39;0&#39;, 1.0, 1.0, 0.5)</span>
+<span class="sd">        1.0</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;111&#39;, &#39;000&#39;, 1.0, 1.0, 0.5)</span>
+<span class="sd">        3.0</span>
+<span class="sd">        &gt;&gt;&gt; ghd(&#39;000&#39;, &#39;111&#39;, 1.0, 2.0, 0.5)</span>
+<span class="sd">        6.0</span>
 
 <span class="sd">    :param ref: the reference segmentation</span>
 <span class="sd">    :type ref: str or list</span>
@@ -219,7 +230,7 @@
     <span class="k">elif</span> <span class="n">nref_bound</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">nhyp_bound</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">nhyp_bound</span> <span class="o">*</span> <span class="n">del_cost</span>
 
-    <span class="n">mat</span> <span class="o">=</span> <span class="n">_init_mat</span><span class="p">(</span><span class="n">nhyp_bound</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nref_bound</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ins_cost</span><span class="p">,</span> <span class="n">del_cost</span><span class="p">)</span> 
+    <span class="n">mat</span> <span class="o">=</span> <span class="n">_init_mat</span><span class="p">(</span><span class="n">nhyp_bound</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nref_bound</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ins_cost</span><span class="p">,</span> <span class="n">del_cost</span><span class="p">)</span>
     <span class="n">_ghd_aux</span><span class="p">(</span><span class="n">mat</span><span class="p">,</span> <span class="n">hyp_idx</span><span class="p">,</span> <span class="n">ref_idx</span><span class="p">,</span> <span class="n">ins_cost</span><span class="p">,</span> <span class="n">del_cost</span><span class="p">,</span> <span class="n">shift_cost_coeff</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">mat</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 
@@ -233,15 +244,12 @@
 <span class="sd">    where the specified boundary value is used to mark the edge of a</span>
 <span class="sd">    segmentation.</span>
 
-<span class="sd">    &gt;&gt;&gt; s1 = &quot;00000010000000001000000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; s2 = &quot;00000001000000010000000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; s3 = &quot;00010000000000000001000&quot;</span>
-<span class="sd">    &gt;&gt;&gt; pk(s1, s1, 3)</span>
-<span class="sd">    0.0</span>
-<span class="sd">    &gt;&gt;&gt; pk(s1, s2, 3)</span>
-<span class="sd">    0.095238...</span>
-<span class="sd">    &gt;&gt;&gt; pk(s2, s3, 3)</span>
-<span class="sd">    0.190476...</span>
+<span class="sd">    &gt;&gt;&gt; &#39;%.2f&#39; % pk(&#39;0100&#39;*100, &#39;1&#39;*400, 2)</span>
+<span class="sd">    &#39;0.50&#39;</span>
+<span class="sd">    &gt;&gt;&gt; &#39;%.2f&#39; % pk(&#39;0100&#39;*100, &#39;0&#39;*400, 2)</span>
+<span class="sd">    &#39;0.50&#39;</span>
+<span class="sd">    &gt;&gt;&gt; &#39;%.2f&#39; % pk(&#39;0100&#39;*100, &#39;0100&#39;*100, 2)</span>
+<span class="sd">    &#39;0.00&#39;</span>
 
 <span class="sd">    :param ref: the reference segmentation</span>
 <span class="sd">    :type ref: str or list</span>
@@ -257,32 +265,22 @@
     <span class="k">if</span> <span class="n">k</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
         <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">ref</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span> <span class="o">*</span> <span class="mf">2.</span><span class="p">)))</span>
     
-    <span class="n">n_considered_seg</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span> <span class="o">-</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span>
-    <span class="n">n_same_ref</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="n">n_false_alarm</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="n">n_miss</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span><span class="o">-</span><span class="n">k</span> <span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">ref</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">hyp</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">r</span> <span class="o">!=</span> <span class="n">h</span><span class="p">:</span>
+           <span class="n">err</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">err</span> <span class="o">/</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span><span class="o">-</span><span class="n">k</span> <span class="o">+</span><span class="mf">1.</span><span class="p">)</span>
 
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">n_considered_seg</span><span class="p">):</span>
-        <span class="n">bsame_ref_seg</span> <span class="o">=</span> <span class="bp">False</span>
-        <span class="n">bsame_hyp_seg</span> <span class="o">=</span> <span class="bp">False</span>
 
-        <span class="k">if</span> <span class="n">boundary</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ref</span><span class="p">[(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">):(</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">)]:</span>
-            <span class="n">n_same_ref</span> <span class="o">+=</span> <span class="mf">1.0</span>
-            <span class="n">bsame_ref_seg</span> <span class="o">=</span> <span class="bp">True</span>
-        <span class="k">if</span> <span class="n">boundary</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">hyp</span><span class="p">[(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">):(</span><span class="n">i</span><span class="o">+</span><span class="n">k</span><span class="p">)]:</span>
-            <span class="n">bsame_hyp_seg</span> <span class="o">=</span> <span class="bp">True</span>
-        
-        <span class="k">if</span> <span class="n">bsame_hyp_seg</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">bsame_ref_seg</span><span class="p">:</span>
-            <span class="n">n_miss</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="k">if</span> <span class="n">bsame_ref_seg</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">bsame_hyp_seg</span><span class="p">:</span>
-            <span class="n">n_false_alarm</span> <span class="o">+=</span> <span class="mi">1</span>
-
-    <span class="n">prob_same_ref</span> <span class="o">=</span> <span class="n">n_same_ref</span> <span class="o">/</span> <span class="n">n_considered_seg</span>
-    <span class="n">prob_diff_ref</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">prob_same_ref</span>
-    <span class="n">prob_miss</span> <span class="o">=</span> <span class="n">n_miss</span> <span class="o">/</span> <span class="n">n_considered_seg</span>
-    <span class="n">prob_false_alarm</span> <span class="o">=</span> <span class="n">n_false_alarm</span> <span class="o">/</span> <span class="n">n_considered_seg</span>
-
-    <span class="k">return</span> <span class="n">prob_miss</span> <span class="o">*</span> <span class="n">prob_diff_ref</span> <span class="o">+</span> <span class="n">prob_false_alarm</span> <span class="o">*</span> <span class="n">prob_same_ref</span>
+<span class="c"># skip doctests if numpy is not installed</span></div>
+<div class="viewcode-block" id="setup_module"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.segmentation.setup_module">[docs]</a><span class="k">def</span> <span class="nf">setup_module</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+    <span class="kn">from</span> <span class="nn">nose</span> <span class="kn">import</span> <span class="n">SkipTest</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">numpy</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">SkipTest</span><span class="p">(</span><span class="s">&quot;numpy is required for nltk.metrics.segmentation&quot;</span><span class="p">)</span>
 
 </div>
 <span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>

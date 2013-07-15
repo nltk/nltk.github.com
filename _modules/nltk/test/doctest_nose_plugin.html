@@ -52,84 +52,57 @@
             
   <h1>Source code for nltk.test.doctest_nose_plugin</h1><div class="highlight"><pre>
 <span class="c"># -*- coding: utf-8 -*-</span>
-<span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Patched version of nose doctest plugin.</span>
-<span class="sd">See https://github.com/nose-devs/nose/issues/7</span>
-<span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span> <span class="nn">nose.plugins.doctests</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">from</span> <span class="nn">nose.suite</span> <span class="kn">import</span> <span class="n">ContextList</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">codecs</span>
+<span class="kn">import</span> <span class="nn">doctest</span>
+<span class="kn">from</span> <span class="nn">nose.plugins.base</span> <span class="kn">import</span> <span class="n">Plugin</span>
+<span class="kn">from</span> <span class="nn">nose.util</span> <span class="kn">import</span> <span class="n">tolist</span><span class="p">,</span> <span class="n">anyp</span>
+<span class="kn">from</span> <span class="nn">nose.plugins.doctests</span> <span class="kn">import</span> <span class="n">Doctest</span><span class="p">,</span> <span class="n">log</span><span class="p">,</span> <span class="n">DocFileCase</span>
 
-<span class="k">class</span> <span class="nc">_DoctestFix</span><span class="p">(</span><span class="n">Doctest</span><span class="p">):</span>
+<span class="n">ALLOW_UNICODE</span> <span class="o">=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">register_optionflag</span><span class="p">(</span><span class="s">&#39;ALLOW_UNICODE&#39;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">options</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">,</span> <span class="n">env</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">(</span><span class="n">_DoctestFix</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">options</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
-        <span class="n">parser</span><span class="o">.</span><span class="n">add_option</span><span class="p">(</span><span class="s">&#39;--doctest-options&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;append&quot;</span><span class="p">,</span>
-                          <span class="n">dest</span><span class="o">=</span><span class="s">&quot;doctestOptions&quot;</span><span class="p">,</span>
-                          <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;OPTIONS&quot;</span><span class="p">,</span>
-                          <span class="n">help</span><span class="o">=</span><span class="s">&quot;Specify options to pass to doctest. &quot;</span> <span class="o">+</span>
-                          <span class="s">&quot;Eg. &#39;+ELLIPSIS,+NORMALIZE_WHITESPACE&#39;&quot;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">_UnicodeOutputChecker</span><span class="p">(</span><span class="n">doctest</span><span class="o">.</span><span class="n">OutputChecker</span><span class="p">):</span>
+    <span class="n">_literal_re</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;(\W|^)[uU]([rR]?[\&#39;</span><span class="se">\&quot;</span><span class="s">])&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">UNICODE</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">configure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">(</span><span class="n">_DoctestFix</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">doctestOptions</span><span class="p">:</span>
-            <span class="n">flags</span> <span class="o">=</span> <span class="s">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">options</span><span class="o">.</span><span class="n">doctestOptions</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">flag</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">:</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="n">flag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;+&#39;</span><span class="p">):</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">|=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">doctest</span><span class="p">,</span> <span class="n">flag</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
-                    <span class="k">elif</span> <span class="n">flag</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">):</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="nb">getattr</span><span class="p">(</span><span class="n">doctest</span><span class="p">,</span> <span class="n">flag</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                            <span class="s">&quot;Must specify doctest options with starting &quot;</span> <span class="o">+</span>
-                            <span class="s">&quot;&#39;+&#39; or &#39;-&#39;.  Got </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">flag</span><span class="p">,))</span>
-                <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Unknown doctest option </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
-                                     <span class="p">(</span><span class="n">flag</span><span class="p">[</span><span class="mi">1</span><span class="p">:],))</span>
+    <span class="k">def</span> <span class="nf">_remove_u_prefixes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">txt</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_literal_re</span><span class="p">,</span> <span class="s">r&#39;\1\2&#39;</span><span class="p">,</span> <span class="n">txt</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">loadTestsFromModule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Load doctests from the module.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;loading from </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">module</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">matches</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">__name__</span><span class="p">):</span>
-            <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Doctest doesn&#39;t want module </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">module</span><span class="p">)</span>
-            <span class="k">return</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">tests</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">finder</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
-            <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s">&quot;Attribute error loading from </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">module</span><span class="p">)</span>
-            <span class="c"># nose allows module.__test__ = False; doctest does not and throws</span>
-            <span class="c"># AttributeError</span>
-            <span class="k">return</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">tests</span><span class="p">:</span>
-            <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;No tests found in </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">module</span><span class="p">)</span>
-            <span class="k">return</span>
-        <span class="n">tests</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
-        <span class="n">module_file</span> <span class="o">=</span> <span class="n">src</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">__file__</span><span class="p">)</span>
-        <span class="c"># FIXME this breaks the id plugin somehow (tests probably don&#39;t</span>
-        <span class="c"># get wrapped in result proxy or something)</span>
-        <span class="n">cases</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="n">tests</span><span class="p">:</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">test</span><span class="o">.</span><span class="n">examples</span><span class="p">:</span>
-                <span class="k">continue</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">test</span><span class="o">.</span><span class="n">filename</span><span class="p">:</span>
-                <span class="n">test</span><span class="o">.</span><span class="n">filename</span> <span class="o">=</span> <span class="n">module_file</span>
-            <span class="n">cases</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">DocTestCase</span><span class="p">(</span><span class="n">test</span><span class="p">,</span>
-                                     <span class="n">optionflags</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span><span class="p">,</span>
-                                     <span class="n">result_var</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">doctest_result_var</span><span class="p">))</span>
-        <span class="k">if</span> <span class="n">cases</span><span class="p">:</span>
-            <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">suiteClass</span><span class="p">(</span><span class="n">cases</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">module</span><span class="p">,</span> <span class="n">can_split</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">OutputChecker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">want</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">res</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">optionflags</span> <span class="o">&amp;</span> <span class="n">ALLOW_UNICODE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">False</span>
 
-    <span class="k">def</span> <span class="nf">loadTestsFromFile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Load doctests from the file.</span>
+        <span class="c"># ALLOW_UNICODE is active and want != got</span>
+        <span class="n">cleaned_want</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remove_u_prefixes</span><span class="p">(</span><span class="n">want</span><span class="p">)</span>
+        <span class="n">cleaned_got</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remove_u_prefixes</span><span class="p">(</span><span class="n">got</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">OutputChecker</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cleaned_want</span><span class="p">,</span> <span class="n">cleaned_got</span><span class="p">,</span> <span class="n">optionflags</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
 
-<span class="sd">        Tests are loaded only if filename&#39;s extension matches</span>
-<span class="sd">        configured doctest extension.</span>
+<span class="n">_checker</span> <span class="o">=</span> <span class="n">_UnicodeOutputChecker</span><span class="p">()</span>
 
-<span class="sd">        &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="DoctestPluginHelper"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestPluginHelper">[docs]</a><span class="k">class</span> <span class="nc">DoctestPluginHelper</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This mixin adds print_function future import to all test cases.</span>
+
+<span class="sd">    It also adds support for:</span>
+<span class="sd">        &#39;#doctest +ALLOW_UNICODE&#39; option that</span>
+<span class="sd">        makes DocTestCase think u&#39;foo&#39; == &#39;foo&#39;.</span>
+
+<span class="sd">        &#39;#doctest doctestencoding=utf-8&#39; option that</span>
+<span class="sd">        changes the encoding of doctest files</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">OPTION_BY_NAME</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;doctestencoding&#39;</span><span class="p">,)</span>
+
+<div class="viewcode-block" id="DoctestPluginHelper.loadTestsFromFileUnicode"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestPluginHelper.loadTestsFromFileUnicode">[docs]</a>    <span class="k">def</span> <span class="nf">loadTestsFromFileUnicode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">extension</span> <span class="ow">and</span> <span class="n">anyp</span><span class="p">(</span><span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">extension</span><span class="p">):</span>
             <span class="n">name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
-            <span class="n">dh</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="n">dh</span> <span class="o">=</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;doctestencoding&#39;</span><span class="p">))</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">doc</span> <span class="o">=</span> <span class="n">dh</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
             <span class="k">finally</span><span class="p">:</span>
@@ -149,7 +122,7 @@
                     <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
                         <span class="s">&quot;Could not import </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">)&quot;</span><span class="p">,</span> <span class="n">fixt_mod</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
                 <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Fixture module </span><span class="si">%s</span><span class="s"> resolved to </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span>
-                          <span class="n">fixt_mod</span><span class="p">,</span> <span class="n">fixture_context</span><span class="p">)</span>
+                    <span class="n">fixt_mod</span><span class="p">,</span> <span class="n">fixture_context</span><span class="p">)</span>
                 <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">fixture_context</span><span class="p">,</span> <span class="s">&#39;globs&#39;</span><span class="p">):</span>
                     <span class="n">globs</span> <span class="o">=</span> <span class="n">fixture_context</span><span class="o">.</span><span class="n">globs</span><span class="p">(</span><span class="n">globs</span><span class="p">)</span>
             <span class="n">parser</span> <span class="o">=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">DocTestParser</span><span class="p">()</span>
@@ -169,33 +142,71 @@
                     <span class="k">yield</span> <span class="n">case</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">yield</span> <span class="bp">False</span> <span class="c"># no tests to load</span>
+</div>
+<div class="viewcode-block" id="DoctestPluginHelper.loadTestsFromFile"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestPluginHelper.loadTestsFromFile">[docs]</a>    <span class="k">def</span> <span class="nf">loadTestsFromFile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
 
-    <span class="k">def</span> <span class="nf">makeTest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">parent</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Look for doctests in the given object, which will be a</span>
-<span class="sd">        function, method or class.</span>
+        <span class="n">cases</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadTestsFromFileUnicode</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">case</span> <span class="ow">in</span> <span class="n">cases</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">case</span><span class="p">,</span> <span class="n">ContextList</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">ContextList</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_patchTestCase</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">case</span><span class="p">],</span> <span class="n">case</span><span class="o">.</span><span class="n">context</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">_patchTestCase</span><span class="p">(</span><span class="n">case</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="DoctestPluginHelper.loadTestsFromModule"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestPluginHelper.loadTestsFromModule">[docs]</a>    <span class="k">def</span> <span class="nf">loadTestsFromModule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Load doctests from the module.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s">&#39;__name__&#39;</span><span class="p">,</span> <span class="s">&#39;Unnammed </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">))</span>
-        <span class="n">doctests</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">finder</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">getmodule</span><span class="p">(</span><span class="n">parent</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">doctests</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">test</span> <span class="ow">in</span> <span class="n">doctests</span><span class="p">:</span>
-                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">examples</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="k">continue</span>
-                <span class="k">yield</span> <span class="n">DocTestCase</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="n">optionflags</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span><span class="p">,</span>
-                                  <span class="n">result_var</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">doctest_result_var</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">suite</span> <span class="ow">in</span> <span class="nb">super</span><span class="p">(</span><span class="n">DoctestPluginHelper</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">loadTestsFromModule</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+            <span class="n">cases</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_patchTestCase</span><span class="p">(</span><span class="n">case</span><span class="p">)</span> <span class="k">for</span> <span class="n">case</span> <span class="ow">in</span> <span class="n">suite</span><span class="o">.</span><span class="n">_get_tests</span><span class="p">()]</span>
+            <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">suiteClass</span><span class="p">(</span><span class="n">cases</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">module</span><span class="p">,</span> <span class="n">can_split</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_patchTestCase</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">case</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">case</span><span class="p">:</span>
+            <span class="n">case</span><span class="o">.</span><span class="n">_dt_test</span><span class="o">.</span><span class="n">globs</span><span class="p">[</span><span class="s">&#39;print_function&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">print_function</span>
+            <span class="n">case</span><span class="o">.</span><span class="n">_dt_checker</span> <span class="o">=</span> <span class="n">_checker</span>
+        <span class="k">return</span> <span class="n">case</span>
 
-<span class="k">def</span> <span class="nf">_plugin_supports_doctest_options</span><span class="p">(</span><span class="n">plugin_cls</span><span class="p">):</span>
-    <span class="kn">import</span> <span class="nn">optparse</span>
-    <span class="n">plugin</span> <span class="o">=</span> <span class="n">plugin_cls</span><span class="p">()</span>
-    <span class="n">parser</span> <span class="o">=</span> <span class="n">optparse</span><span class="o">.</span><span class="n">OptionParser</span><span class="p">()</span>
-    <span class="n">plugin</span><span class="o">.</span><span class="n">options</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="p">{})</span>
-    <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="s">&#39;--doctest-options&#39;</span><span class="p">)</span>
+<div class="viewcode-block" id="DoctestPluginHelper.configure"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestPluginHelper.configure">[docs]</a>    <span class="k">def</span> <span class="nf">configure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+        <span class="c"># it is overriden in order to fix doctest options discovery</span>
 
-<span class="k">if</span> <span class="n">_plugin_supports_doctest_options</span><span class="p">(</span><span class="n">Doctest</span><span class="p">):</span>
-    <span class="k">class</span> <span class="nc">DoctestFix</span><span class="p">(</span><span class="n">Doctest</span><span class="p">):</span>
-        <span class="k">pass</span>
-<span class="k">else</span><span class="p">:</span>
-<div class="viewcode-block" id="DoctestFix"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestFix">[docs]</a>    <span class="k">class</span> <span class="nc">DoctestFix</span><span class="p">(</span><span class="n">_DoctestFix</span><span class="p">):</span>
-        <span class="k">pass</span></div>
+        <span class="n">Plugin</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">doctest_result_var</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">doctest_result_var</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">doctest_tests</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">doctest_tests</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extension</span> <span class="o">=</span> <span class="n">tolist</span><span class="p">(</span><span class="n">options</span><span class="o">.</span><span class="n">doctestExtension</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixtures</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">doctestFixtures</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">finder</span> <span class="o">=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">DocTestFinder</span><span class="p">()</span>
+
+        <span class="c">#super(DoctestPluginHelper, self).configure(options, config)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">options</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">doctestOptions</span><span class="p">:</span>
+            <span class="n">stroptions</span> <span class="o">=</span> <span class="s">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">options</span><span class="o">.</span><span class="n">doctestOptions</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">stroption</span> <span class="ow">in</span> <span class="n">stroptions</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">stroption</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;+&#39;</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">|=</span> <span class="n">doctest</span><span class="o">.</span><span class="n">OPTIONFLAGS_BY_NAME</span><span class="p">[</span><span class="n">stroption</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+                        <span class="k">continue</span>
+                    <span class="k">elif</span> <span class="n">stroption</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">optionflags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="n">doctest</span><span class="o">.</span><span class="n">OPTIONFLAGS_BY_NAME</span><span class="p">[</span><span class="n">stroption</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+                        <span class="k">continue</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">key</span><span class="p">,</span><span class="n">value</span><span class="o">=</span><span class="n">stroption</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPTION_BY_NAME</span><span class="p">:</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">()</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">=</span><span class="n">value</span>
+                        <span class="k">continue</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Unknown doctest option {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">stroption</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Doctest option is not a flag or a key/value pair: {} &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">stroption</span><span class="p">))</span>
+
+</div></div>
+<div class="viewcode-block" id="DoctestFix"><a class="viewcode-back" href="../../../api/nltk.test.html#nltk.test.doctest_nose_plugin.DoctestFix">[docs]</a><span class="k">class</span> <span class="nc">DoctestFix</span><span class="p">(</span><span class="n">DoctestPluginHelper</span><span class="p">,</span> <span class="n">Doctest</span><span class="p">):</span>
+    <span class="k">pass</span></div>
 </pre></div>
 
           </div>

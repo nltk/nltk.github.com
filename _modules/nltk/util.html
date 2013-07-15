@@ -53,12 +53,12 @@
   <h1>Source code for nltk.util</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Utility functions</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
-<span class="c"># Author: Steven Bird &lt;sb@csse.unimelb.edu.au&gt;</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;stevenbird1@gmail.com&gt;</span>
 <span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
-
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
 <span class="kn">import</span> <span class="nn">locale</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">types</span>
@@ -72,7 +72,10 @@
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">deque</span>
 <span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">version_info</span>
 
-<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">slice_bounds</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">slice_bounds</span><span class="p">,</span> <span class="n">raise_unorderable_types</span>
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="p">(</span><span class="n">class_types</span><span class="p">,</span> <span class="n">text_type</span><span class="p">,</span> <span class="n">string_types</span><span class="p">,</span> <span class="n">total_ordering</span><span class="p">,</span>
+                         <span class="n">python_2_unicode_compatible</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Short usage message</span>
@@ -82,7 +85,7 @@
     <span class="kn">import</span> <span class="nn">inspect</span>
     <span class="nb">str</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="c"># In case it&#39;s lazy, this will load it.</span>
 
-    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">TypeType</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">ClassType</span><span class="p">)):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">class_types</span><span class="p">):</span>
         <span class="n">obj</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">__class__</span>
 
     <span class="k">print</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s"> supports the following operations:&#39;</span> <span class="o">%</span> <span class="n">obj</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
@@ -116,9 +119,8 @@
 <span class="sd">        results.</span>
 <span class="sd">    :rtype: bool</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">import</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">types</span>
-    <span class="k">return</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">)</span> <span class="o">==</span> <span class="n">types</span><span class="o">.</span><span class="n">InstanceType</span> <span class="ow">and</span> \
-            <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;PyShell&#39;</span><span class="p">)</span>
+    <span class="kn">import</span> <span class="nn">sys</span>
+    <span class="k">return</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;PyShell&#39;</span><span class="p">,</span> <span class="s">&#39;RPCProxy&#39;</span><span class="p">)</span>
 
 <span class="c">##########################################################################</span>
 <span class="c"># PRETTY PRINTING</span>
@@ -217,7 +219,7 @@
 <div class="viewcode-block" id="filestring"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.filestring">[docs]</a><span class="k">def</span> <span class="nf">filestring</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
     <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="s">&#39;read&#39;</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
-    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">string_types</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">open</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Must be called with a filename or file-like object&quot;</span><span class="p">)</span>
@@ -291,7 +293,7 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">enc</span><span class="p">:</span>
             <span class="k">continue</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">decoded</span> <span class="o">=</span> <span class="nb">unicode</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">enc</span><span class="p">)</span>
+            <span class="n">decoded</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">enc</span><span class="p">)</span>
             <span class="n">successful_encoding</span> <span class="o">=</span> <span class="n">enc</span>
 
         <span class="k">except</span> <span class="p">(</span><span class="ne">UnicodeError</span><span class="p">,</span> <span class="ne">LookupError</span><span class="p">):</span>
@@ -345,7 +347,7 @@
     <span class="k">else</span><span class="p">:</span>
         <span class="n">base_set</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">k</span><span class="p">:</span> <span class="nb">set</span><span class="p">()</span>
     <span class="c"># The graph U_i in the article:</span>
-    <span class="n">agenda_graph</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span> <span class="k">for</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">iteritems</span><span class="p">())</span>
+    <span class="n">agenda_graph</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">graph</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">)</span>
     <span class="c"># The graph M_i in the article:</span>
     <span class="n">closure_graph</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">base_set</span><span class="p">(</span><span class="n">k</span><span class="p">))</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">:</span>
@@ -370,8 +372,8 @@
 <span class="sd">    :rtype: dict(set)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">inverted</span> <span class="o">=</span> <span class="p">{}</span>
-    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">values</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
-        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">[</span><span class="n">key</span><span class="p">]:</span>
             <span class="n">inverted</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">inverted</span>
 
@@ -404,8 +406,7 @@
     <span class="k">return</span> <span class="n">cleaned</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
 </div>
 <div class="viewcode-block" id="clean_url"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.clean_url">[docs]</a><span class="k">def</span> <span class="nf">clean_url</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
-    <span class="kn">from</span> <span class="nn">urllib</span> <span class="kn">import</span> <span class="n">urlopen</span>
-    <span class="n">html</span> <span class="o">=</span> <span class="n">urlopen</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">clean_html</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>
 
 <span class="c">##########################################################################</span>
@@ -544,7 +545,7 @@
 
     <span class="n">history</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">while</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sequence</span><span class="o">.</span><span class="n">next</span><span class="p">())</span>
+        <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">sequence</span><span class="p">))</span>
         <span class="n">n</span> <span class="o">-=</span> <span class="mi">1</span>
     <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">sequence</span><span class="p">:</span>
         <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
@@ -635,6 +636,7 @@
         <span class="k">return</span> <span class="n">d</span>
 </div>
 <div class="viewcode-block" id="OrderedDict.items"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.OrderedDict.items">[docs]</a>    <span class="k">def</span> <span class="nf">items</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># returns iterator under python 3 and list under python 2</span>
         <span class="k">return</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
 </div>
 <div class="viewcode-block" id="OrderedDict.keys"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.OrderedDict.keys">[docs]</a>    <span class="k">def</span> <span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
@@ -677,12 +679,15 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="OrderedDict.values"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.OrderedDict.values">[docs]</a>    <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># returns iterator under python 3</span>
         <span class="k">return</span> <span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keys</span><span class="p">)</span>
 
 <span class="c">######################################################################</span>
 <span class="c"># Lazy Sequences</span>
 <span class="c">######################################################################</span>
 </div></div>
+<span class="nd">@total_ordering</span>
+<span class="nd">@python_2_unicode_compatible</span>
 <div class="viewcode-block" id="AbstractLazySequence"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.AbstractLazySequence">[docs]</a><span class="k">class</span> <span class="nc">AbstractLazySequence</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    An abstract base class for read-only sequences whose values are</span>
@@ -733,7 +738,7 @@
             <span class="k">if</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span> <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;index out of range&#39;</span><span class="p">)</span>
             <span class="c"># Use iterate_from to extract it.</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+                <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
             <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;index out of range&#39;</span><span class="p">)</span>
 
@@ -789,23 +794,20 @@
             <span class="n">pieces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">elt</span><span class="p">))</span>
             <span class="n">length</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="mi">2</span>
             <span class="k">if</span> <span class="n">length</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_MAX_REPR_SIZE</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="k">return</span> <span class="s">&#39;[</span><span class="si">%s</span><span class="s">, ...]&#39;</span> <span class="o">%</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pieces</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                <span class="k">return</span> <span class="s">&#39;[</span><span class="si">%s</span><span class="s">, ...]&#39;</span> <span class="o">%</span> <span class="n">text_type</span><span class="p">(</span><span class="s">&#39;, &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pieces</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="s">&#39;[</span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span>
+            <span class="k">return</span> <span class="s">&#39;[</span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="n">text_type</span><span class="p">(</span><span class="s">&#39;, &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">__cmp__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Return a number indicating how ``self`` relates to other.</span>
+    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="nb">type</span><span class="p">(</span><span class="n">other</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="nb">list</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
 
-<span class="sd">        - If ``other`` is not a corpus view or a list, return -1.</span>
-<span class="sd">        - Otherwise, return ``cmp(list(self), list(other))``.</span>
+    <span class="k">def</span> <span class="nf">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">==</span> <span class="n">other</span>
 
-<span class="sd">        Note: corpus views do not compare equal to tuples containing</span>
-<span class="sd">        equal elements.  Otherwise, transitivity would be violated,</span>
-<span class="sd">        since tuples do not compare equal to lists.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="p">(</span><span class="n">AbstractLazySequence</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span> <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
-        <span class="k">return</span> <span class="nb">cmp</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+    <span class="k">def</span> <span class="nf">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">other</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">raise_unorderable_types</span><span class="p">(</span><span class="s">&quot;&lt;&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">list</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -916,7 +918,7 @@
 <span class="sd">        &gt;&gt;&gt; from nltk.util import LazyMap</span>
 <span class="sd">        &gt;&gt;&gt; function = str</span>
 <span class="sd">        &gt;&gt;&gt; sequence = [1,2,3]</span>
-<span class="sd">        &gt;&gt;&gt; map(function, sequence)</span>
+<span class="sd">        &gt;&gt;&gt; map(function, sequence) # doctest: +SKIP</span>
 <span class="sd">        [&#39;1&#39;, &#39;2&#39;, &#39;3&#39;]</span>
 <span class="sd">        &gt;&gt;&gt; list(LazyMap(function, sequence))</span>
 <span class="sd">        [&#39;1&#39;, &#39;2&#39;, &#39;3&#39;]</span>
@@ -979,7 +981,7 @@
             <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
                 <span class="n">elements</span> <span class="o">=</span> <span class="p">[]</span>
                 <span class="k">for</span> <span class="n">iterator</span> <span class="ow">in</span> <span class="n">iterators</span><span class="p">:</span>
-                    <span class="k">try</span><span class="p">:</span> <span class="n">elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">iterator</span><span class="o">.</span><span class="n">next</span><span class="p">())</span>
+                    <span class="k">try</span><span class="p">:</span> <span class="n">elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">iterator</span><span class="p">))</span>
                     <span class="k">except</span><span class="p">:</span> <span class="n">elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">elements</span> <span class="o">==</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lists</span><span class="p">):</span>
                     <span class="k">return</span>
@@ -1012,7 +1014,7 @@
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span><span class="p">:</span>
                 <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
             <span class="c"># Calculate the value</span>
-            <span class="k">try</span><span class="p">:</span> <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">index</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span> <span class="n">val</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="n">index</span><span class="p">))</span>
             <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;index out of range&#39;</span><span class="p">)</span>
             <span class="c"># Update the cache</span>
@@ -1041,12 +1043,12 @@
 
 <span class="sd">        &gt;&gt;&gt; from nltk.util import LazyZip</span>
 <span class="sd">        &gt;&gt;&gt; sequence1, sequence2 = [1, 2, 3], [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;]</span>
-<span class="sd">        &gt;&gt;&gt; zip(sequence1, sequence2)</span>
+<span class="sd">        &gt;&gt;&gt; zip(sequence1, sequence2) # doctest: +SKIP</span>
 <span class="sd">        [(1, &#39;a&#39;), (2, &#39;b&#39;), (3, &#39;c&#39;)]</span>
 <span class="sd">        &gt;&gt;&gt; list(LazyZip(sequence1, sequence2))</span>
 <span class="sd">        [(1, &#39;a&#39;), (2, &#39;b&#39;), (3, &#39;c&#39;)]</span>
 <span class="sd">        &gt;&gt;&gt; sequences = [sequence1, sequence2, [6,7,8,9]]</span>
-<span class="sd">        &gt;&gt;&gt; zip(*sequences) == list(LazyZip(*sequences))</span>
+<span class="sd">        &gt;&gt;&gt; list(zip(*sequences)) == list(LazyZip(*sequences))</span>
 <span class="sd">        True</span>
 
 <span class="sd">    Lazy zips can be useful for conserving memory in cases where the argument</span>
@@ -1068,7 +1070,7 @@
 <div class="viewcode-block" id="LazyZip.iterate_from"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.LazyZip.iterate_from">[docs]</a>    <span class="k">def</span> <span class="nf">iterate_from</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
         <span class="n">iterator</span> <span class="o">=</span> <span class="n">LazyMap</span><span class="o">.</span><span class="n">iterate_from</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
         <span class="k">while</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-            <span class="k">yield</span> <span class="n">iterator</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+            <span class="k">yield</span> <span class="nb">next</span><span class="p">(</span><span class="n">iterator</span><span class="p">)</span>
             <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span>
 </div>
@@ -1110,7 +1112,7 @@
 <span class="sd">        :param lst: the underlying list</span>
 <span class="sd">        :type lst: list</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">LazyZip</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">xrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)),</span> <span class="n">lst</span><span class="p">)</span>
+        <span class="n">LazyZip</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)),</span> <span class="n">lst</span><span class="p">)</span>
 
 
 <span class="c">######################################################################</span>
@@ -1143,7 +1145,7 @@
 
     <span class="k">while</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">:</span>
         <span class="n">lastState</span> <span class="o">=</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span>
-        <span class="n">middle</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">end</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="n">middle</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">end</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
 
         <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">middle</span><span class="p">):</span>
             <span class="n">offset</span><span class="p">,</span> <span class="n">line</span> <span class="o">=</span> <span class="n">cache</span><span class="p">[</span><span class="n">middle</span><span class="p">]</span>
@@ -1158,7 +1160,7 @@
                 <span class="n">line</span> <span class="o">=</span> <span class="nb">file</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
                 <span class="k">if</span> <span class="n">line</span> <span class="o">!=</span> <span class="s">&quot;&quot;</span><span class="p">:</span> <span class="k">break</span>
                 <span class="c"># at EOF; try to find start of the last line</span>
-                <span class="n">middle</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">middle</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span>
+                <span class="n">middle</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">middle</span><span class="p">)</span><span class="o">//</span><span class="mi">2</span>
                 <span class="k">if</span> <span class="n">middle</span> <span class="o">==</span> <span class="n">end</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
                     <span class="k">return</span> <span class="bp">None</span>
             <span class="k">if</span> <span class="n">currentDepth</span> <span class="o">&lt;</span> <span class="n">cacheDepth</span><span class="p">:</span>
@@ -1189,7 +1191,7 @@
 <span class="c"># Proxy configuration</span>
 <span class="c">######################################################################</span>
 </div>
-<div class="viewcode-block" id="set_proxy"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.set_proxy">[docs]</a><span class="k">def</span> <span class="nf">set_proxy</span><span class="p">(</span><span class="n">proxy</span><span class="p">,</span> <span class="p">(</span><span class="n">user</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span><span class="o">=</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)):</span>
+<div class="viewcode-block" id="set_proxy"><a class="viewcode-back" href="../../api/nltk.html#nltk.util.set_proxy">[docs]</a><span class="k">def</span> <span class="nf">set_proxy</span><span class="p">(</span><span class="n">proxy</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Set the HTTP proxy for Python to download through.</span>
 
@@ -1202,30 +1204,29 @@
 <span class="sd">        authentication.</span>
 <span class="sd">    :param password: The password to authenticate with.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">import</span> <span class="nn">urllib</span>
-    <span class="kn">import</span> <span class="nn">urllib2</span>
+    <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 
     <span class="k">if</span> <span class="n">proxy</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
         <span class="c"># Try and find the system proxy settings</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">proxy</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">getproxies</span><span class="p">()[</span><span class="s">&#39;http&#39;</span><span class="p">]</span>
+            <span class="n">proxy</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">getproxies</span><span class="p">()[</span><span class="s">&#39;http&#39;</span><span class="p">]</span>
         <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Could not detect default proxy settings&#39;</span><span class="p">)</span>
 
     <span class="c"># Set up the proxy handler</span>
-    <span class="n">proxy_handler</span> <span class="o">=</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">ProxyHandler</span><span class="p">({</span><span class="s">&#39;http&#39;</span><span class="p">:</span> <span class="n">proxy</span><span class="p">})</span>
-    <span class="n">opener</span> <span class="o">=</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">build_opener</span><span class="p">(</span><span class="n">proxy_handler</span><span class="p">)</span>
+    <span class="n">proxy_handler</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">ProxyHandler</span><span class="p">({</span><span class="s">&#39;http&#39;</span><span class="p">:</span> <span class="n">proxy</span><span class="p">})</span>
+    <span class="n">opener</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">build_opener</span><span class="p">(</span><span class="n">proxy_handler</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">user</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
         <span class="c"># Set up basic proxy authentication if provided</span>
-        <span class="n">password_manager</span> <span class="o">=</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">HTTPPasswordMgrWithDefaultRealm</span><span class="p">()</span>
+        <span class="n">password_manager</span> <span class="o">=</span> <span class="n">compat</span><span class="o">.</span><span class="n">HTTPPasswordMgrWithDefaultRealm</span><span class="p">()</span>
         <span class="n">password_manager</span><span class="o">.</span><span class="n">add_password</span><span class="p">(</span><span class="n">realm</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">uri</span><span class="o">=</span><span class="n">proxy</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="n">user</span><span class="p">,</span>
                 <span class="n">passwd</span><span class="o">=</span><span class="n">password</span><span class="p">)</span>
-        <span class="n">opener</span><span class="o">.</span><span class="n">add_handler</span><span class="p">(</span><span class="n">urllib2</span><span class="o">.</span><span class="n">ProxyBasicAuthHandler</span><span class="p">(</span><span class="n">password_manager</span><span class="p">))</span>
-        <span class="n">opener</span><span class="o">.</span><span class="n">add_handler</span><span class="p">(</span><span class="n">urllib2</span><span class="o">.</span><span class="n">ProxyDigestAuthHandler</span><span class="p">(</span><span class="n">password_manager</span><span class="p">))</span>
+        <span class="n">opener</span><span class="o">.</span><span class="n">add_handler</span><span class="p">(</span><span class="n">compat</span><span class="o">.</span><span class="n">ProxyBasicAuthHandler</span><span class="p">(</span><span class="n">password_manager</span><span class="p">))</span>
+        <span class="n">opener</span><span class="o">.</span><span class="n">add_handler</span><span class="p">(</span><span class="n">compat</span><span class="o">.</span><span class="n">ProxyDigestAuthHandler</span><span class="p">(</span><span class="n">password_manager</span><span class="p">))</span>
 
     <span class="c"># Overide the existing url opener</span>
-    <span class="n">urllib2</span><span class="o">.</span><span class="n">install_opener</span><span class="p">(</span><span class="n">opener</span><span class="p">)</span></div>
+    <span class="n">compat</span><span class="o">.</span><span class="n">install_opener</span><span class="p">(</span><span class="n">opener</span><span class="p">)</span></div>
 </pre></div>
 
           </div>

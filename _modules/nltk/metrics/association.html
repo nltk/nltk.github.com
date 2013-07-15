@@ -53,7 +53,7 @@
   <h1>Source code for nltk.metrics.association</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Ngram Association Measures</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2012 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
 <span class="c"># Author: Joel Nothman &lt;jnothman@student.usyd.edu.au&gt;</span>
 <span class="c"># URL: &lt;http://nltk.org&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -65,6 +65,7 @@
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span> <span class="nn">math</span> <span class="kn">as</span> <span class="nn">_math</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="nb">reduce</span>
 <span class="n">_log2</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">_math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
 <span class="n">_ln</span> <span class="o">=</span> <span class="n">_math</span><span class="o">.</span><span class="n">log</span>
 
@@ -72,7 +73,11 @@
 
 <span class="n">_SMALL</span> <span class="o">=</span> <span class="mf">1e-20</span>
 
-
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">fisher_exact</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="k">pass</span>
+    
 <span class="c">### Indices to marginals arguments:</span>
 
 <span class="n">NGRAM</span> <span class="o">=</span> <span class="mi">0</span>
@@ -195,7 +200,7 @@
 </div></div>
 <div class="viewcode-block" id="BigramAssocMeasures"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures">[docs]</a><span class="k">class</span> <span class="nc">BigramAssocMeasures</span><span class="p">(</span><span class="n">NgramAssocMeasures</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A collection of trigram association measures. Each association measure</span>
+<span class="sd">    A collection of bigram association measures. Each association measure</span>
 <span class="sd">    is provided as a function with three arguments::</span>
 
 <span class="sd">        bigram_score_fn(n_ii, (n_ix, n_xi), n_xx)</span>
@@ -224,8 +229,9 @@
     <span class="n">_n</span> <span class="o">=</span> <span class="mi">2</span>
 
     <span class="nd">@staticmethod</span>
-    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_ix_xi_tuple</span><span class="p">,</span> <span class="n">n_xx</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Calculates values of a bigram contingency table from marginal values.&quot;&quot;&quot;</span>
+        <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">)</span> <span class="o">=</span> <span class="n">n_ix_xi_tuple</span>
         <span class="n">n_oi</span> <span class="o">=</span> <span class="n">n_xi</span> <span class="o">-</span> <span class="n">n_ii</span>
         <span class="n">n_io</span> <span class="o">=</span> <span class="n">n_ix</span> <span class="o">-</span> <span class="n">n_ii</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_oi</span><span class="p">,</span> <span class="n">n_io</span><span class="p">,</span> <span class="n">n_xx</span> <span class="o">-</span> <span class="n">n_ii</span> <span class="o">-</span> <span class="n">n_oi</span> <span class="o">-</span> <span class="n">n_io</span><span class="p">)</span>
@@ -254,15 +260,29 @@
                 <span class="p">((</span><span class="n">n_ii</span> <span class="o">+</span> <span class="n">n_io</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_ii</span> <span class="o">+</span> <span class="n">n_oi</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_io</span> <span class="o">+</span> <span class="n">n_oo</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_oi</span> <span class="o">+</span> <span class="n">n_oo</span><span class="p">)))</span>
 </div>
     <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="BigramAssocMeasures.chi_sq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.chi_sq">[docs]</a>    <span class="k">def</span> <span class="nf">chi_sq</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+<div class="viewcode-block" id="BigramAssocMeasures.chi_sq"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.chi_sq">[docs]</a>    <span class="k">def</span> <span class="nf">chi_sq</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">n_ii</span><span class="p">,</span> <span class="n">n_ix_xi_tuple</span><span class="p">,</span> <span class="n">n_xx</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Scores bigrams using chi-square, i.e. phi-sq multiplied by the number</span>
 <span class="sd">        of bigrams, as in Manning and Schutze 5.3.3.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">)</span> <span class="o">=</span> <span class="n">n_ix_xi_tuple</span>
         <span class="k">return</span> <span class="n">n_xx</span> <span class="o">*</span> <span class="n">cls</span><span class="o">.</span><span class="n">phi_sq</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">)</span>
 </div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BigramAssocMeasures.fisher"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.fisher">[docs]</a>    <span class="k">def</span> <span class="nf">fisher</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">marginals</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Scores bigrams using Fisher&#39;s Exact Test (Pedersen 1996).  Less</span>
+<span class="sd">        sensitive to small counts than PMI or Chi Sq, but also more expensive</span>
+<span class="sd">        to compute. Requires scipy.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">n_ii</span><span class="p">,</span> <span class="n">n_io</span><span class="p">,</span> <span class="n">n_oi</span><span class="p">,</span> <span class="n">n_oo</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_contingency</span><span class="p">(</span><span class="o">*</span><span class="n">marginals</span><span class="p">)</span>
+
+        <span class="p">(</span><span class="n">odds</span><span class="p">,</span> <span class="n">pvalue</span><span class="p">)</span> <span class="o">=</span> <span class="n">fisher_exact</span><span class="p">([[</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_io</span><span class="p">],</span> <span class="p">[</span><span class="n">n_oi</span><span class="p">,</span> <span class="n">n_oo</span><span class="p">]],</span> <span class="n">alternative</span><span class="o">=</span><span class="s">&#39;less&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pvalue</span>
+</div>
     <span class="nd">@staticmethod</span>
-<div class="viewcode-block" id="BigramAssocMeasures.dice"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.dice">[docs]</a>    <span class="k">def</span> <span class="nf">dice</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">),</span> <span class="n">n_xx</span><span class="p">):</span>
+<div class="viewcode-block" id="BigramAssocMeasures.dice"><a class="viewcode-back" href="../../../api/nltk.metrics.html#nltk.metrics.association.BigramAssocMeasures.dice">[docs]</a>    <span class="k">def</span> <span class="nf">dice</span><span class="p">(</span><span class="n">n_ii</span><span class="p">,</span> <span class="n">n_ix_xi_tuple</span><span class="p">,</span> <span class="n">n_xx</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Scores bigrams using Dice&#39;s coefficient.&quot;&quot;&quot;</span>
+        <span class="p">(</span><span class="n">n_ix</span><span class="p">,</span> <span class="n">n_xi</span><span class="p">)</span> <span class="o">=</span> <span class="n">n_ix_xi_tuple</span>
         <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_ii</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_ix</span> <span class="o">+</span> <span class="n">n_xi</span><span class="p">)</span>
 
 </div></div>
@@ -288,13 +308,13 @@
     <span class="n">_n</span> <span class="o">=</span> <span class="mi">3</span>
 
     <span class="nd">@staticmethod</span>
-    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_iii</span><span class="p">,</span>
-                 <span class="p">(</span><span class="n">n_iix</span><span class="p">,</span> <span class="n">n_ixi</span><span class="p">,</span> <span class="n">n_xii</span><span class="p">),</span>
-                 <span class="p">(</span><span class="n">n_ixx</span><span class="p">,</span> <span class="n">n_xix</span><span class="p">,</span> <span class="n">n_xxi</span><span class="p">),</span>
+    <span class="k">def</span> <span class="nf">_contingency</span><span class="p">(</span><span class="n">n_iii</span><span class="p">,</span> <span class="n">n_iix_tuple</span><span class="p">,</span> <span class="n">n_ixx_tuple</span><span class="p">,</span>
                  <span class="n">n_xxx</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Calculates values of a trigram contingency table (or cube) from marginal</span>
 <span class="sd">        values.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">(</span><span class="n">n_iix</span><span class="p">,</span> <span class="n">n_ixi</span><span class="p">,</span> <span class="n">n_xii</span><span class="p">)</span> <span class="o">=</span> <span class="n">n_iix_tuple</span>
+        <span class="p">(</span><span class="n">n_ixx</span><span class="p">,</span> <span class="n">n_xix</span><span class="p">,</span> <span class="n">n_xxi</span><span class="p">)</span> <span class="o">=</span> <span class="n">n_iix_tuple</span>
         <span class="n">n_oii</span> <span class="o">=</span> <span class="n">n_xii</span> <span class="o">-</span> <span class="n">n_iii</span>
         <span class="n">n_ioi</span> <span class="o">=</span> <span class="n">n_ixi</span> <span class="o">-</span> <span class="n">n_iii</span>
         <span class="n">n_iio</span> <span class="o">=</span> <span class="n">n_iix</span> <span class="o">-</span> <span class="n">n_iii</span>
