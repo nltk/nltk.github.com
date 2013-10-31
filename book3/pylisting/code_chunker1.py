@@ -1,7 +1,7 @@
 # Natural Language Toolkit: code_chunker1
 
 grammar = r"""
-  NP: {<DT|PP\$>?<JJ>*<NN>}   # chunk determiner/possessive, adjectives and nouns
+  NP: {<DT|PP\$>?<JJ>*<NN>}   # chunk determiner/possessive, adjectives and noun
       {<NNP>+}                # chunk sequences of proper nouns
 """
 cp = nltk.RegexpParser(grammar)
