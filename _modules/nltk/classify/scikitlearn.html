@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 
@@ -8,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>nltk.classify.scikitlearn &mdash; NLTK 2.0 documentation</title>
+    <title>nltk.classify.scikitlearn &mdash; NLTK 3.0 documentation</title>
     
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
@@ -16,7 +14,7 @@
     <script type="text/javascript">
       var DOCUMENTATION_OPTIONS = {
         URL_ROOT:    '../../../',
-        VERSION:     '2.0',
+        VERSION:     '3.0',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
         HAS_SOURCE:  true
@@ -25,14 +23,14 @@
     <script type="text/javascript" src="../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
-    <link rel="top" title="NLTK 2.0 documentation" href="../../../index.html" />
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
     <link rel="up" title="Module code" href="../../index.html" /> 
   </head>
   <body>
     <div class="header-wrapper">
       <div class="header">
         <div class="headertitle"><a
-          href="../../../index.html">NLTK 2.0 documentation</a></div>
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
         <div class="rel">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -54,25 +52,25 @@
 <span class="c"># Natural Language Toolkit: Interface to scikit-learn classifiers</span>
 <span class="c">#</span>
 <span class="c"># Author: Lars Buitinck &lt;L.J.Buitinck@uva.nl&gt;</span>
-<span class="c"># URL: &lt;http://www.nltk.org/&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">scikit-learn (http://scikit-learn.org) is a machine learning library for</span>
-<span class="sd">Python, supporting most of the basic classification algorithms, including SVMs,</span>
-<span class="sd">Naive Bayes, logistic regression and decision trees.</span>
+<span class="sd">Python. It supports many classification algorithms, including SVMs,</span>
+<span class="sd">Naive Bayes, logistic regression (MaxEnt) and decision trees.</span>
 
 <span class="sd">This package implement a wrapper around scikit-learn classifiers. To use this</span>
-<span class="sd">wrapper, construct a scikit-learn classifier, then use that to construct a</span>
-<span class="sd">SklearnClassifier. E.g., to wrap a linear SVM classifier with default settings,</span>
-<span class="sd">do</span>
+<span class="sd">wrapper, construct a scikit-learn estimator object, then use that to construct</span>
+<span class="sd">a SklearnClassifier. E.g., to wrap a linear SVM with default settings:</span>
 
-<span class="sd">&gt;&gt;&gt; from sklearn.svm.sparse import LinearSVC</span>
+<span class="sd">&gt;&gt;&gt; from sklearn.svm import LinearSVC</span>
 <span class="sd">&gt;&gt;&gt; from nltk.classify.scikitlearn import SklearnClassifier</span>
 <span class="sd">&gt;&gt;&gt; classif = SklearnClassifier(LinearSVC())</span>
 
-<span class="sd">The scikit-learn classifier may be arbitrarily complex. E.g., the following</span>
-<span class="sd">constructs and wraps a Naive Bayes estimator with tf-idf weighting and</span>
-<span class="sd">chi-square feature selection:</span>
+<span class="sd">A scikit-learn classifier may include preprocessing steps when it&#39;s wrapped</span>
+<span class="sd">in a Pipeline object. The following constructs and wraps a Naive Bayes text</span>
+<span class="sd">classifier with tf-idf weighting and chi-square feature selection to get the</span>
+<span class="sd">best 1000 features:</span>
 
 <span class="sd">&gt;&gt;&gt; from sklearn.feature_extraction.text import TfidfTransformer</span>
 <span class="sd">&gt;&gt;&gt; from sklearn.feature_selection import SelectKBest, chi2</span>
@@ -82,20 +80,22 @@
 <span class="sd">...                      (&#39;chi2&#39;, SelectKBest(chi2, k=1000)),</span>
 <span class="sd">...                      (&#39;nb&#39;, MultinomialNB())])</span>
 <span class="sd">&gt;&gt;&gt; classif = SklearnClassifier(pipeline)</span>
-
-<span class="sd">(Such a classifier could be trained on word counts for text classification.)</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span><span class="p">,</span> <span class="n">unicode_literals</span>
 
 <span class="kn">from</span> <span class="nn">nltk.classify.api</span> <span class="kn">import</span> <span class="n">ClassifierI</span>
 <span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">DictionaryProbDist</span>
 <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
+<span class="kn">from</span> <span class="nn">warnings</span> <span class="kn">import</span> <span class="n">warn</span>
 
 <span class="k">try</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
-    <span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="kn">import</span> <span class="n">coo_matrix</span>
+    <span class="kn">from</span> <span class="nn">sklearn.feature_extraction</span> <span class="kn">import</span> <span class="n">DictVectorizer</span>
+    <span class="kn">from</span> <span class="nn">sklearn.preprocessing</span> <span class="kn">import</span> <span class="n">LabelEncoder</span>
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="k">pass</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;SklearnClassifier&#39;</span><span class="p">]</span>
+
 
 <span class="nd">@compat.python_2_unicode_compatible</span>
 <div class="viewcode-block" id="SklearnClassifier"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.SklearnClassifier">[docs]</a><span class="k">class</span> <span class="nc">SklearnClassifier</span><span class="p">(</span><span class="n">ClassifierI</span><span class="p">):</span>
@@ -106,130 +106,101 @@
 <span class="sd">        :param estimator: scikit-learn classifier object.</span>
 
 <span class="sd">        :param dtype: data type used when building feature array.</span>
-<span class="sd">            scikit-learn estimators work exclusively on numeric data; use bool</span>
-<span class="sd">            when all features are binary.</span>
+<span class="sd">            scikit-learn estimators work exclusively on numeric data. The</span>
+<span class="sd">            default value should be fine for almost all situations.</span>
 
-<span class="sd">        :param sparse: Whether to use sparse matrices. The estimator must</span>
-<span class="sd">            support these; not all scikit-learn classifiers do. The default</span>
-<span class="sd">            value is True, since most NLP problems involve sparse feature sets.</span>
+<span class="sd">        :param sparse: Whether to use sparse matrices internally.</span>
+<span class="sd">            The estimator must support these; not all scikit-learn classifiers</span>
+<span class="sd">            do (see their respective documentation and look for &quot;sparse</span>
+<span class="sd">            matrix&quot;). The default value is True, since most NLP problems</span>
+<span class="sd">            involve sparse feature sets. Setting this to False may take a</span>
+<span class="sd">            great amount of memory.</span>
 <span class="sd">        :type sparse: boolean.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span> <span class="o">=</span> <span class="n">estimator</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span> <span class="o">=</span> <span class="n">dtype</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_sparse</span> <span class="o">=</span> <span class="n">sparse</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_encoder</span> <span class="o">=</span> <span class="n">LabelEncoder</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_vectorizer</span> <span class="o">=</span> <span class="n">DictVectorizer</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">sparse</span><span class="o">=</span><span class="n">sparse</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s">&quot;&lt;SklearnClassifier(</span><span class="si">%r</span><span class="s">)&gt;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span>
 
 <div class="viewcode-block" id="SklearnClassifier.batch_classify"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.SklearnClassifier.batch_classify">[docs]</a>    <span class="k">def</span> <span class="nf">batch_classify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
-        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_index_label</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">yi</span><span class="p">)]</span> <span class="k">for</span> <span class="n">yi</span> <span class="ow">in</span> <span class="n">y</span><span class="p">]</span>
+        <span class="sd">&quot;&quot;&quot;Classify a batch of samples.</span>
+
+<span class="sd">        :param featuresets: An iterable over featuresets, each a dict mapping</span>
+<span class="sd">            strings to either numbers, booleans or strings.</span>
+<span class="sd">        :return: The predicted class label for each input sample.</span>
+<span class="sd">        :rtype: list</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
+        <span class="n">classes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoder</span><span class="o">.</span><span class="n">classes_</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">classes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">)]</span>
 </div>
 <div class="viewcode-block" id="SklearnClassifier.batch_prob_classify"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.SklearnClassifier.batch_prob_classify">[docs]</a>    <span class="k">def</span> <span class="nf">batch_prob_classify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
+        <span class="sd">&quot;&quot;&quot;Compute per-class probabilities for a batch of samples.</span>
+
+<span class="sd">        :param featuresets: An iterable over featuresets, each a dict mapping</span>
+<span class="sd">            strings to either numbers, booleans or strings.</span>
+<span class="sd">        :rtype: list of ``ProbDistI``</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
         <span class="n">y_proba_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_make_probdist</span><span class="p">(</span><span class="n">y_proba</span><span class="p">)</span> <span class="k">for</span> <span class="n">y_proba</span> <span class="ow">in</span> <span class="n">y_proba_list</span><span class="p">]</span>
 </div>
 <div class="viewcode-block" id="SklearnClassifier.labels"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.SklearnClassifier.labels">[docs]</a>    <span class="k">def</span> <span class="nf">labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="sd">&quot;&quot;&quot;The class labels used by this classifier.</span>
+
+<span class="sd">        :rtype: list</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoder</span><span class="o">.</span><span class="n">classes_</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="SklearnClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.SklearnClassifier.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labeled_featuresets</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Train (fit) the scikit-learn estimator.</span>
 
-<span class="sd">        :param labeled_featuresets: A list of classified featuresets,</span>
-<span class="sd">            i.e., a list of tuples ``(featureset, label)``.</span>
+<span class="sd">        :param labeled_featuresets: A list of ``(featureset, label)``</span>
+<span class="sd">            where each ``featureset`` is a dict mapping strings to either</span>
+<span class="sd">            numbers, booleans or strings.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_index_label</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span> <span class="o">=</span> <span class="p">{}</span>
-
-        <span class="k">for</span> <span class="n">fs</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">labeled_featuresets</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fs</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">f</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_index_label</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span><span class="p">)</span>
-
-        <span class="n">featuresets</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">labeled_featuresets</span><span class="p">)</span>
-        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
-        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_label_index</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">])</span>
-
+        <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">compat</span><span class="o">.</span><span class="n">izip</span><span class="p">(</span><span class="o">*</span><span class="n">labeled_featuresets</span><span class="p">))</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vectorizer</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoder</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_clf</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="bp">self</span>
 </div>
-    <span class="k">def</span> <span class="nf">_convert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sparse</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_featuresets_to_coo</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_featuresets_to_array</span><span class="p">(</span><span class="n">featuresets</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="nf">_featuresets_to_coo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Convert featuresets to sparse matrix (COO format).&quot;&quot;&quot;</span>
-
-        <span class="n">i_ind</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">j_ind</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">values</span> <span class="o">=</span> <span class="p">[]</span>
-
-        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fs</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">featuresets</span><span class="p">):</span>
-            <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">compat</span><span class="o">.</span><span class="n">iteritems</span><span class="p">(</span><span class="n">fs</span><span class="p">):</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="n">j</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">[</span><span class="n">f</span><span class="p">]</span>
-                    <span class="n">i_ind</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
-                    <span class="n">j_ind</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
-                    <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
-                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
-                    <span class="k">pass</span>
-
-        <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">coo_matrix</span><span class="p">((</span><span class="n">values</span><span class="p">,</span> <span class="p">(</span><span class="n">i_ind</span><span class="p">,</span> <span class="n">j_ind</span><span class="p">)),</span> <span class="n">shape</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="nf">_featuresets_to_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Convert featureset to Numpy array.&quot;&quot;&quot;</span>
-
-        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">featuresets</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">)),</span>
-                     <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">)</span>
-
-        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fs</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">featuresets</span><span class="p">):</span>
-            <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">compat</span><span class="o">.</span><span class="n">iteritems</span><span class="p">(</span><span class="n">fs</span><span class="p">):</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_feature_index</span><span class="p">[</span><span class="n">f</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>    <span class="c"># feature not seen in training</span>
-                    <span class="k">pass</span>
-
-        <span class="k">return</span> <span class="n">X</span>
-
     <span class="k">def</span> <span class="nf">_make_probdist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">y_proba</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">DictionaryProbDist</span><span class="p">(</span><span class="nb">dict</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_index_label</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">p</span><span class="p">)</span>
+        <span class="n">classes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoder</span><span class="o">.</span><span class="n">classes_</span>
+        <span class="k">return</span> <span class="n">DictionaryProbDist</span><span class="p">(</span><span class="nb">dict</span><span class="p">((</span><span class="n">classes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">p</span><span class="p">)</span>
                                        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">y_proba</span><span class="p">)))</span>
 
 
 <span class="c"># skip doctests if scikit-learn is not installed</span></div>
-<div class="viewcode-block" id="setup_module"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.scikitlearn.setup_module">[docs]</a><span class="k">def</span> <span class="nf">setup_module</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">setup_module</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
     <span class="kn">from</span> <span class="nn">nose</span> <span class="kn">import</span> <span class="n">SkipTest</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="kn">import</span> <span class="nn">sklearn</span>
     <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">SkipTest</span><span class="p">(</span><span class="s">&quot;scikit-learn is not installed&quot;</span><span class="p">)</span>
-</div>
+
+
 <span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">nltk.classify.util</span> <span class="kn">import</span> <span class="n">names_demo</span><span class="p">,</span> <span class="n">binary_names_demo_features</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="kn">from</span> <span class="nn">sklearn.linear_model.sparse</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
-    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>     <span class="c"># separate sparse LR to be removed in 0.12</span>
-        <span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
+    <span class="kn">from</span> <span class="nn">nltk.classify.util</span> <span class="kn">import</span> <span class="n">names_demo</span><span class="p">,</span> <span class="n">names_demo_features</span>
+    <span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
     <span class="kn">from</span> <span class="nn">sklearn.naive_bayes</span> <span class="kn">import</span> <span class="n">BernoulliNB</span>
 
+    <span class="c"># Bernoulli Naive Bayes is designed for binary classification. We set the</span>
+    <span class="c"># binarize option to False since we know we&#39;re passing boolean features.</span>
     <span class="k">print</span><span class="p">(</span><span class="s">&quot;scikit-learn Naive Bayes:&quot;</span><span class="p">)</span>
-    <span class="n">names_demo</span><span class="p">(</span><span class="n">SklearnClassifier</span><span class="p">(</span><span class="n">BernoulliNB</span><span class="p">(</span><span class="n">binarize</span><span class="o">=</span><span class="bp">False</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span><span class="o">.</span><span class="n">train</span><span class="p">,</span>
-               <span class="n">features</span><span class="o">=</span><span class="n">binary_names_demo_features</span><span class="p">)</span>
-    <span class="k">print</span><span class="p">(</span><span class="s">&quot;scikit-learn logistic regression:&quot;</span><span class="p">)</span>
-    <span class="n">names_demo</span><span class="p">(</span><span class="n">SklearnClassifier</span><span class="p">(</span><span class="n">LogisticRegression</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">train</span><span class="p">,</span>
-               <span class="n">features</span><span class="o">=</span><span class="n">binary_names_demo_features</span><span class="p">)</span>
+    <span class="n">names_demo</span><span class="p">(</span><span class="n">SklearnClassifier</span><span class="p">(</span><span class="n">BernoulliNB</span><span class="p">(</span><span class="n">binarize</span><span class="o">=</span><span class="bp">False</span><span class="p">))</span><span class="o">.</span><span class="n">train</span><span class="p">,</span>
+               <span class="n">features</span><span class="o">=</span><span class="n">names_demo_features</span><span class="p">)</span>
+
+    <span class="c"># The C parameter on logistic regression (MaxEnt) controls regularization.</span>
+    <span class="c"># The higher it&#39;s set, the less regularized the classifier is.</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n\n</span><span class="s">scikit-learn logistic regression:&quot;</span><span class="p">)</span>
+    <span class="n">names_demo</span><span class="p">(</span><span class="n">SklearnClassifier</span><span class="p">(</span><span class="n">LogisticRegression</span><span class="p">(</span><span class="n">C</span><span class="o">=</span><span class="mi">1000</span><span class="p">))</span><span class="o">.</span><span class="n">train</span><span class="p">,</span>
+               <span class="n">features</span><span class="o">=</span><span class="n">names_demo_features</span><span class="p">)</span>
 </pre></div>
 
           </div>
@@ -242,7 +213,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">nltk Package</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://nltk.org/howto">HOWTO</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk">NLTK Development</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../team.html">Team NLTK</a></li>
 </ul>
 
@@ -273,8 +247,9 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2012, NLTK Project.
-      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+        &copy; Copyright 2013, NLTK Project.
+      Last updated on Nov 05, 2013.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b3.
     </div>
         </div>
         <div class="clearer"></div>
