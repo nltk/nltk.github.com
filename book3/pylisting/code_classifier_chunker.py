@@ -32,5 +32,5 @@ class ConsecutiveNPChunker(nltk.ChunkParserI): # [_consec-chunker]
     def parse(self, sentence):
         tagged_sents = self.tagger.tag(sentence)
         conlltags = [(w,t,c) for ((w,t),c) in tagged_sents]
-        return nltk.chunk.util.conlltags2tree(conlltags)
+        return nltk.chunk.conlltags2tree(conlltags)
 
