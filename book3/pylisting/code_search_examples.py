@@ -12,10 +12,3 @@ def search2(substring, words):
         if substring in word:
             yield word
 
-print("search1:")
-for item in search1('zz', nltk.corpus.brown.words()):
-    print(item)
-print "search2:"
-for item in search2('zz', nltk.corpus.brown.words()):
-    print(item)
-
