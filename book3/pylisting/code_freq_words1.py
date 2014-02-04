@@ -4,8 +4,10 @@ from bs4 import BeautifulSoup
 from urllib import request
 
 def freq_words(url, freqdist, n):
-    text = nltk.clean_url(url)
-    for word in nltk.word_tokenize(text):
-        freqdist.inc(word.lower())
-    print(freqdist.keys()[:n])
+    response = request.urlopen(url)
+    html = response.read().decode('utf8')
+    raw = BeautifulSoup(html).get_text()
+    for word in word_tokenize(raw):
+        freqdist[word.lower()] += 1
+    print(freqdist.most_common(n))
 

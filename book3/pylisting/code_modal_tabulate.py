@@ -1,8 +1,8 @@
 # Natural Language Toolkit: code_modal_tabulate
 
  def tabulate(cfdist, words, categories):
-     print('%-16s' % 'Category', end=' ')
-     for word in words:                                      # column headings
+     print('%-16s' % 'Category', end=' ')                    # column headings
+     for word in words:
          print('%6s' % word, end=' ')
      print
      for category in categories:
