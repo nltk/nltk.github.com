@@ -53,7 +53,7 @@
 <span class="c">#</span>
 <span class="c"># Author: Dan Garrette &lt;dhgarrette@gmail.com&gt;</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2014 NLTK Project</span>
 <span class="c"># URL: &lt;http://nltk.org&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 
@@ -132,6 +132,477 @@
     <span class="n">names</span> <span class="o">=</span>  <span class="p">[</span><span class="s">&quot;existential&quot;</span><span class="p">,</span> <span class="s">&quot;universal&quot;</span><span class="p">,</span> <span class="s">&quot;lambda&quot;</span><span class="p">]</span>
     <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="p">[</span><span class="n">Tokens</span><span class="o">.</span><span class="n">EXISTS</span><span class="p">,</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">ALL</span><span class="p">,</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">LAMBDA</span><span class="p">]):</span>
         <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%-15s</span><span class="se">\t</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>  <span class="n">pair</span><span class="p">)</span>
+
+</div>
+<span class="nd">@python_2_unicode_compatible</span>
+<span class="k">class</span> <span class="nc">_LogicParser</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A lambda calculus expression parser.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">type_check</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param type_check: bool should type checking be performed?</span>
+<span class="sd">        to their types.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">type_check</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">type_check</span> <span class="o">=</span> <span class="n">type_check</span>
+
+        <span class="sd">&quot;&quot;&quot;A list of tuples of quote characters.  The 4-tuple is comprised</span>
+<span class="sd">        of the start character, the end character, the escape character, and</span>
+<span class="sd">        a boolean indicating whether the quotes should be included in the</span>
+<span class="sd">        result. Quotes are used to signify that a token should be treated as</span>
+<span class="sd">        atomic, ignoring any special characters within the token.  The escape</span>
+<span class="sd">        character allows the quote end character to be used within the quote.</span>
+<span class="sd">        If True, the boolean indicates that the final token should contain the</span>
+<span class="sd">        quote and escape characters.</span>
+<span class="sd">        This method exists to be overridden&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">quote_chars</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">LAMBDA_LIST</span><span class="p">]</span>             <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NOT_LIST</span><span class="p">]</span>                <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">APP</span><span class="p">,</span><span class="mi">3</span><span class="p">)]</span>                                       <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">4</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EQ_LIST</span><span class="o">+</span><span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span><span class="p">]</span> <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">5</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">]</span>                  <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">6</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">AND_LIST</span><span class="p">]</span>                <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">7</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OR_LIST</span><span class="p">]</span>                 <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">8</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IMP_LIST</span><span class="p">]</span>                <span class="o">+</span> \
+                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">9</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IFF_LIST</span><span class="p">]</span>                <span class="o">+</span> \
+                           <span class="p">[(</span><span class="bp">None</span><span class="p">,</span><span class="mi">10</span><span class="p">)])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">right_associated_operations</span> <span class="o">=</span> <span class="p">[</span><span class="n">APP</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">signature</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse the expression.</span>
+
+<span class="sd">        :param data: str for the input to be parsed</span>
+<span class="sd">        :param signature: ``dict&lt;str, str&gt;`` that maps variable names to type</span>
+<span class="sd">        strings</span>
+<span class="sd">        :returns: a parsed Expression</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">,</span> <span class="n">mapping</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">LogicalExpressionException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">^&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="n">mapping</span><span class="p">[</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">type_check</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">typecheck</span><span class="p">(</span><span class="n">signature</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span> <span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Split the data into tokens&quot;&quot;&quot;</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">mapping</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">tokenTrie</span> <span class="o">=</span> <span class="n">StringTrie</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_all_symbols</span><span class="p">())</span>
+        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="n">data_idx</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
+        <span class="k">while</span> <span class="n">data_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+            <span class="n">cur_data_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
+            <span class="n">quoted_token</span><span class="p">,</span> <span class="n">data_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_quoted_token</span><span class="p">(</span><span class="n">data_idx</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">quoted_token</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
+                    <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">cur_data_idx</span>
+                <span class="n">token</span> <span class="o">+=</span> <span class="n">quoted_token</span>
+                <span class="k">continue</span>
+
+            <span class="n">st</span> <span class="o">=</span> <span class="n">tokenTrie</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
+            <span class="n">symbol</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+            <span class="k">while</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">st</span><span class="p">:</span>
+                <span class="n">symbol</span> <span class="o">+=</span> <span class="n">c</span>
+                <span class="n">st</span> <span class="o">=</span> <span class="n">st</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">-</span><span class="n">data_idx</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">):</span>
+                    <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">)]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="n">StringTrie</span><span class="o">.</span><span class="n">LEAF</span> <span class="ow">in</span> <span class="n">st</span><span class="p">:</span>
+                <span class="c">#token is a complete symbol</span>
+                <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
+                    <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
+                    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+                    <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">data_idx</span>
+                <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
+                <span class="n">data_idx</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span> <span class="ow">in</span> <span class="s">&#39; </span><span class="se">\t\n</span><span class="s">&#39;</span><span class="p">:</span> <span class="c">#any whitespace</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
+                        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
+                        <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+                        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
+                        <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
+                    <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
+                <span class="n">data_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
+            <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span>
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">mapping</span>
+
+    <span class="k">def</span> <span class="nf">process_quoted_token</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_idx</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">data_idx</span>
+        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">escape</span><span class="p">,</span> <span class="n">incl_quotes</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_chars</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">start</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
+                    <span class="n">token</span> <span class="o">+=</span> <span class="n">c</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">while</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">!=</span> <span class="n">end</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">escape</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
+                            <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                        <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span> <span class="c">#if there are no more chars</span>
+                            <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&quot;End of input reached.  &quot;</span>
+                                    <span class="s">&quot;Escape character [</span><span class="si">%s</span><span class="s">] found at end.&quot;</span>
+                                    <span class="o">%</span> <span class="n">escape</span><span class="p">)</span>
+                        <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&quot;End of input reached.  &quot;</span>
+                                             <span class="s">&quot;Expected: [</span><span class="si">%s</span><span class="s">]&quot;</span> <span class="o">%</span> <span class="n">end</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
+                    <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;Empty quoted token found&#39;</span><span class="p">)</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">token</span><span class="p">,</span> <span class="n">i</span>
+
+    <span class="k">def</span> <span class="nf">get_all_symbols</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method exists to be overridden&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">SYMBOLS</span>
+
+    <span class="k">def</span> <span class="nf">inRange</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return TRUE if the given location is within the buffer&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="n">location</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">token</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get the next waiting token.  If a location is given, then</span>
+<span class="sd">        return the token at currentIndex+location without advancing</span>
+<span class="sd">        currentIndex; setting it gives lookahead/lookback capability.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">location</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="n">location</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">tok</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">TOKENS</span>
+
+    <span class="k">def</span> <span class="nf">parse_Expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Parse the next complete expression from the stream and return it.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&#39;Expression expected.&#39;</span><span class="p">)</span>
+
+        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">accum</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&#39;Expression expected.&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_adjuncts</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method is intended to be overridden for logics that</span>
+<span class="sd">        use different operators or expressions&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="n">tok</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_variable</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NOT_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_negation</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">LAMBDA_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_lambda</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_quant</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">tok</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_open</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">attempt_adjuncts</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="n">cur_idx</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">while</span> <span class="n">cur_idx</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">:</span> <span class="c">#while adjuncts are added</span>
+            <span class="n">cur_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span>
+            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_EqualityExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_ApplicationExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_BooleanExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expression</span>
+
+    <span class="k">def</span> <span class="nf">handle_negation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_NegatedExpression</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">NOT</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">make_NegatedExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">NegatedExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">handle_variable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="c">#It&#39;s either: 1) a predicate expression: sees(x,y)</span>
+        <span class="c">#             2) an application expression: P(x)</span>
+        <span class="c">#             3) a solo variable: john OR x</span>
+        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_VariableExpression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
+            <span class="c">#The predicate has arguments</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">FunctionVariableExpression</span><span class="p">)</span> <span class="ow">and</span> \
+               <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">ConstantExpression</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
+                                     <span class="s">&quot;&#39;</span><span class="si">%s</span><span class="s">&#39; is an illegal predicate name.  &quot;</span>
+                                     <span class="s">&quot;Individual variables may not be used as &quot;</span>
+                                     <span class="s">&quot;predicates.&quot;</span> <span class="o">%</span> <span class="n">tok</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the Open Paren</span>
+
+            <span class="c">#curry the arguments</span>
+            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
+            <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">COMMA</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the comma</span>
+                <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">accum</span>
+
+    <span class="k">def</span> <span class="nf">get_next_token_variable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">description</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="s">&#39;Variable expected.&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">make_VariableExpression</span><span class="p">(</span><span class="n">tok</span><span class="p">),</span> <span class="n">ConstantExpression</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
+                                 <span class="s">&quot;&#39;</span><span class="si">%s</span><span class="s">&#39; is an illegal variable name.  &quot;</span>
+                                 <span class="s">&quot;Constants may not be </span><span class="si">%s</span><span class="s">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">description</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">Variable</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">handle_lambda</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="c"># Expression is a lambda expression</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span>
+                                              <span class="n">message</span><span class="o">=</span><span class="s">&quot;Variable and Expression expected following lambda operator.&quot;</span><span class="p">)</span>
+        <span class="nb">vars</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;abstracted&#39;</span><span class="p">)]</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span>
+                <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expression expected.&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="k">break</span>
+            <span class="c"># Support expressions like: \x y.M == \x.\y.M</span>
+            <span class="nb">vars</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;abstracted&#39;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the dot</span>
+
+        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+        <span class="k">while</span> <span class="nb">vars</span><span class="p">:</span>
+            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_LambdaExpression</span><span class="p">(</span><span class="nb">vars</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">accum</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">accum</span>
+
+    <span class="k">def</span> <span class="nf">handle_quant</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="c"># Expression is a quantified expression: some x.M</span>
+        <span class="n">factory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_QuantifiedExpression_factory</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span>
+                                              <span class="n">message</span><span class="o">=</span><span class="s">&quot;Variable and Expression expected following quantifier &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">tok</span><span class="p">)</span>
+        <span class="nb">vars</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;quantified&#39;</span><span class="p">)]</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span>
+                <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expression expected.&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
+                <span class="k">break</span>
+            <span class="c"># Support expressions like: some x y.M == some x.some y.M</span>
+            <span class="nb">vars</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;quantified&#39;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the dot</span>
+
+        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+        <span class="k">while</span> <span class="nb">vars</span><span class="p">:</span>
+            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_QuanifiedExpression</span><span class="p">(</span><span class="n">factory</span><span class="p">,</span> <span class="nb">vars</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">accum</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">accum</span>
+
+    <span class="k">def</span> <span class="nf">get_QuantifiedExpression_factory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
+<span class="sd">        have different quantifiers&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EXISTS_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">ExistsExpression</span>
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">ALL_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">AllExpression</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertToken</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">make_QuanifiedExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">factory</span><span class="p">(</span><span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">handle_open</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="c">#Expression is in parens</span>
+        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">accum</span>
+
+    <span class="k">def</span> <span class="nf">attempt_EqualityExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Attempt to make an equality expression.  If the next token is an</span>
+<span class="sd">        equality operator, then an EqualityExpression will be returned.</span>
+<span class="sd">        Otherwise, the parameter will be returned.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EQ_LIST</span> <span class="o">+</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the &quot;=&quot; or &quot;!=&quot;</span>
+                <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_EqualityExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span><span class="p">:</span>
+                    <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_NegatedExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expression</span>
+
+    <span class="k">def</span> <span class="nf">make_EqualityExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
+<span class="sd">        have different equality expression classes&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">EqualityExpression</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">attempt_BooleanExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Attempt to make a boolean expression.  If the next token is a boolean</span>
+<span class="sd">        operator, then a BooleanExpression will be returned.  Otherwise, the</span>
+<span class="sd">        parameter will be returned.&quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">factory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_BooleanExpression_factory</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">factory</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the operator</span>
+                <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_BooleanExpression</span><span class="p">(</span><span class="n">factory</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span>
+                                                         <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">expression</span>
+
+    <span class="k">def</span> <span class="nf">get_BooleanExpression_factory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
+<span class="sd">        have different boolean operators&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">AND_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">AndExpression</span>
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OR_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">OrExpression</span>
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IMP_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">ImpExpression</span>
+        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IFF_LIST</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">IffExpression</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">make_BooleanExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">factory</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">attempt_ApplicationExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Attempt to make an application expression.  The next tokens are</span>
+<span class="sd">        a list of arguments in parens, then the argument expression is a</span>
+<span class="sd">        function being applied to the arguments.  Otherwise, return the</span>
+<span class="sd">        argument expression.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">APP</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">LambdaExpression</span><span class="p">)</span> <span class="ow">and</span> \
+                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ApplicationExpression</span><span class="p">)</span> <span class="ow">and</span> \
+                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">FunctionVariableExpression</span><span class="p">)</span> <span class="ow">and</span> \
+                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ConstantExpression</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
+                                         <span class="p">(</span><span class="s">&quot;The function &#39;</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">expression</span><span class="p">)</span> <span class="o">+</span>
+                                         <span class="s">&quot;&#39; is not a Lambda Expression, an &quot;</span>
+                                         <span class="s">&quot;Application Expression, or a &quot;</span>
+                                         <span class="s">&quot;functional predicate, so it may &quot;</span>
+                                         <span class="s">&quot;not take arguments.&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow then open paren</span>
+                <span class="c">#curry the arguments</span>
+                <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
+                <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">COMMA</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the comma</span>
+                    <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">accum</span>
+        <span class="k">return</span> <span class="n">expression</span>
+
+    <span class="k">def</span> <span class="nf">make_ApplicationExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">function</span><span class="p">,</span> <span class="n">argument</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ApplicationExpression</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">argument</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">make_VariableExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">Variable</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">make_LambdaExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">LambdaExpression</span><span class="p">(</span><span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">has_priority</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">operation</span><span class="p">]</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">context</span><span class="p">]</span> <span class="ow">or</span> \
+               <span class="p">(</span><span class="n">operation</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">right_associated_operations</span> <span class="ow">and</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">operation</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">context</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">assertNextToken</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expected token &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">expected</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="o">!=</span> <span class="n">expected</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">assertToken</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">tok</span> <span class="o">!=</span> <span class="n">expected</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Next token: &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;No more tokens&#39;</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;&#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">+</span> <span class="s">&#39;: &#39;</span> <span class="o">+</span> <span class="n">msg</span> <span class="o">+</span> <span class="s">&#39;&gt;&#39;</span>
+
+
+<div class="viewcode-block" id="parse_logic"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.parse_logic">[docs]</a><span class="k">def</span> <span class="nf">parse_logic</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a file of First Order Formulas into a list of {Expression}s.</span>
+
+<span class="sd">    :param s: the contents of the file</span>
+<span class="sd">    :type s: str</span>
+<span class="sd">    :param logic_parser: The parser to be used to parse the logical expression</span>
+<span class="sd">    :type logic_parser: _LogicParser</span>
+<span class="sd">    :param encoding: the encoding of the input string, if it is binary</span>
+<span class="sd">    :type encoding: str</span>
+<span class="sd">    :return: a list of parsed formulas.</span>
+<span class="sd">    :rtype: list(Expression)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">logic_parser</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">logic_parser</span> <span class="o">=</span> <span class="n">_LogicParser</span><span class="p">()</span>
+
+    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">logic_parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">LogicalExpressionException</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">statements</span>
 
 </div>
 <span class="nd">@total_ordering</span>
@@ -372,7 +843,7 @@
     <span class="k">elif</span> <span class="n">type_string</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">ANY_TYPE</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">ANY_TYPE</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="s">&quot;Unexpected character: &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">type_string</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">raise</span> <span class="n">LogicalExpressionException</span><span class="p">(</span><span class="s">&quot;Unexpected character: &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">type_string</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
 </div>
 <div class="viewcode-block" id="TypeException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.TypeException">[docs]</a><span class="k">class</span> <span class="nc">TypeException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
@@ -444,6 +915,12 @@
 <div class="viewcode-block" id="Expression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.Expression">[docs]</a><span class="k">class</span> <span class="nc">Expression</span><span class="p">(</span><span class="n">SubstituteBindingsI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;This is the base abstract object for all logical expressions&quot;&quot;&quot;</span>
 
+    <span class="n">_logic_parser</span> <span class="o">=</span> <span class="n">_LogicParser</span><span class="p">()</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Expression.fromstring"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.Expression.fromstring">[docs]</a>    <span class="k">def</span> <span class="nf">fromstring</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">_logic_parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+</div>
     <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="o">*</span><span class="n">additional</span><span class="p">):</span>
         <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">applyto</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">additional</span><span class="p">:</span>
@@ -581,7 +1058,7 @@
                                                          <span class="n">replace_bound</span><span class="p">,</span> <span class="n">alpha_convert</span><span class="p">),</span>
                                      <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">)</span>
 </div>
-<div class="viewcode-block" id="Expression.normalize"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.Expression.normalize">[docs]</a>    <span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Expression.normalize"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.Expression.normalize">[docs]</a>    <span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">newvars</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Rename auto-generated unique variables&quot;&quot;&quot;</span>
         <span class="k">def</span> <span class="nf">get_indiv_vars</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
             <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">IndividualVariableExpression</span><span class="p">):</span>
@@ -704,7 +1181,7 @@
 <span class="sd">    with another Expression, such as a LambdaExpression, which would mean that</span>
 <span class="sd">    the Predicate should be thought of as being applied to the arguments.</span>
 
-<span class="sd">    The LogicParser will always curry arguments in a application expression.</span>
+<span class="sd">    The logical expression parser will always curry arguments in a application expression.</span>
 <span class="sd">    So, &quot;\x y.see(x,y)(john,mary)&quot; will be represented internally as</span>
 <span class="sd">    &quot;((\x y.(see(x))(y))(john))(mary)&quot;.  This simplifies the internals since</span>
 <span class="sd">    there will always be exactly one argument in an application.</span>
@@ -1351,478 +1828,9 @@
 <div class="viewcode-block" id="EqualityExpression.getOp"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.EqualityExpression.getOp">[docs]</a>    <span class="k">def</span> <span class="nf">getOp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EQ</span>
 
+
+<span class="c">### Utilities</span>
 </div></div>
-<span class="nd">@python_2_unicode_compatible</span>
-<div class="viewcode-block" id="LogicParser"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser">[docs]</a><span class="k">class</span> <span class="nc">LogicParser</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;A lambda calculus expression parser.&quot;&quot;&quot;</span>
-
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">type_check</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param type_check: bool should type checking be performed?</span>
-<span class="sd">        to their types.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">type_check</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">type_check</span> <span class="o">=</span> <span class="n">type_check</span>
-
-        <span class="sd">&quot;&quot;&quot;A list of tuples of quote characters.  The 4-tuple is comprised</span>
-<span class="sd">        of the start character, the end character, the escape character, and</span>
-<span class="sd">        a boolean indicating whether the quotes should be included in the</span>
-<span class="sd">        result. Quotes are used to signify that a token should be treated as</span>
-<span class="sd">        atomic, ignoring any special characters within the token.  The escape</span>
-<span class="sd">        character allows the quote end character to be used within the quote.</span>
-<span class="sd">        If True, the boolean indicates that the final token should contain the</span>
-<span class="sd">        quote and escape characters.</span>
-<span class="sd">        This method exists to be overridden&quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">quote_chars</span> <span class="o">=</span> <span class="p">[]</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">LAMBDA_LIST</span><span class="p">]</span>             <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NOT_LIST</span><span class="p">]</span>                <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">APP</span><span class="p">,</span><span class="mi">3</span><span class="p">)]</span>                                       <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">4</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EQ_LIST</span><span class="o">+</span><span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span><span class="p">]</span> <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">5</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">]</span>                  <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">6</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">AND_LIST</span><span class="p">]</span>                <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">7</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OR_LIST</span><span class="p">]</span>                 <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">8</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IMP_LIST</span><span class="p">]</span>                <span class="o">+</span> \
-                           <span class="p">[(</span><span class="n">x</span><span class="p">,</span><span class="mi">9</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IFF_LIST</span><span class="p">]</span>                <span class="o">+</span> \
-                           <span class="p">[(</span><span class="bp">None</span><span class="p">,</span><span class="mi">10</span><span class="p">)])</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">right_associated_operations</span> <span class="o">=</span> <span class="p">[</span><span class="n">APP</span><span class="p">]</span>
-
-<div class="viewcode-block" id="LogicParser.parse"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">signature</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Parse the expression.</span>
-
-<span class="sd">        :param data: str for the input to be parsed</span>
-<span class="sd">        :param signature: ``dict&lt;str, str&gt;`` that maps variable names to type</span>
-<span class="sd">        strings</span>
-<span class="sd">        :returns: a parsed Expression</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">,</span> <span class="n">mapping</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
-        <span class="k">except</span> <span class="n">ParseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">^&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">*</span><span class="n">mapping</span><span class="p">[</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
-            <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">type_check</span><span class="p">:</span>
-            <span class="n">result</span><span class="o">.</span><span class="n">typecheck</span><span class="p">(</span><span class="n">signature</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">result</span>
-</div>
-<div class="viewcode-block" id="LogicParser.process"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.process">[docs]</a>    <span class="k">def</span> <span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Split the data into tokens&quot;&quot;&quot;</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">mapping</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">tokenTrie</span> <span class="o">=</span> <span class="n">StringTrie</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_all_symbols</span><span class="p">())</span>
-        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
-        <span class="n">data_idx</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
-        <span class="k">while</span> <span class="n">data_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
-            <span class="n">cur_data_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
-            <span class="n">quoted_token</span><span class="p">,</span> <span class="n">data_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_quoted_token</span><span class="p">(</span><span class="n">data_idx</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">quoted_token</span><span class="p">:</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
-                    <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">cur_data_idx</span>
-                <span class="n">token</span> <span class="o">+=</span> <span class="n">quoted_token</span>
-                <span class="k">continue</span>
-
-            <span class="n">st</span> <span class="o">=</span> <span class="n">tokenTrie</span>
-            <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
-            <span class="n">symbol</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
-            <span class="k">while</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">st</span><span class="p">:</span>
-                <span class="n">symbol</span> <span class="o">+=</span> <span class="n">c</span>
-                <span class="n">st</span> <span class="o">=</span> <span class="n">st</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>
-                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">-</span><span class="n">data_idx</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">):</span>
-                    <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">)]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">break</span>
-            <span class="k">if</span> <span class="n">StringTrie</span><span class="o">.</span><span class="n">LEAF</span> <span class="ow">in</span> <span class="n">st</span><span class="p">:</span>
-                <span class="c">#token is a complete symbol</span>
-                <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
-                    <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
-                    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
-                    <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
-                <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">data_idx</span>
-                <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
-                <span class="n">data_idx</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">symbol</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span> <span class="ow">in</span> <span class="s">&#39; </span><span class="se">\t\n</span><span class="s">&#39;</span><span class="p">:</span> <span class="c">#any whitespace</span>
-                    <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
-                        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
-                        <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
-                        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
-                        <span class="n">token_start_idx</span> <span class="o">=</span> <span class="n">data_idx</span>
-                    <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
-                <span class="n">data_idx</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="k">if</span> <span class="n">token</span><span class="p">:</span>
-            <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="n">token_start_idx</span>
-            <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
-        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="n">mapping</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span>
-        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">mapping</span>
-</div>
-<div class="viewcode-block" id="LogicParser.process_quoted_token"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.process_quoted_token">[docs]</a>    <span class="k">def</span> <span class="nf">process_quoted_token</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_idx</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
-        <span class="n">token</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
-        <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">data_idx</span><span class="p">]</span>
-        <span class="n">i</span> <span class="o">=</span> <span class="n">data_idx</span>
-        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">escape</span><span class="p">,</span> <span class="n">incl_quotes</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_chars</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="n">start</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
-                    <span class="n">token</span> <span class="o">+=</span> <span class="n">c</span>
-                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
-                <span class="k">while</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">!=</span> <span class="n">end</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">escape</span><span class="p">:</span>
-                        <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
-                            <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
-                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span> <span class="c">#if there are no more chars</span>
-                            <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&quot;End of input reached.  &quot;</span>
-                                    <span class="s">&quot;Escape character [</span><span class="si">%s</span><span class="s">] found at end.&quot;</span>
-                                    <span class="o">%</span> <span class="n">escape</span><span class="p">)</span>
-                        <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                    <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
-                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&quot;End of input reached.  &quot;</span>
-                                             <span class="s">&quot;Expected: [</span><span class="si">%s</span><span class="s">]&quot;</span> <span class="o">%</span> <span class="n">end</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">incl_quotes</span><span class="p">:</span>
-                    <span class="n">token</span> <span class="o">+=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="s">&#39;Empty quoted token found&#39;</span><span class="p">)</span>
-                <span class="k">break</span>
-        <span class="k">return</span> <span class="n">token</span><span class="p">,</span> <span class="n">i</span>
-</div>
-<div class="viewcode-block" id="LogicParser.get_all_symbols"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.get_all_symbols">[docs]</a>    <span class="k">def</span> <span class="nf">get_all_symbols</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;This method exists to be overridden&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">SYMBOLS</span>
-</div>
-<div class="viewcode-block" id="LogicParser.inRange"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.inRange">[docs]</a>    <span class="k">def</span> <span class="nf">inRange</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Return TRUE if the given location is within the buffer&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="n">location</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.token"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.token">[docs]</a>    <span class="k">def</span> <span class="nf">token</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Get the next waiting token.  If a location is given, then</span>
-<span class="sd">        return the token at currentIndex+location without advancing</span>
-<span class="sd">        currentIndex; setting it gives lookahead/lookback capability.&quot;&quot;&quot;</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">location</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-                <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">]</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span> <span class="o">+=</span> <span class="mi">1</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="n">location</span><span class="p">]</span>
-            <span class="k">return</span> <span class="n">tok</span>
-        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.isvariable"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.isvariable">[docs]</a>    <span class="k">def</span> <span class="nf">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">TOKENS</span>
-</div>
-<div class="viewcode-block" id="LogicParser.parse_Expression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.parse_Expression">[docs]</a>    <span class="k">def</span> <span class="nf">parse_Expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Parse the next complete expression from the stream and return it.&quot;&quot;&quot;</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
-        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&#39;Expression expected.&#39;</span><span class="p">)</span>
-
-        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">accum</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&#39;Expression expected.&#39;</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_adjuncts</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle">[docs]</a>    <span class="k">def</span> <span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;This method is intended to be overridden for logics that</span>
-<span class="sd">        use different operators or expressions&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="n">tok</span><span class="p">):</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_variable</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NOT_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_negation</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">LAMBDA_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_lambda</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_quant</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-
-        <span class="k">elif</span> <span class="n">tok</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_open</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.attempt_adjuncts"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.attempt_adjuncts">[docs]</a>    <span class="k">def</span> <span class="nf">attempt_adjuncts</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="n">cur_idx</span> <span class="o">=</span> <span class="bp">None</span>
-        <span class="k">while</span> <span class="n">cur_idx</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">:</span> <span class="c">#while adjuncts are added</span>
-            <span class="n">cur_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span>
-            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_EqualityExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_ApplicationExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-            <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attempt_BooleanExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">expression</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle_negation"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle_negation">[docs]</a>    <span class="k">def</span> <span class="nf">handle_negation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_NegatedExpression</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">NOT</span><span class="p">))</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_NegatedExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_NegatedExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_NegatedExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">NegatedExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle_variable"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle_variable">[docs]</a>    <span class="k">def</span> <span class="nf">handle_variable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="c">#It&#39;s either: 1) a predicate expression: sees(x,y)</span>
-        <span class="c">#             2) an application expression: P(x)</span>
-        <span class="c">#             3) a solo variable: john OR x</span>
-        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_VariableExpression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
-            <span class="c">#The predicate has arguments</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">FunctionVariableExpression</span><span class="p">)</span> <span class="ow">and</span> \
-               <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="n">ConstantExpression</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
-                                     <span class="s">&quot;&#39;</span><span class="si">%s</span><span class="s">&#39; is an illegal predicate name.  &quot;</span>
-                                     <span class="s">&quot;Individual variables may not be used as &quot;</span>
-                                     <span class="s">&quot;predicates.&quot;</span> <span class="o">%</span> <span class="n">tok</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the Open Paren</span>
-
-            <span class="c">#curry the arguments</span>
-            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
-            <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">COMMA</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the comma</span>
-                <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">accum</span>
-</div>
-<div class="viewcode-block" id="LogicParser.get_next_token_variable"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.get_next_token_variable">[docs]</a>    <span class="k">def</span> <span class="nf">get_next_token_variable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">description</span><span class="p">):</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
-        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="s">&#39;Variable expected.&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">make_VariableExpression</span><span class="p">(</span><span class="n">tok</span><span class="p">),</span> <span class="n">ConstantExpression</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
-                                 <span class="s">&quot;&#39;</span><span class="si">%s</span><span class="s">&#39; is an illegal variable name.  &quot;</span>
-                                 <span class="s">&quot;Constants may not be </span><span class="si">%s</span><span class="s">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">description</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">Variable</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle_lambda"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle_lambda">[docs]</a>    <span class="k">def</span> <span class="nf">handle_lambda</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="c"># Expression is a lambda expression</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span>
-                                              <span class="n">message</span><span class="o">=</span><span class="s">&quot;Variable and Expression expected following lambda operator.&quot;</span><span class="p">)</span>
-        <span class="nb">vars</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;abstracted&#39;</span><span class="p">)]</span>
-        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span>
-                <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expression expected.&quot;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
-                <span class="k">break</span>
-            <span class="c"># Support expressions like: \x y.M == \x.\y.M</span>
-            <span class="nb">vars</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;abstracted&#39;</span><span class="p">))</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the dot</span>
-
-        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-        <span class="k">while</span> <span class="nb">vars</span><span class="p">:</span>
-            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_LambdaExpression</span><span class="p">(</span><span class="nb">vars</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">accum</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">accum</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle_quant"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle_quant">[docs]</a>    <span class="k">def</span> <span class="nf">handle_quant</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="c"># Expression is a quantified expression: some x.M</span>
-        <span class="n">factory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_QuantifiedExpression_factory</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span>
-                                              <span class="n">message</span><span class="o">=</span><span class="s">&quot;Variable and Expression expected following quantifier &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">tok</span><span class="p">)</span>
-        <span class="nb">vars</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;quantified&#39;</span><span class="p">)]</span>
-        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span>
-                <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="o">+</span><span class="mi">2</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expression expected.&quot;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">isvariable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)):</span>
-                <span class="k">break</span>
-            <span class="c"># Support expressions like: some x y.M == some x.some y.M</span>
-            <span class="nb">vars</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_next_token_variable</span><span class="p">(</span><span class="s">&#39;quantified&#39;</span><span class="p">))</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">DOT</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the dot</span>
-
-        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-        <span class="k">while</span> <span class="nb">vars</span><span class="p">:</span>
-            <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_QuanifiedExpression</span><span class="p">(</span><span class="n">factory</span><span class="p">,</span> <span class="nb">vars</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">accum</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">accum</span>
-</div>
-<div class="viewcode-block" id="LogicParser.get_QuantifiedExpression_factory"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.get_QuantifiedExpression_factory">[docs]</a>    <span class="k">def</span> <span class="nf">get_QuantifiedExpression_factory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
-<span class="sd">        have different quantifiers&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EXISTS_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">ExistsExpression</span>
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">ALL_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">AllExpression</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">assertToken</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">QUANTS</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_QuanifiedExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_QuanifiedExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_QuanifiedExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">factory</span><span class="p">(</span><span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.handle_open"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.handle_open">[docs]</a>    <span class="k">def</span> <span class="nf">handle_open</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="c">#Expression is in parens</span>
-        <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">accum</span>
-</div>
-<div class="viewcode-block" id="LogicParser.attempt_EqualityExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.attempt_EqualityExpression">[docs]</a>    <span class="k">def</span> <span class="nf">attempt_EqualityExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Attempt to make an equality expression.  If the next token is an</span>
-<span class="sd">        equality operator, then an EqualityExpression will be returned.</span>
-<span class="sd">        Otherwise, the parameter will be returned.&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">EQ_LIST</span> <span class="o">+</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the &quot;=&quot; or &quot;!=&quot;</span>
-                <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_EqualityExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">))</span>
-                <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">NEQ_LIST</span><span class="p">:</span>
-                    <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_NegatedExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">expression</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_EqualityExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_EqualityExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_EqualityExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
-<span class="sd">        have different equality expression classes&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">EqualityExpression</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.attempt_BooleanExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.attempt_BooleanExpression">[docs]</a>    <span class="k">def</span> <span class="nf">attempt_BooleanExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Attempt to make a boolean expression.  If the next token is a boolean</span>
-<span class="sd">        operator, then a BooleanExpression will be returned.  Otherwise, the</span>
-<span class="sd">        parameter will be returned.&quot;&quot;&quot;</span>
-        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-            <span class="n">factory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_BooleanExpression_factory</span><span class="p">(</span><span class="n">tok</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">factory</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the operator</span>
-                <span class="n">expression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_BooleanExpression</span><span class="p">(</span><span class="n">factory</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span>
-                                                         <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">tok</span><span class="p">))</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">break</span>
-        <span class="k">return</span> <span class="n">expression</span>
-</div>
-<div class="viewcode-block" id="LogicParser.get_BooleanExpression_factory"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.get_BooleanExpression_factory">[docs]</a>    <span class="k">def</span> <span class="nf">get_BooleanExpression_factory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;This method serves as a hook for other logic parsers that</span>
-<span class="sd">        have different boolean operators&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">AND_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">AndExpression</span>
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OR_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">OrExpression</span>
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IMP_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">ImpExpression</span>
-        <span class="k">elif</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">IFF_LIST</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">IffExpression</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">None</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_BooleanExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_BooleanExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_BooleanExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">factory</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.attempt_ApplicationExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.attempt_ApplicationExpression">[docs]</a>    <span class="k">def</span> <span class="nf">attempt_ApplicationExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Attempt to make an application expression.  The next tokens are</span>
-<span class="sd">        a list of arguments in parens, then the argument expression is a</span>
-<span class="sd">        function being applied to the arguments.  Otherwise, return the</span>
-<span class="sd">        argument expression.&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_priority</span><span class="p">(</span><span class="n">APP</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">OPEN</span><span class="p">:</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">LambdaExpression</span><span class="p">)</span> <span class="ow">and</span> \
-                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ApplicationExpression</span><span class="p">)</span> <span class="ow">and</span> \
-                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">FunctionVariableExpression</span><span class="p">)</span> <span class="ow">and</span> \
-                   <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ConstantExpression</span><span class="p">):</span>
-                    <span class="k">raise</span> <span class="n">ParseException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span>
-                                         <span class="p">(</span><span class="s">&quot;The function &#39;</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">expression</span><span class="p">)</span> <span class="o">+</span>
-                                         <span class="s">&quot;&#39; is not a Lambda Expression, an &quot;</span>
-                                         <span class="s">&quot;Application Expression, or a &quot;</span>
-                                         <span class="s">&quot;functional predicate, so it may &quot;</span>
-                                         <span class="s">&quot;not take arguments.&quot;</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow then open paren</span>
-                <span class="c">#curry the arguments</span>
-                <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
-                <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">Tokens</span><span class="o">.</span><span class="n">COMMA</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span> <span class="c">#swallow the comma</span>
-                    <span class="n">accum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_ApplicationExpression</span><span class="p">(</span><span class="n">accum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_Expression</span><span class="p">(</span><span class="n">APP</span><span class="p">))</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">assertNextToken</span><span class="p">(</span><span class="n">Tokens</span><span class="o">.</span><span class="n">CLOSE</span><span class="p">)</span>
-                <span class="k">return</span> <span class="n">accum</span>
-        <span class="k">return</span> <span class="n">expression</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_ApplicationExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_ApplicationExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_ApplicationExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">function</span><span class="p">,</span> <span class="n">argument</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">ApplicationExpression</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">argument</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_VariableExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_VariableExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_VariableExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">VariableExpression</span><span class="p">(</span><span class="n">Variable</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
-</div>
-<div class="viewcode-block" id="LogicParser.make_LambdaExpression"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.make_LambdaExpression">[docs]</a>    <span class="k">def</span> <span class="nf">make_LambdaExpression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">LambdaExpression</span><span class="p">(</span><span class="n">variable</span><span class="p">,</span> <span class="n">term</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.has_priority"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.has_priority">[docs]</a>    <span class="k">def</span> <span class="nf">has_priority</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">operation</span><span class="p">]</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">context</span><span class="p">]</span> <span class="ow">or</span> \
-               <span class="p">(</span><span class="n">operation</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">right_associated_operations</span> <span class="ow">and</span> \
-                <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">operation</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_precedence</span><span class="p">[</span><span class="n">context</span><span class="p">])</span>
-</div>
-<div class="viewcode-block" id="LogicParser.assertNextToken"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.assertNextToken">[docs]</a>    <span class="k">def</span> <span class="nf">assertNextToken</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">tok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">()</span>
-        <span class="k">except</span> <span class="n">ExpectedMoreTokensException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s">&quot;Expected token &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">expected</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">tok</span> <span class="o">!=</span> <span class="n">expected</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
-</div>
-<div class="viewcode-block" id="LogicParser.assertToken"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicParser.assertToken">[docs]</a>    <span class="k">def</span> <span class="nf">assertToken</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">tok</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">expected</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">tok</span> <span class="o">!=</span> <span class="n">expected</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">UnexpectedTokenException</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_currentIndex</span><span class="p">,</span> <span class="n">tok</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
-</div>
-    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inRange</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Next token: &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">token</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;No more tokens&#39;</span>
-        <span class="k">return</span> <span class="s">&#39;&lt;&#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">+</span> <span class="s">&#39;: &#39;</span> <span class="o">+</span> <span class="n">msg</span> <span class="o">+</span> <span class="s">&#39;&gt;&#39;</span>
-
-</div>
-<div class="viewcode-block" id="parse_logic"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.parse_logic">[docs]</a><span class="k">def</span> <span class="nf">parse_logic</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Convert a file of First Order Formulas into a list of {Expression}s.</span>
-
-<span class="sd">    :param s: the contents of the file</span>
-<span class="sd">    :type s: str</span>
-<span class="sd">    :param logic_parser: The parser to be used to parse the logical expression</span>
-<span class="sd">    :type logic_parser: LogicParser</span>
-<span class="sd">    :param encoding: the encoding of the input string, if it is binary</span>
-<span class="sd">    :type encoding: str</span>
-<span class="sd">    :return: a list of parsed formulas.</span>
-<span class="sd">    :rtype: list(Expression)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-        <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">logic_parser</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-        <span class="n">logic_parser</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span>
-
-    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
-        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">logic_parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
-        <span class="k">except</span> <span class="n">ParseException</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">statements</span>
-
-</div>
 <div class="viewcode-block" id="StringTrie"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.StringTrie">[docs]</a><span class="k">class</span> <span class="nc">StringTrie</span><span class="p">(</span><span class="n">defaultdict</span><span class="p">):</span>
     <span class="n">LEAF</span> <span class="o">=</span> <span class="s">&quot;&lt;leaf&gt;&quot;</span>
 
@@ -1840,12 +1848,12 @@
             <span class="bp">self</span><span class="p">[</span><span class="n">StringTrie</span><span class="o">.</span><span class="n">LEAF</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span>
 
 </div></div>
-<div class="viewcode-block" id="ParseException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.ParseException">[docs]</a><span class="k">class</span> <span class="nc">ParseException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<div class="viewcode-block" id="LogicalExpressionException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.LogicalExpressionException">[docs]</a><span class="k">class</span> <span class="nc">LogicalExpressionException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
         <span class="ne">Exception</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
 </div>
-<div class="viewcode-block" id="UnexpectedTokenException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.UnexpectedTokenException">[docs]</a><span class="k">class</span> <span class="nc">UnexpectedTokenException</span><span class="p">(</span><span class="n">ParseException</span><span class="p">):</span>
+<div class="viewcode-block" id="UnexpectedTokenException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.UnexpectedTokenException">[docs]</a><span class="k">class</span> <span class="nc">UnexpectedTokenException</span><span class="p">(</span><span class="n">LogicalExpressionException</span><span class="p">):</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">unexpected</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">expected</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">unexpected</span> <span class="ow">and</span> <span class="n">expected</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;Unexpected token: &#39;</span><span class="si">%s</span><span class="s">&#39;.  &quot;</span> \
@@ -1856,13 +1864,13 @@
                 <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;  &#39;</span><span class="o">+</span><span class="n">message</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;Expected token &#39;</span><span class="si">%s</span><span class="s">&#39;.&quot;</span> <span class="o">%</span> <span class="n">expected</span>
-        <span class="n">ParseException</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+        <span class="n">LogicalExpressionException</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
 </div>
-<div class="viewcode-block" id="ExpectedMoreTokensException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.ExpectedMoreTokensException">[docs]</a><span class="k">class</span> <span class="nc">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">ParseException</span><span class="p">):</span>
+<div class="viewcode-block" id="ExpectedMoreTokensException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.ExpectedMoreTokensException">[docs]</a><span class="k">class</span> <span class="nc">ExpectedMoreTokensException</span><span class="p">(</span><span class="n">LogicalExpressionException</span><span class="p">):</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">message</span><span class="p">:</span>
             <span class="n">message</span> <span class="o">=</span> <span class="s">&#39;More tokens expected.&#39;</span>
-        <span class="n">ParseException</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="s">&#39;End of input found.  &#39;</span> <span class="o">+</span> <span class="n">message</span><span class="p">)</span>
+        <span class="n">LogicalExpressionException</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="s">&#39;End of input found.  &#39;</span> <span class="o">+</span> <span class="n">message</span><span class="p">)</span>
 
 </div>
 <div class="viewcode-block" id="is_indvar"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.is_indvar">[docs]</a><span class="k">def</span> <span class="nf">is_indvar</span><span class="p">(</span><span class="n">expr</span><span class="p">):</span>
@@ -1900,29 +1908,29 @@
 
 </div>
 <div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
-    <span class="n">p</span> <span class="o">=</span> <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span>
+    <span class="n">lexpr</span> <span class="o">=</span> <span class="n">Expression</span><span class="o">.</span><span class="n">fromstring</span>
     <span class="k">print</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span> <span class="o">+</span> <span class="s">&#39;Test parser&#39;</span> <span class="o">+</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;john&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;man(x)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;-man(x)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;(man(x) &amp; tall(x) &amp; walks(x))&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;exists x.(man(x) &amp; tall(x) &amp; walks(x))&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x.man(x)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x.man(x)(john)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x y.sees(x,y)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x y.sees(x,y)(a,b)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;(\x.exists y.walks(x,y))(x)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;exists x.x = y&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;exists x.(x = y)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">&#39;P(x) &amp; x=y &amp; P(y)&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\P Q.exists x.(P(x) &amp; Q(x))&#39;</span><span class="p">))</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;man(x) &lt;-&gt; tall(x)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;john&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;man(x)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;-man(x)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;(man(x) &amp; tall(x) &amp; walks(x))&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;exists x.(man(x) &amp; tall(x) &amp; walks(x))&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x.man(x)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x.man(x)(john)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x y.sees(x,y)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x y.sees(x,y)(a,b)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;(\x.exists y.walks(x,y))(x)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;exists x.x = y&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;exists x.(x = y)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">&#39;P(x) &amp; x=y &amp; P(y)&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\P Q.exists x.(P(x) &amp; Q(x))&#39;</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;man(x) &lt;-&gt; tall(x)&#39;</span><span class="p">))</span>
 
     <span class="k">print</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span> <span class="o">+</span> <span class="s">&#39;Test simplify&#39;</span> <span class="o">+</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x.\y.sees(x,y)(john)(mary)&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;\x.\y.sees(x,y)(john, mary)&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;all x.(man(x) &amp; (\x.exists y.walks(x,y))(x))&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
-    <span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">(</span><span class="s">r&#39;(\P.\Q.exists x.(P(x) &amp; Q(x)))(\x.dog(x))(\x.bark(x))&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x.\y.sees(x,y)(john)(mary)&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;\x.\y.sees(x,y)(john, mary)&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;all x.(man(x) &amp; (\x.exists y.walks(x,y))(x))&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">lexpr</span><span class="p">(</span><span class="s">r&#39;(\P.\Q.exists x.(P(x) &amp; Q(x)))(\x.dog(x))(\x.bark(x))&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">simplify</span><span class="p">())</span>
 
     <span class="k">print</span><span class="p">(</span><span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span> <span class="o">+</span> <span class="s">&#39;Test alpha conversion and binder expression equality&#39;</span> <span class="o">+</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
     <span class="n">e1</span> <span class="o">=</span> <span class="n">p</span><span class="p">(</span><span class="s">&#39;exists x.P(x)&#39;</span><span class="p">)</span>
@@ -1949,8 +1957,8 @@
 </div>
 <div class="viewcode-block" id="demoException"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.demoException">[docs]</a><span class="k">def</span> <span class="nf">demoException</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="n">LogicParser</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
-    <span class="k">except</span> <span class="n">ParseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">Expression</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">LogicalExpressionException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
         <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
 </div>
 <div class="viewcode-block" id="printtype"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.logic.printtype">[docs]</a><span class="k">def</span> <span class="nf">printtype</span><span class="p">(</span><span class="n">ex</span><span class="p">):</span>
@@ -2006,8 +2014,8 @@
           
     <div class="footer">
         &copy; Copyright 2013, NLTK Project.
-      Last updated on Nov 05, 2013.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b3.
+      Last updated on Jul 08, 2014.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
     </div>
         </div>
         <div class="clearer"></div>

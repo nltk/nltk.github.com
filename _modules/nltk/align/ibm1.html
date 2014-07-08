@@ -1,0 +1,243 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.align.ibm1 &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="header-wrapper">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.align.ibm1</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: IBM Model 1</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
+<span class="c"># Author: Chin Yee Lee &lt;c.lee32@student.unimelb.edu.au&gt;</span>
+<span class="c">#         Hengfeng Li &lt;hengfeng12345@gmail.com&gt;</span>
+<span class="c">#         Ruxin Hou &lt;r.hou@student.unimelb.edu.au&gt;</span>
+<span class="c">#         Calvin Tanujaya Lim &lt;c.tanujayalim@gmail.com&gt;</span>
+<span class="c"># Based on earlier version by:</span>
+<span class="c">#         Will Zhang &lt;wilzzha@gmail.com&gt;</span>
+<span class="c">#         Guan Gui &lt;ggui@student.unimelb.edu.au&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span>  <span class="kn">import</span> <span class="n">division</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span>  <span class="kn">import</span> <span class="n">AlignedSent</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">comtrans</span>
+
+<div class="viewcode-block" id="IBMModel1"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm1.IBMModel1">[docs]</a><span class="k">class</span> <span class="nc">IBMModel1</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This class implements the algorithm of Expectation Maximization for </span>
+<span class="sd">    the IBM Model 1. </span>
+
+<span class="sd">    Step 1 - Collect the evidence of a English word being translated by a </span>
+<span class="sd">             foreign language word.</span>
+
+<span class="sd">    Step 2 - Estimate the probability of translation according to the </span>
+<span class="sd">             evidence from Step 1. </span>
+
+<span class="sd">    &gt;&gt;&gt; bitexts = comtrans.aligned_sents()[:100]</span>
+<span class="sd">    &gt;&gt;&gt; ibm = IBMModel1(bitexts, 20)</span>
+
+<span class="sd">    &gt;&gt;&gt; aligned_sent = ibm.align(bitexts[6])</span>
+<span class="sd">    &gt;&gt;&gt; aligned_sent.alignment</span>
+<span class="sd">    Alignment([(0, 0), (1, 1), (2, 2), (3, 7), (4, 7), (5, 8)])</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(bitexts[6].precision(aligned_sent)))</span>
+<span class="sd">    0.556</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(bitexts[6].recall(aligned_sent)))</span>
+<span class="sd">    0.833</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(bitexts[6].alignment_error_rate(aligned_sent)))</span>
+<span class="sd">    0.333</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">)</span>
+
+<div class="viewcode-block" id="IBMModel1.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm1.IBMModel1.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the translation probability model trained by IBM model 1. </span>
+
+<span class="sd">        Arguments:</span>
+<span class="sd">        align_sents   -- A list of instances of AlignedSent class, which</span>
+<span class="sd">                        contains sentence pairs. </span>
+<span class="sd">        num_iter     -- The number of iterations.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        t_ef         -- A dictionary of translation probabilities. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c"># Vocabulary of each language</span>
+        <span class="n">fr_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">en_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
+            <span class="n">en_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+            <span class="n">fr_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+        <span class="c"># Add the Null token</span>
+        <span class="n">fr_vocab</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+
+        <span class="c"># Initial probability</span>
+        <span class="n">init_prob</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_vocab</span><span class="p">)</span>
+
+        <span class="c"># Create the translation model with initial probability</span>
+        <span class="n">t_ef</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">init_prob</span><span class="p">))</span>
+
+        <span class="n">total_e</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
+            <span class="n">count_ef</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+            <span class="n">total_f</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
+                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
+                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>  
+
+                <span class="c"># Compute normalization</span>
+                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">en_set</span><span class="p">:</span>
+                    <span class="n">total_e</span><span class="p">[</span><span class="n">e</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+                    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fr_set</span><span class="p">:</span>
+                        <span class="n">total_e</span><span class="p">[</span><span class="n">e</span><span class="p">]</span> <span class="o">+=</span> <span class="n">t_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span>
+
+                <span class="c"># Collect counts</span>
+                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">en_set</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fr_set</span><span class="p">:</span>
+                        <span class="n">c</span> <span class="o">=</span> <span class="n">t_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_e</span><span class="p">[</span><span class="n">e</span><span class="p">]</span>
+                        <span class="n">count_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+                        <span class="n">total_f</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+
+            <span class="c"># Compute the estimate probabilities</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fr_vocab</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">en_vocab</span><span class="p">:</span>
+                    <span class="n">t_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_f</span><span class="p">[</span><span class="n">f</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">t_ef</span>
+</div>
+<div class="viewcode-block" id="IBMModel1.align"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm1.IBMModel1.align">[docs]</a>    <span class="k">def</span> <span class="nf">align</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sent</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the alignment result for one sentence pair. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;The model does not train.&quot;</span><span class="p">)</span>
+
+        <span class="n">alignment</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">en_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">):</span>
+            
+            <span class="c"># Initialize the maximum probability with Null token</span>
+            <span class="n">max_align_prob</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="bp">None</span><span class="p">],</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fr_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">):</span>
+                <span class="c"># Find out the maximum probability</span>
+                <span class="n">max_align_prob</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_align_prob</span><span class="p">,</span>
+                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">],</span> <span class="n">i</span><span class="p">))</span>
+
+            <span class="c"># If the maximum probability is not Null token,</span>
+            <span class="c"># then append it to the alignment. </span>
+            <span class="k">if</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">alignment</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">j</span><span class="p">,</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+
+        <span class="k">return</span> <span class="n">AlignedSent</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">,</span> <span class="n">alignment</span><span class="p">)</span>
+
+<span class="c"># run doctests</span></div></div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span>
+    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://nltk.org/howto">HOWTO</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk">NLTK Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../team.html">Team NLTK</a></li>
+</ul>
+
+          <h3 style="margin-top: 1.5em;">Search</h3>
+          <form class="search" action="../../../search.html" method="get">
+            <input type="text" name="q" />
+            <input type="submit" value="Go" />
+            <input type="hidden" name="check_keywords" value="yes" />
+            <input type="hidden" name="area" value="default" />
+          </form>
+          <p class="searchtip" style="font-size: 90%">
+            Enter search terms or a module, class or function name.
+          </p>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             >index</a>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer">
+        &copy; Copyright 2013, NLTK Project.
+      Last updated on Jul 08, 2014.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

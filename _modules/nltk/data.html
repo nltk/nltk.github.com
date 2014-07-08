@@ -51,7 +51,7 @@
   <h1>Source code for nltk.data</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Utility functions</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2014 NLTK Project</span>
 <span class="c"># Author: Edward Loper &lt;edloper@gmail.com&gt;</span>
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
@@ -88,7 +88,6 @@
 <span class="kn">import</span> <span class="nn">io</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">textwrap</span>
-<span class="kn">import</span> <span class="nn">weakref</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">zipfile</span>
 <span class="kn">import</span> <span class="nn">codecs</span>
@@ -160,49 +159,55 @@
 <span class="sd">    Splits a resource url into &quot;&lt;protocol&gt;:&lt;path&gt;&quot;.</span>
 
 <span class="sd">    &gt;&gt;&gt; windows = sys.platform.startswith(&#39;win&#39;)</span>
-<span class="sd">    &gt;&gt;&gt; windows or split_resource_url(&#39;file:///home/nltk&#39;) == (&#39;file&#39;, &#39;/home/nltk&#39;)</span>
-<span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; not windows or split_resource_url(&#39;file:///C:/home/nltk&#39;) == (&#39;file&#39;, &#39;C:/home/nltk&#39;)</span>
-<span class="sd">    True</span>
 <span class="sd">    &gt;&gt;&gt; split_resource_url(&#39;nltk:home/nltk&#39;)</span>
 <span class="sd">    (&#39;nltk&#39;, &#39;home/nltk&#39;)</span>
 <span class="sd">    &gt;&gt;&gt; split_resource_url(&#39;nltk:/home/nltk&#39;)</span>
 <span class="sd">    (&#39;nltk&#39;, &#39;/home/nltk&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; split_resource_url(&#39;file:/home/nltk&#39;)</span>
+<span class="sd">    (&#39;file&#39;, &#39;/home/nltk&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; split_resource_url(&#39;file:///home/nltk&#39;)</span>
+<span class="sd">    (&#39;file&#39;, &#39;/home/nltk&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; split_resource_url(&#39;file:///C:/home/nltk&#39;)</span>
+<span class="sd">    (&#39;file&#39;, &#39;/C:/home/nltk&#39;)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">protocol</span><span class="p">,</span> <span class="n">path</span> <span class="o">=</span> <span class="n">resource_url</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">protocol</span><span class="p">,</span> <span class="n">path_</span> <span class="o">=</span> <span class="n">resource_url</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;nltk&#39;</span><span class="p">:</span>
         <span class="k">pass</span>
     <span class="k">elif</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;file&#39;</span><span class="p">:</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;win&#39;</span><span class="p">):</span>
-            <span class="n">path</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span> <span class="o">+</span> <span class="n">path</span>
+        <span class="k">if</span> <span class="n">path_</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">):</span>
+            <span class="n">path_</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span> <span class="o">+</span> <span class="n">path_</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;^/{0,2}&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">protocol</span><span class="p">,</span> <span class="n">path</span>
+        <span class="n">path_</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;^/{0,2}&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">path_</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">protocol</span><span class="p">,</span> <span class="n">path_</span>
 
 <span class="k">def</span> <span class="nf">normalize_resource_url</span><span class="p">(</span><span class="n">resource_url</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
 <span class="sd">    Normalizes a resource url</span>
 
 <span class="sd">    &gt;&gt;&gt; windows = sys.platform.startswith(&#39;win&#39;)</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;file:C:/dir/file&#39;)</span>
-<span class="sd">    &#39;file:///C:/dir/file&#39;</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;file:C:\\\\dir\\\\file&#39;)</span>
-<span class="sd">    &#39;file:///C:/dir/file&#39;</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;file:C:\\\\dir/file&#39;)</span>
-<span class="sd">    &#39;file:///C:/dir/file&#39;</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;file://C:/dir/file&#39;)</span>
-<span class="sd">    &#39;file:///C:/dir/file&#39;</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;file:////C:/dir/file&#39;)</span>
-<span class="sd">    &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; os.path.normpath(split_resource_url(normalize_resource_url(&#39;file:grammar.fcfg&#39;))[1]) == \</span>
+<span class="sd">    ... (&#39;\\&#39; if windows else &#39;&#39;) + os.path.abspath(os.path.join(os.curdir, &#39;grammar.fcfg&#39;))</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;file:C:/dir/file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;file:C:\\dir\\file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;file:C:\\dir/file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;file://C:/dir/file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;file:////C:/dir/file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
 <span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;nltk:C:/dir/file&#39;) == &#39;file:///C:/dir/file&#39;</span>
 <span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;nltk:C:\\\\dir\\\\file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_url(&#39;nltk:C:\\dir\\file&#39;) == &#39;file:///C:/dir/file&#39;</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_url(&#39;file:/dir/file/toy.cfg&#39;) == &#39;file:///dir/file/toy.cfg&#39;</span>
 <span class="sd">    True</span>
 <span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;nltk:home/nltk&#39;)</span>
 <span class="sd">    &#39;nltk:home/nltk&#39;</span>
-<span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;nltk:/home/nltk&#39;)</span>
-<span class="sd">    &#39;file:///home/nltk&#39;</span>
+<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_url(&#39;nltk:/home/nltk&#39;) == &#39;file:///home/nltk&#39;</span>
+<span class="sd">    True</span>
 <span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;http://example.com/dir/file&#39;)</span>
 <span class="sd">    &#39;http://example.com/dir/file&#39;</span>
 <span class="sd">    &gt;&gt;&gt; normalize_resource_url(&#39;dir/file&#39;)</span>
@@ -216,21 +221,21 @@
         <span class="n">name</span> <span class="o">=</span> <span class="n">resource_url</span>
     <span class="c"># use file protocol if the path is an absolute path</span>
     <span class="k">if</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;nltk&#39;</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-        <span class="n">protocol</span> <span class="o">=</span> <span class="s">&#39;file&#39;</span>
-    <span class="k">if</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;file&#39;</span><span class="p">:</span>
-        <span class="n">protocol</span> <span class="o">=</span> <span class="s">&#39;file:///&#39;</span>
+        <span class="n">protocol</span> <span class="o">=</span> <span class="s">&#39;file://&#39;</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;file&#39;</span><span class="p">:</span>
+        <span class="n">protocol</span> <span class="o">=</span> <span class="s">&#39;file://&#39;</span>
         <span class="c"># name is absolute</span>
-        <span class="n">name</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
     <span class="k">elif</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&#39;nltk&#39;</span><span class="p">:</span>
         <span class="n">protocol</span> <span class="o">=</span> <span class="s">&#39;nltk:&#39;</span>
-        <span class="n">name</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="c"># handled by urllib</span>
         <span class="n">protocol</span> <span class="o">+=</span> <span class="s">&#39;://&#39;</span>
-        <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
-    <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">protocol</span><span class="p">,</span><span class="n">name</span><span class="p">])</span>
+    <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">protocol</span><span class="p">,</span> <span class="n">name</span><span class="p">])</span>
 
-<span class="k">def</span> <span class="nf">normalize_resource_name</span><span class="p">(</span><span class="n">resource_name</span><span class="p">,</span> <span class="n">allow_relative</span> <span class="o">=</span> <span class="bp">True</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">normalize_resource_name</span><span class="p">(</span><span class="n">resource_name</span><span class="p">,</span> <span class="n">allow_relative</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">relative_path</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    :type resource_name: str or unicode</span>
 <span class="sd">    :param resource_name: The name of the resource to search for.</span>
@@ -244,30 +249,29 @@
 <span class="sd">    &#39;./&#39;</span>
 <span class="sd">    &gt;&gt;&gt; normalize_resource_name(&#39;./&#39;, True)</span>
 <span class="sd">    &#39;./&#39;</span>
-<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;dir/file&#39;, False) == &#39;/dir/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;dir/file&#39;, False, &#39;/&#39;) == &#39;/dir/file&#39;</span>
 <span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_name(&#39;C:/file&#39;, False) == &#39;C:/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_name(&#39;C:/file&#39;, False, &#39;/&#39;) == &#39;/C:/file&#39;</span>
 <span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;/dir/file&#39;, False) == &#39;/dir/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;/dir/file&#39;, False, &#39;/&#39;) == &#39;/dir/file&#39;</span>
 <span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;../dir/file&#39;, False) == &#39;/dir/file&#39;</span>
-<span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_name(&#39;/C:/file&#39;, False) == &#39;C:/file&#39;</span>
-<span class="sd">    True</span>
-<span class="sd">    &gt;&gt;&gt; not windows or normalize_resource_name(&#39;../C:/file&#39;, False) == &#39;C:/file&#39;</span>
+<span class="sd">    &gt;&gt;&gt; windows or normalize_resource_name(&#39;../dir/file&#39;, False, &#39;/&#39;) == &#39;/dir/file&#39;</span>
 <span class="sd">    True</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">is_dir</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&#39;[</span><span class="se">\\</span><span class="s">/]$&#39;</span><span class="p">,</span><span class="n">resource_name</span><span class="p">))</span> <span class="ow">or</span> <span class="n">resource_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
-    <span class="n">resource_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">resource_name</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">,</span><span class="s">&#39;/&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">allow_relative</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">resource_name</span> <span class="o">==</span> <span class="s">&#39;.&#39;</span><span class="p">:</span>
-            <span class="n">is_dir</span> <span class="o">=</span> <span class="bp">True</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">resource_name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;.&#39;</span><span class="p">:</span>
-            <span class="n">resource_name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;^[./]+&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
+    <span class="n">is_dir</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&#39;[</span><span class="se">\\</span><span class="s">/.]$&#39;</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">))</span> <span class="ow">or</span> <span class="n">resource_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;win&#39;</span><span class="p">):</span>
         <span class="n">resource_name</span> <span class="o">=</span> <span class="n">resource_name</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;win&#39;</span><span class="p">):</span>
-            <span class="n">resource_name</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span> <span class="o">+</span> <span class="n">resource_name</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">resource_name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;^/+&#39;</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">allow_relative</span><span class="p">:</span>
+        <span class="n">resource_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">resource_name</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">relative_path</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">relative_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">curdir</span>
+        <span class="n">resource_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">relative_path</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">))</span>
+    <span class="n">resource_name</span> <span class="o">=</span> <span class="n">resource_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;win&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">resource_name</span><span class="p">):</span>
+        <span class="n">resource_name</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span> <span class="o">+</span> <span class="n">resource_name</span>
     <span class="k">if</span> <span class="n">is_dir</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">resource_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">):</span>
         <span class="n">resource_name</span> <span class="o">+=</span> <span class="s">&#39;/&#39;</span>
     <span class="k">return</span> <span class="n">resource_name</span>
@@ -497,7 +501,7 @@
             <span class="n">zipfile</span> <span class="o">=</span> <span class="n">OpenOnDemandZipFile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">zipfile</span><span class="p">))</span>
 
         <span class="c"># Normalize the entry string, it should be absolute:</span>
-        <span class="n">entry</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
+        <span class="n">entry</span> <span class="o">=</span> <span class="n">normalize_resource_name</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&#39;/&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
 
         <span class="c"># Check that the entry exists:</span>
         <span class="k">if</span> <span class="n">entry</span><span class="p">:</span>
@@ -615,26 +619,26 @@
     <span class="n">zipfile</span><span class="p">,</span> <span class="n">zipentry</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
 
     <span class="c"># Check each item in our path</span>
-    <span class="k">for</span> <span class="n">_path</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">path_</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
         <span class="c"># Is the path item a zipfile?</span>
-        <span class="k">if</span> <span class="n">_path</span> <span class="ow">and</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">_path</span><span class="p">)</span> <span class="ow">and</span> <span class="n">_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.zip&#39;</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">path_</span> <span class="ow">and</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_</span><span class="p">)</span> <span class="ow">and</span> <span class="n">path_</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.zip&#39;</span><span class="p">)):</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">ZipFilePathPointer</span><span class="p">(</span><span class="n">_path</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ZipFilePathPointer</span><span class="p">(</span><span class="n">path_</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
                 <span class="c"># resource not in zipfile</span>
                 <span class="k">continue</span>
 
         <span class="c"># Is the path item a directory or is resource_name an absolute path?</span>
-        <span class="k">elif</span> <span class="ow">not</span> <span class="n">_path</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">_path</span><span class="p">):</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">path_</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">path_</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">zipfile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-                <span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_path</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path_</span><span class="p">,</span> <span class="n">resource_name</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
                     <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.gz&#39;</span><span class="p">):</span>
                         <span class="k">return</span> <span class="n">GzipFileSystemPathPointer</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="k">return</span> <span class="n">FileSystemPathPointer</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_path</span><span class="p">,</span> <span class="n">zipfile</span><span class="p">)</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path_</span><span class="p">,</span> <span class="n">zipfile</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
                     <span class="k">try</span><span class="p">:</span>
                         <span class="k">return</span> <span class="n">ZipFilePathPointer</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">zipentry</span><span class="p">)</span>
@@ -706,10 +710,11 @@
 <span class="c">#: descriptions.</span></div>
 <span class="n">FORMATS</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s">&#39;pickle&#39;</span><span class="p">:</span> <span class="s">&quot;A serialized python object, stored using the pickle module.&quot;</span><span class="p">,</span>
+    <span class="s">&#39;json&#39;</span><span class="p">:</span> <span class="s">&quot;A serialized python object, stored using the json module.&quot;</span><span class="p">,</span>
     <span class="s">&#39;yaml&#39;</span><span class="p">:</span> <span class="s">&quot;A serialized python object, stored using the yaml module.&quot;</span><span class="p">,</span>
-    <span class="s">&#39;cfg&#39;</span><span class="p">:</span> <span class="s">&quot;A context free grammar, parsed by nltk.parse_cfg().&quot;</span><span class="p">,</span>
-    <span class="s">&#39;pcfg&#39;</span><span class="p">:</span> <span class="s">&quot;A probabilistic CFG, parsed by nltk.parse_pcfg().&quot;</span><span class="p">,</span>
-    <span class="s">&#39;fcfg&#39;</span><span class="p">:</span> <span class="s">&quot;A feature CFG, parsed by nltk.parse_fcfg().&quot;</span><span class="p">,</span>
+    <span class="s">&#39;cfg&#39;</span><span class="p">:</span> <span class="s">&quot;A context free grammar.&quot;</span><span class="p">,</span>
+    <span class="s">&#39;pcfg&#39;</span><span class="p">:</span> <span class="s">&quot;A probabilistic CFG.&quot;</span><span class="p">,</span>
+    <span class="s">&#39;fcfg&#39;</span><span class="p">:</span> <span class="s">&quot;A feature CFG.&quot;</span><span class="p">,</span>
     <span class="s">&#39;fol&#39;</span><span class="p">:</span> <span class="s">&quot;A list of first order logic expressions, parsed by &quot;</span>
             <span class="s">&quot;nltk.sem.parse_fol() using nltk.sem.logic.LogicParser.&quot;</span><span class="p">,</span>
     <span class="s">&#39;logic&#39;</span><span class="p">:</span> <span class="s">&quot;A list of first order logic expressions, parsed by &quot;</span>
@@ -725,6 +730,7 @@
 <span class="c">#: given resource url.</span>
 <span class="n">AUTO_FORMATS</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s">&#39;pickle&#39;</span><span class="p">:</span> <span class="s">&#39;pickle&#39;</span><span class="p">,</span>
+    <span class="s">&#39;json&#39;</span><span class="p">:</span> <span class="s">&#39;json&#39;</span><span class="p">,</span>
     <span class="s">&#39;yaml&#39;</span><span class="p">:</span> <span class="s">&#39;yaml&#39;</span><span class="p">,</span>
     <span class="s">&#39;cfg&#39;</span><span class="p">:</span> <span class="s">&#39;cfg&#39;</span><span class="p">,</span>
     <span class="s">&#39;pcfg&#39;</span><span class="p">:</span> <span class="s">&#39;pcfg&#39;</span><span class="p">,</span>
@@ -737,12 +743,13 @@
 <span class="p">}</span>
 
 <div class="viewcode-block" id="load"><a class="viewcode-back" href="../../api/nltk.html#nltk.data.load">[docs]</a><span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="n">resource_url</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="s">&#39;auto&#39;</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
-         <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fstruct_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+         <span class="n">logic_parser</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fstruct_reader</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Load a given resource from the NLTK data package.  The following</span>
 <span class="sd">    resource formats are currently supported:</span>
 
 <span class="sd">      - ``pickle``</span>
+<span class="sd">      - ``json``</span>
 <span class="sd">      - ``yaml``</span>
 <span class="sd">      - ``cfg`` (context free grammars)</span>
 <span class="sd">      - ``pcfg`` (probabilistic CFGs)</span>
@@ -757,7 +764,7 @@
 <span class="sd">    format based on the resource name&#39;s file extension.  If that</span>
 <span class="sd">    fails, ``load()`` will raise a ``ValueError`` exception.</span>
 
-<span class="sd">    For all text formats (everything except ``pickle``, ``yaml`` and ``raw``),</span>
+<span class="sd">    For all text formats (everything except ``pickle``, ``json``, ``yaml`` and ``raw``),</span>
 <span class="sd">    it tries to decode the raw contents using UTF-8, and if that doesn&#39;t</span>
 <span class="sd">    work, it tries with ISO-8859-1 (Latin-1), unless the ``encoding``</span>
 <span class="sd">    is specified.</span>
@@ -779,8 +786,8 @@
 <span class="sd">    :type logic_parser: LogicParser</span>
 <span class="sd">    :param logic_parser: The parser that will be used to parse logical</span>
 <span class="sd">        expressions.</span>
-<span class="sd">    :type fstruct_parser: FeatStructParser</span>
-<span class="sd">    :param fstruct_parser: The parser that will be used to parse the</span>
+<span class="sd">    :type fstruct_reader: FeatStructReader</span>
+<span class="sd">    :param fstruct_reader: The parser that will be used to parse the</span>
 <span class="sd">        feature structure of an fcfg.</span>
 <span class="sd">    :type encoding: str</span>
 <span class="sd">    :param encoding: the encoding of the input; only used for text formats.</span>
@@ -822,6 +829,15 @@
         <span class="n">resource_val</span> <span class="o">=</span> <span class="n">opened_resource</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
     <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pickle&#39;</span><span class="p">:</span>
         <span class="n">resource_val</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">opened_resource</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;json&#39;</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">json</span>
+        <span class="kn">from</span> <span class="nn">nltk.jsontags</span> <span class="kn">import</span> <span class="n">json_tags</span>
+        <span class="n">resource_val</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">opened_resource</span><span class="p">)</span>
+        <span class="n">tag</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">resource_val</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">tag</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">resource_val</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">tag</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">json_tags</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unknown json tag.&#39;</span><span class="p">)</span>
     <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;yaml&#39;</span><span class="p">:</span>
         <span class="kn">import</span> <span class="nn">yaml</span>
         <span class="n">resource_val</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">opened_resource</span><span class="p">)</span>
@@ -838,15 +854,15 @@
         <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;text&#39;</span><span class="p">:</span>
             <span class="n">resource_val</span> <span class="o">=</span> <span class="n">string_data</span>
         <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cfg&#39;</span><span class="p">:</span>
-            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_cfg</span><span class="p">(</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">CFG</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span>
                 <span class="n">string_data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pcfg&#39;</span><span class="p">:</span>
-            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_pcfg</span><span class="p">(</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">PCFG</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span>
                 <span class="n">string_data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fcfg&#39;</span><span class="p">:</span>
-            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">parse_fcfg</span><span class="p">(</span>
+            <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">grammar</span><span class="o">.</span><span class="n">FeatureGrammar</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span>
                 <span class="n">string_data</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="n">logic_parser</span><span class="p">,</span>
-                <span class="n">fstruct_parser</span><span class="o">=</span><span class="n">fstruct_parser</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+                <span class="n">fstruct_reader</span><span class="o">=</span><span class="n">fstruct_reader</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;fol&#39;</span><span class="p">:</span>
             <span class="n">resource_val</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">parse_logic</span><span class="p">(</span>
                 <span class="n">string_data</span><span class="p">,</span> <span class="n">logic_parser</span><span class="o">=</span><span class="n">nltk</span><span class="o">.</span><span class="n">sem</span><span class="o">.</span><span class="n">logic</span><span class="o">.</span><span class="n">LogicParser</span><span class="p">(),</span>
@@ -1485,8 +1501,8 @@
           
     <div class="footer">
         &copy; Copyright 2013, NLTK Project.
-      Last updated on Nov 05, 2013.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b3.
+      Last updated on Jul 08, 2014.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
     </div>
         </div>
         <div class="clearer"></div>
