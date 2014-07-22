@@ -1,6 +1,6 @@
 # Natural Language Toolkit: code_cfg2
 
-grammar2 = nltk.parse_cfg("""
+grammar2 = nltk.CFG.fromstring("""
   S  -> NP VP
   NP -> Det Nom | PropN
   Nom -> Adj Nom | N

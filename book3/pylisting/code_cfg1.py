@@ -1,6 +1,6 @@
 # Natural Language Toolkit: code_cfg1
 
-grammar1 = nltk.parse_cfg("""
+grammar1 = nltk.CFG.fromstring("""
   S -> NP VP
   VP -> V NP | V NP PP
   PP -> P NP

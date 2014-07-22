@@ -1,6 +1,6 @@
 # Natural Language Toolkit: code_pcfg1
 
-grammar = nltk.parse_pcfg("""
+grammar = nltk.PCFG.fromstring("""
     S    -> NP VP              [1.0]
     VP   -> TV NP              [0.4]
     VP   -> IV                 [0.3]

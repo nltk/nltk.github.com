@@ -1,6 +1,6 @@
 # Natural Language Toolkit: code_add_cv_field
 
-from nltk.etree.ElementTree import SubElement
+from xml.etree.ElementTree import SubElement
 
 def cv(s):
     s = s.lower()
