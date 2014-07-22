@@ -59,139 +59,200 @@
 
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
 
-<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ngrams</span>
-<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">word_tokenize</span>
-
 <span class="kn">import</span> <span class="nn">math</span>
+
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">word_tokenize</span>
+<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">Counter</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ngrams</span>
+
 
 <div class="viewcode-block" id="BLEU"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.bleu.BLEU">[docs]</a><span class="k">class</span> <span class="nc">BLEU</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This class implements the BLEU method, which is used to evaluate</span>
-<span class="sd">    the quality of machine translation.</span>
+<span class="sd">    the quality of machine translation. [1]</span>
+
+<span class="sd">    Consider an example:</span>
+
+<span class="sd">    &gt;&gt;&gt; weights = [0.25, 0.25, 0.25, 0.25]</span>
+<span class="sd">    &gt;&gt;&gt; candidate1 = [&#39;It&#39;, &#39;is&#39;, &#39;a&#39;, &#39;guide&#39;, &#39;to&#39;, &#39;action&#39;, &#39;which&#39;,</span>
+<span class="sd">    ...               &#39;ensures&#39;, &#39;that&#39;, &#39;the&#39;, &#39;military&#39;, &#39;always&#39;,</span>
+<span class="sd">    ...               &#39;obeys&#39;, &#39;the&#39;, &#39;commands&#39;, &#39;of&#39;, &#39;the&#39;, &#39;party&#39;]</span>
+
+<span class="sd">    &gt;&gt;&gt; candidate2 = [&#39;It&#39;, &#39;is&#39;, &#39;to&#39;, &#39;insure&#39;, &#39;the&#39;, &#39;troops&#39;,</span>
+<span class="sd">    ...               &#39;forever&#39;, &#39;hearing&#39;, &#39;the&#39;, &#39;activity&#39;, &#39;guidebook&#39;,</span>
+<span class="sd">    ...               &#39;that&#39;, &#39;party&#39;, &#39;direct&#39;]</span>
+
+<span class="sd">    &gt;&gt;&gt; reference1 = [&#39;It&#39;, &#39;is&#39;, &#39;a&#39;, &#39;guide&#39;, &#39;to&#39;, &#39;action&#39;, &#39;that&#39;,</span>
+<span class="sd">    ...               &#39;ensures&#39;, &#39;that&#39;, &#39;the&#39;, &#39;military&#39;, &#39;will&#39;, &#39;forever&#39;,</span>
+<span class="sd">    ...               &#39;heed&#39;, &#39;Party&#39;, &#39;commands&#39;]</span>
+
+<span class="sd">    &gt;&gt;&gt; reference2 = [&#39;It&#39;, &#39;is&#39;, &#39;the&#39;, &#39;guiding&#39;, &#39;principle&#39;, &#39;which&#39;,</span>
+<span class="sd">    ...               &#39;guarantees&#39;, &#39;the&#39;, &#39;military&#39;, &#39;forces&#39;, &#39;always&#39;,</span>
+<span class="sd">    ...               &#39;being&#39;, &#39;under&#39;, &#39;the&#39;, &#39;command&#39;, &#39;of&#39;, &#39;the&#39;,</span>
+<span class="sd">    ...               &#39;Party&#39;]</span>
+
+<span class="sd">    &gt;&gt;&gt; reference3 = [&#39;It&#39;, &#39;is&#39;, &#39;the&#39;, &#39;practical&#39;, &#39;guide&#39;, &#39;for&#39;, &#39;the&#39;,</span>
+<span class="sd">    ...               &#39;army&#39;, &#39;always&#39;, &#39;to&#39;, &#39;heed&#39;, &#39;the&#39;, &#39;directions&#39;,</span>
+<span class="sd">    ...               &#39;of&#39;, &#39;the&#39;, &#39;party&#39;]</span>
 
 <span class="sd">    The BLEU method mainly consists of two parts:</span>
 
 <span class="sd">    Part 1 - modified n-gram precision</span>
 
 <span class="sd">    The normal precision method may lead to some wrong translations with</span>
-<span class="sd">    high-precision, e.g., the translation, in which a word of reference </span>
-<span class="sd">    repeats several times, has very high precision. So in the modified </span>
+<span class="sd">    high-precision, e.g., the translation, in which a word of reference</span>
+<span class="sd">    repeats several times, has very high precision. So in the modified</span>
 <span class="sd">    n-gram precision, a reference word will be considered exhausted after</span>
-<span class="sd">    a matching candidate word is identified. </span>
+<span class="sd">    a matching candidate word is identified.</span>
+
+<span class="sd">    Unigrams:</span>
+
+<span class="sd">    &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">    ...    candidate1,</span>
+<span class="sd">    ...    [reference1, reference2, reference3],</span>
+<span class="sd">    ...    n=1,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    0.94...</span>
+
+<span class="sd">    &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">    ...    candidate2,</span>
+<span class="sd">    ...    [reference1, reference2, reference3],</span>
+<span class="sd">    ...    n=1,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    0.57...</span>
+
+<span class="sd">    Bigrmas:</span>
+
+<span class="sd">    &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">    ...    candidate1,</span>
+<span class="sd">    ...    [reference1, reference2, reference3],</span>
+<span class="sd">    ...    n=2,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    0.58...</span>
+
+<span class="sd">    &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">    ...    candidate2,</span>
+<span class="sd">    ...    [reference1, reference2, reference3],</span>
+<span class="sd">    ...    n=2,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    0.07...</span>
+
 
 <span class="sd">    Part 2 - brevity penalty</span>
 
-<span class="sd">    As the modified n-gram precision stil has the problem from the short </span>
+<span class="sd">    As the modified n-gram precision still has the problem from the short</span>
 <span class="sd">    length sentence, brevity penalty is used to modify the overall BLEU</span>
 <span class="sd">    score according to length.</span>
 
-<span class="sd">    1. Test with an instance:</span>
-
-<span class="sd">    &gt;&gt;&gt; weights = [0.25, 0.25, 0.25, 0.25]</span>
-<span class="sd">    &gt;&gt;&gt; candidate1 = [&#39;It&#39;, &#39;is&#39;, &#39;a&#39;, &#39;guide&#39;, &#39;to&#39;, &#39;action&#39;, &#39;which&#39;,</span>
-<span class="sd">    ...				  &#39;ensures&#39;, &#39;that&#39;, &#39;the&#39;, &#39;military&#39;, &#39;always&#39;, </span>
-<span class="sd">    ...				  &#39;obeys&#39;, &#39;the&#39;, &#39;commands&#39;, &#39;of&#39;, &#39;the&#39;, &#39;party&#39;, &#39;.&#39;]</span>
-
-<span class="sd">    &gt;&gt;&gt; candidate2 = [&#39;It&#39;, &#39;is&#39;, &#39;to&#39;, &#39;insure&#39;, &#39;the&#39;, &#39;troops&#39;,  </span>
-<span class="sd">    ...               &#39;forever&#39;, &#39;hearing&#39;, &#39;the&#39;, &#39;activity&#39;, &#39;guidebook&#39;, </span>
-<span class="sd">    ...               &#39;that&#39;, &#39;party&#39;, &#39;direct&#39;, &#39;.&#39;]</span>
-
-<span class="sd">    &gt;&gt;&gt; reference1 = [&#39;It&#39;, &#39;is&#39;, &#39;a&#39;, &#39;guide&#39;, &#39;to&#39;, &#39;action&#39;, &#39;that&#39;, </span>
-<span class="sd">    ...               &#39;ensures&#39;, &#39;that&#39;, &#39;the&#39;, &#39;military&#39;, &#39;will&#39;, &#39;forever&#39;, </span>
-<span class="sd">    ...               &#39;heed&#39;, &#39;Party&#39;, &#39;commands&#39;, &#39;.&#39;] </span>
-
-<span class="sd">    &gt;&gt;&gt; reference2 = [&#39;It&#39;, &#39;is&#39;, &#39;the&#39;, &#39;guiding&#39;, &#39;principle&#39;, &#39;which&#39;,  </span>
-<span class="sd">    ...               &#39;guarantees&#39;, &#39;the&#39;, &#39;military&#39;, &#39;forces&#39;, &#39;always&#39;, </span>
-<span class="sd">    ...               &#39;being&#39;, &#39;under&#39;, &#39;the&#39;, &#39;command&#39;, &#39;of&#39;, &#39;the&#39;, </span>
-<span class="sd">    ...               &#39;Party&#39;, &#39;.&#39;]</span>
-
-<span class="sd">    &gt;&gt;&gt; reference3 = [&#39;It&#39;, &#39;is&#39;, &#39;the&#39;, &#39;practical&#39;, &#39;guide&#39;, &#39;for&#39;, &#39;the&#39;, </span>
-<span class="sd">    ...     &#39;army&#39;, &#39;always&#39;, &#39;to&#39;, &#39;heed&#39;, &#39;the&#39;, &#39;directions&#39;, </span>
-<span class="sd">    ...     &#39;of&#39;, &#39;the&#39;, &#39;party&#39;, &#39;.&#39;]</span>
-
 <span class="sd">    &gt;&gt;&gt; BLEU.compute(candidate1, [reference1, reference2, reference3], weights)</span>
-<span class="sd">    0.0555662774619807</span>
+<span class="sd">    0.504...</span>
 
 <span class="sd">    &gt;&gt;&gt; BLEU.compute(candidate2, [reference1, reference2, reference3], weights)</span>
-<span class="sd">    0.04211415110983725</span>
+<span class="sd">    0.457...</span>
 
-<span class="sd">    2. Test with two corpus that one is a reference and another is </span>
+<span class="sd">    2. Test with two corpus that one is a reference and another is</span>
 <span class="sd">    an output from translation system:</span>
 
 <span class="sd">    &gt;&gt;&gt; weights = [0.25, 0.25, 0.25, 0.25]</span>
-<span class="sd">    &gt;&gt;&gt; ref_file = open(&#39;newstest2012-ref.en&#39;)</span>
-<span class="sd">    &gt;&gt;&gt; candidate_file = open(&#39;newstest2012.fr-en.cmu-avenue&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; ref_file = open(&#39;newstest2012-ref.en&#39;)  # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; candidate_file = open(&#39;newstest2012.fr-en.cmu-avenue&#39;)  # doctest: +SKIP</span>
 
 <span class="sd">    &gt;&gt;&gt; total = 0.0</span>
 <span class="sd">    &gt;&gt;&gt; count = 0</span>
 
-<span class="sd">    &gt;&gt;&gt; for candi_raw in candidate_file:</span>
+<span class="sd">    &gt;&gt;&gt; for candi_raw in candidate_file:  # doctest: +SKIP</span>
 <span class="sd">    ...		ref_raw = ref_file.readline()</span>
 <span class="sd">    ...		ref_tokens = word_tokenize(ref_raw)</span>
 <span class="sd">    ...		candi_tokens = word_tokenize(candi_raw)</span>
 <span class="sd">    ...		total = BLEU.compute(candi_tokens, [ref_tokens], weights)</span>
 <span class="sd">    ...		count += 1</span>
 
-<span class="sd">    &gt;&gt;&gt; total/count</span>
+<span class="sd">    &gt;&gt;&gt; total / count  # doctest: +SKIP</span>
 <span class="sd">    2.787504437460048e-05</span>
+
+<span class="sd">    [1] Papineni, Kishore, et al. &quot;BLEU: a method for automatic evaluation of</span>
+<span class="sd">    machine translation.&quot; Proceedings of the 40th annual meeting on</span>
+<span class="sd">    association for computational linguistics. Association for Computational</span>
+<span class="sd">    Linguistics, 2002.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="nd">@staticmethod</span>
 <div class="viewcode-block" id="BLEU.compute"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.bleu.BLEU.compute">[docs]</a>    <span class="k">def</span> <span class="nf">compute</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+        <span class="n">candidate</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">candidate</span><span class="p">]</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[[</span><span class="n">r</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">reference</span><span class="p">]</span> <span class="k">for</span> <span class="n">reference</span> <span class="ow">in</span> <span class="n">references</span><span class="p">]</span>
 
-        <span class="n">candidate</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">candidate</span><span class="p">))</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">x</span><span class="p">],</span> <span class="n">references</span><span class="p">))</span>
-
-        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">p_ns</span> <span class="o">=</span> <span class="p">(</span><span class="n">BLEU</span><span class="o">.</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">fsum</span><span class="p">(</span><span class="n">w</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p_n</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">p_n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">p_ns</span><span class="p">)</span> <span class="k">if</span> <span class="n">p_n</span><span class="p">)</span>
 
         <span class="n">bp</span> <span class="o">=</span> <span class="n">BLEU</span><span class="o">.</span><span class="n">brevity_penalty</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">)</span>
-
-        <span class="n">s</span> <span class="o">=</span> <span class="mf">0.0</span>
-        <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">for</span> <span class="n">weight</span> <span class="ow">in</span> <span class="n">weights</span><span class="p">:</span>			
-            <span class="n">p_n</span> <span class="o">=</span> <span class="n">BLEU</span><span class="o">.</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">p_n</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">s</span> <span class="o">+=</span> <span class="n">weight</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p_n</span><span class="p">)</span>
-            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
-
         <span class="k">return</span> <span class="n">bp</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
 </div>
     <span class="nd">@staticmethod</span>
 <div class="viewcode-block" id="BLEU.modified_precision"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.bleu.BLEU.modified_precision">[docs]</a>    <span class="k">def</span> <span class="nf">modified_precision</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Calculate modified ngram precision.</span>
 
-        <span class="n">candidate_ngrams</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+<span class="sd">        &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">        ...    &#39;the the the the the the the&#39;.split(),</span>
+<span class="sd">        ...    [&#39;the cat is on the mat&#39;.split(), &#39;there is a cat on the mat&#39;.split()],</span>
+<span class="sd">        ...    n=1,</span>
+<span class="sd">        ... )</span>
+<span class="sd">        0.28...</span>
 
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidate_ngrams</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<span class="sd">        &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">        ...    &#39;the the the the the the the&#39;.split(),</span>
+<span class="sd">        ...    [&#39;the cat is on the mat&#39;.split(), &#39;there is a cat on the mat&#39;.split()],</span>
+<span class="sd">        ...    n=2,</span>
+<span class="sd">        ... )</span>
+<span class="sd">        0.0</span>
+
+<span class="sd">        &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">        ...    &#39;of the&#39;.split(),</span>
+<span class="sd">        ...    [</span>
+<span class="sd">        ...        &#39;It is a guide to action that ensures that the military will forever heed Party commands.&#39;.split(),</span>
+<span class="sd">        ...        &#39;It is the guiding principle which guarantees the military forces always being under the command of the Party.&#39;.split(),</span>
+<span class="sd">        ...        &#39;It is the practical guide for the army always to heed the directions of the party&#39;.split(),</span>
+<span class="sd">        ...    ],</span>
+<span class="sd">        ...    n=1,</span>
+<span class="sd">        ... )</span>
+<span class="sd">        1.0</span>
+
+<span class="sd">        &gt;&gt;&gt; BLEU.modified_precision(</span>
+<span class="sd">        ...    &#39;of the&#39;.split(),</span>
+<span class="sd">        ...    [</span>
+<span class="sd">        ...        &#39;It is a guide to action that ensures that the military will forever heed Party commands.&#39;.split(),</span>
+<span class="sd">        ...        &#39;It is the guiding principle which guarantees the military forces always being under the command of the Party.&#39;.split(),</span>
+<span class="sd">        ...        &#39;It is the practical guide for the army always to heed the directions of the party&#39;.split(),</span>
+<span class="sd">        ...    ],</span>
+<span class="sd">        ...    n=2,</span>
+<span class="sd">        ... )</span>
+<span class="sd">        1.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">counts</span><span class="p">:</span>
             <span class="k">return</span> <span class="mi">0</span>
 
-        <span class="n">c_words</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">candidate_ngrams</span><span class="p">)</span>
+        <span class="n">max_counts</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">reference</span> <span class="ow">in</span> <span class="n">references</span><span class="p">:</span>
+            <span class="n">reference_counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">ngram</span> <span class="ow">in</span> <span class="n">counts</span><span class="p">:</span>
+                <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ngram</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">reference_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">])</span>
 
-        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">c_words</span><span class="p">:</span>
-            <span class="n">count_w</span> <span class="o">=</span> <span class="n">candidate_ngrams</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">clipped_counts</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">ngram</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">]))</span> <span class="k">for</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
 
-            <span class="n">count_max</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="k">for</span> <span class="n">reference</span> <span class="ow">in</span> <span class="n">references</span><span class="p">:</span>
-                <span class="n">reference_ngrams</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
-
-                <span class="n">count</span> <span class="o">=</span> <span class="n">reference_ngrams</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
-                <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="n">count_max</span><span class="p">:</span>
-                    <span class="n">count_max</span> <span class="o">=</span> <span class="n">count</span>
-
-        <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">count_w</span><span class="p">,</span> <span class="n">count_max</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_words</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">clipped_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">/</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
 </div>
     <span class="nd">@staticmethod</span>
 <div class="viewcode-block" id="BLEU.brevity_penalty"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.bleu.BLEU.brevity_penalty">[docs]</a>    <span class="k">def</span> <span class="nf">brevity_penalty</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">references</span><span class="p">):</span>
         <span class="n">c</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span>
-
-        <span class="n">lengthes_ref</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="n">c</span><span class="p">),</span> <span class="n">references</span><span class="p">)</span>
-
-        <span class="n">r</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="o">*</span><span class="n">lengthes_ref</span><span class="p">)</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">-</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">references</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="n">r</span><span class="p">:</span>
             <span class="k">return</span> <span class="mi">1</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">r</span><span class="o">/</span><span class="n">c</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">r</span> <span class="o">/</span> <span class="n">c</span><span class="p">)</span>
 
 <span class="c"># run doctests</span></div></div>
 <span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
@@ -244,7 +305,7 @@
           
     <div class="footer">
         &copy; Copyright 2013, NLTK Project.
-      Last updated on Jul 11, 2014.
+      Last updated on Jul 22, 2014.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
     </div>
         </div>
