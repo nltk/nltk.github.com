@@ -10,7 +10,7 @@ class IndexedText(object):
 
     def concordance(self, word, width=40):
         key = self._stem(word)
-        wc = width/4                # words of context
+        wc = int(width/4)                # words of context
         for i in self._index[key]:
             lcontext = ' '.join(self._text[i-wc:i])
             rcontext = ' '.join(self._text[i:i+wc])
