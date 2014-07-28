@@ -1,6 +1,6 @@
 # Natural Language Toolkit: code_toolbox_validation
 
-grammar = nltk.parse_cfg('''
+grammar = nltk.CFG.fromstring('''
   S -> Head PS Glosses Comment Date Sem_Field Examples
   Head -> Lexeme Root
   Lexeme -> "lx"
@@ -21,7 +21,7 @@ def validate_lexicon(grammar, lexicon, ignored_tags):
     rd_parser = nltk.RecursiveDescentParser(grammar)
     for entry in lexicon:
         marker_list = [field.tag for field in entry if field.tag not in ignored_tags]
-        if rd_parser.nbest_parse(marker_list):
+        if rd_parser.parse(marker_list):
             print("+", ':'.join(marker_list)) # [_accepted-entries]
         else:
             print("-", ':'.join(marker_list)) # [_rejected-entries]
