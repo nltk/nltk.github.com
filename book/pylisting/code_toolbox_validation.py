@@ -21,7 +21,7 @@ def validate_lexicon(grammar, lexicon, ignored_tags):
     rd_parser = nltk.RecursiveDescentParser(grammar)
     for entry in lexicon:
         marker_list = [field.tag for field in entry if field.tag not in ignored_tags]
-        if rd_parser.parse(marker_list):
+        if list(rd_parser.parse(marker_list)):
             print("+", ':'.join(marker_list)) # [_accepted-entries]
         else:
             print("-", ':'.join(marker_list)) # [_rejected-entries]
