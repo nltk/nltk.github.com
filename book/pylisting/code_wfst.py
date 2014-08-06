@@ -24,7 +24,7 @@
      return wfst
 
  def display(wfst, tokens):
-     print('\nWFST ' + ' '.join([("%-4d" % i) for i in range(1, len(wfst))]))
+     print('\nWFST ' + ' '.join(("%-4d" % i) for i in range(1, len(wfst))))
      for i in range(len(wfst)-1):
          print("%d   " % i, end=" ")
          for j in range(1, len(wfst)):
