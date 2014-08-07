@@ -69,6 +69,7 @@
 <span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pformat</span>
 <span class="kn">import</span> <span class="nn">inspect</span>
 <span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">import</span> <span class="nn">re</span>
 
 <span class="kn">from</span> <span class="nn">nltk.decorators</span> <span class="kn">import</span> <span class="n">decorator</span> <span class="c"># this used in code that is commented out</span>
 <span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">string_types</span><span class="p">,</span> <span class="n">python_2_unicode_compatible</span>
@@ -197,8 +198,79 @@
 <div class="viewcode-block" id="Valuation.symbols"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.evaluate.Valuation.symbols">[docs]</a>    <span class="k">def</span> <span class="nf">symbols</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;The non-logical constants which the Valuation recognizes.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Valuation.fromstring"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.evaluate.Valuation.fromstring">[docs]</a>    <span class="k">def</span> <span class="nf">fromstring</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">read_valuation</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
 
-</div></div>
+
+<span class="c">##########################################</span>
+<span class="c"># REs used by the _read_valuation function</span>
+<span class="c">##########################################</span></div></div>
+<span class="n">_VAL_SPLIT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*=+&gt;\s*&#39;</span><span class="p">)</span>
+<span class="n">_ELEMENT_SPLIT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;\s*,\s*&#39;</span><span class="p">)</span>
+<span class="n">_TUPLES_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;&quot;&quot;\s*</span>
+<span class="s">                                (\([^)]+\))  # tuple-expression</span>
+<span class="s">                                \s*&quot;&quot;&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_read_valuation_line</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read a line in a valuation file.</span>
+
+<span class="sd">    Lines are expected to be of the form::</span>
+
+<span class="sd">      noosa =&gt; n</span>
+<span class="sd">      girl =&gt; {g1, g2}</span>
+<span class="sd">      chase =&gt; {(b1, g1), (b2, g1), (g1, d1), (g2, d2)}</span>
+
+<span class="sd">    :param s: input line</span>
+<span class="sd">    :type s: str</span>
+<span class="sd">    :return: a pair (symbol, value)</span>
+<span class="sd">    :rtype: tuple</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pieces</span> <span class="o">=</span> <span class="n">_VAL_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">symbol</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">pieces</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c"># check whether the value is meant to be a set</span>
+    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;{&#39;</span><span class="p">):</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">tuple_strings</span> <span class="o">=</span> <span class="n">_TUPLES_RE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="c"># are the set elements tuples?</span>
+        <span class="k">if</span> <span class="n">tuple_strings</span><span class="p">:</span>
+            <span class="n">set_elements</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">tuple_strings</span><span class="p">:</span>
+                <span class="n">ts</span> <span class="o">=</span> <span class="n">ts</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">element</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_ELEMENT_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">ts</span><span class="p">))</span>
+                <span class="n">set_elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">set_elements</span> <span class="o">=</span> <span class="n">_ELEMENT_SPLIT_RE</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">set_elements</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">value</span>
+
+<div class="viewcode-block" id="read_valuation"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.evaluate.read_valuation">[docs]</a><span class="k">def</span> <span class="nf">read_valuation</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a valuation string into a valuation.</span>
+
+<span class="sd">    :param s: a valuation string</span>
+<span class="sd">    :type s: str</span>
+<span class="sd">    :param encoding: the encoding of the input string, if it is binary</span>
+<span class="sd">    :type encoding: str</span>
+<span class="sd">    :return: a ``nltk.sem`` valuation</span>
+<span class="sd">    :rtype: Valuation</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+    <span class="n">statements</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">linenum</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;#&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="o">==</span><span class="s">&#39;&#39;</span><span class="p">:</span> <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">statements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_read_valuation_line</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unable to parse line </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">linenum</span><span class="p">,</span> <span class="n">line</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">Valuation</span><span class="p">(</span><span class="n">statements</span><span class="p">)</span>
+
+</div>
 <span class="nd">@python_2_unicode_compatible</span>
 <div class="viewcode-block" id="Assignment"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.evaluate.Assignment">[docs]</a><span class="k">class</span> <span class="nc">Assignment</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -808,7 +880,7 @@
           
     <div class="footer">
         &copy; Copyright 2013, NLTK Project.
-      Last updated on Jul 22, 2014.
+      Last updated on Aug 07, 2014.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
     </div>
         </div>

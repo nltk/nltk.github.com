@@ -1,0 +1,243 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.align.gdfa &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="header-wrapper">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.align.gdfa</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: GDFA word alignment symmetrization</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2014 NLTK Project</span>
+<span class="c"># Authors: Liling Tan</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">codecs</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<div class="viewcode-block" id="grow_diag_final_and"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.gdfa.grow_diag_final_and">[docs]</a><span class="k">def</span> <span class="nf">grow_diag_final_and</span><span class="p">(</span><span class="n">srclen</span><span class="p">,</span> <span class="n">trglen</span><span class="p">,</span> <span class="n">e2f</span><span class="p">,</span> <span class="n">f2e</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This module symmetrisatizes the source-to-target and target-to-source</span>
+<span class="sd">    word alignment output and produces, aka. GDFA algorithm (Koehn, 2005).</span>
+<span class="sd">    </span>
+<span class="sd">    Step 1: Find the intersection of the bidirectional alignment.</span>
+<span class="sd">    </span>
+<span class="sd">    Step 2: Search for additional neighbor alignment points to be added, given</span>
+<span class="sd">            these criteria: (i) neighbor alignments points are not in the</span>
+<span class="sd">            intersection and (ii) neighbor alignments are in the union.</span>
+<span class="sd">            </span>
+<span class="sd">    Step 3: Add all other alignment points thats not in the intersection, not in</span>
+<span class="sd">            the neighboring alignments that met the criteria but in the original</span>
+<span class="sd">            foward/backward alignment outputs.</span>
+<span class="sd">    </span>
+<span class="sd">        &gt;&gt;&gt; forw = (&#39;0-0 2-1 9-2 21-3 10-4 7-5 11-6 9-7 12-8 1-9 3-10 &#39;</span>
+<span class="sd">        ...         &#39;4-11 17-12 17-13 25-14 13-15 24-16 11-17 28-18&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; back = (&#39;0-0 1-9 2-9 3-10 4-11 5-12 6-6 7-5 8-6 9-7 10-4 &#39;</span>
+<span class="sd">        ...         &#39;11-6 12-8 13-12 15-12 17-13 18-13 19-12 20-13 &#39;</span>
+<span class="sd">        ...         &#39;21-3 22-12 23-14 24-17 25-15 26-17 27-18 28-18&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; srctext = (&quot;この よう な ハロー 白色 わい 星 の Ｌ 関数 &quot;</span>
+<span class="sd">        ...            &quot;は Ｌ と 共 に 不連続 に 増加 する こと が &quot;</span>
+<span class="sd">        ...            &quot;期待 さ れる こと を 示し た 。&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; trgtext = (&quot;Therefore , we expect that the luminosity function &quot;</span>
+<span class="sd">        ...            &quot;of such halo white dwarfs increases discontinuously &quot;</span>
+<span class="sd">        ...            &quot;with the luminosity .&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; srclen = len(srctext.split())</span>
+<span class="sd">        &gt;&gt;&gt; trglen = len(trgtext.split())</span>
+<span class="sd">        &gt;&gt;&gt;</span>
+<span class="sd">        &gt;&gt;&gt; gdfa = grow_diag_final_and(srclen, trglen, forw, back)</span>
+<span class="sd">        &gt;&gt;&gt; gdfa == set([(28, 18), (6, 6), (24, 17), (2, 1), (15, 12), (13, 12),</span>
+<span class="sd">        ...         (2, 9), (3, 10), (26, 17), (25, 15), (8, 6), (9, 7), (20,</span>
+<span class="sd">        ...         13), (18, 13), (0, 0), (10, 4), (13, 15), (23, 14), (7, 5),</span>
+<span class="sd">        ...         (25, 14), (1, 9), (17, 13), (4, 11), (11, 17), (9, 2), (22,</span>
+<span class="sd">        ...         12), (27, 18), (24, 16), (21, 3), (19, 12), (17, 12), (5,</span>
+<span class="sd">        ...         12), (11, 6), (12, 8)])</span>
+<span class="sd">        True</span>
+<span class="sd">    </span>
+<span class="sd">    References:</span>
+<span class="sd">    Koehn, P., A. Axelrod, A. Birch, C. Callison, M. Osborne, and D. Talbot. </span>
+<span class="sd">    2005. Edinburgh System Description for the 2005 IWSLT Speech </span>
+<span class="sd">    Translation Evaluation. In MT Eval Workshop.</span>
+
+<span class="sd">    :type srclen: int</span>
+<span class="sd">    :param srclen: the number of tokens in the source language</span>
+<span class="sd">    :type trglen: int</span>
+<span class="sd">    :param trglen: the number of tokens in the target language</span>
+<span class="sd">    :type e2f: str</span>
+<span class="sd">    :param e2f: the forward word alignment outputs from source-to-target</span>
+<span class="sd">                language (in pharaoh output format)</span>
+<span class="sd">    :type f2e: str</span>
+<span class="sd">    :param f2e: the backward word alignment outputs from target-to-source</span>
+<span class="sd">                language (in pharaoh output format)</span>
+<span class="sd">    :rtype: set(tuple(int))</span>
+<span class="sd">    :return: the symmetrized alignment points from the GDFA algorithm</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># Converts pharaoh text format into list of tuples.</span>
+    <span class="n">e2f</span> <span class="o">=</span> <span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span><span class="n">a</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">)))</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">e2f</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+    <span class="n">f2e</span> <span class="o">=</span> <span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span><span class="n">a</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">)))</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">f2e</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+    
+    <span class="n">neighbors</span> <span class="o">=</span> <span class="p">[(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">),(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">),(</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">),(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">),(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">),(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),(</span><span class="mi">1</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">),(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)]</span>
+    <span class="n">alignment</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">e2f</span><span class="p">)</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">f2e</span><span class="p">))</span> <span class="c"># Find the intersection.</span>
+    <span class="n">union</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">e2f</span><span class="p">)</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">f2e</span><span class="p">))</span>
+
+    <span class="c"># *aligned* is used to check if neighbors are aligned in grow_diag()</span>
+    <span class="n">aligned</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="ow">in</span> <span class="n">alignment</span><span class="p">:</span>
+        <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;e&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;j&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">grow_diag</span><span class="p">():</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Search for the neighbor points and them to the intersected alignment</span>
+<span class="sd">        points if criteria are met.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prev_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="c"># iterate until no new points added</span>
+        <span class="k">while</span> <span class="n">prev_len</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment</span><span class="p">):</span>
+            <span class="c"># for english word e = 0 ... en</span>
+            <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">srclen</span><span class="p">):</span>
+                <span class="c"># for foreign word f = 0 ... fn</span>
+                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">trglen</span><span class="p">):</span> 
+                    <span class="c"># if ( e aligned with f)</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">e</span><span class="p">,</span><span class="n">f</span><span class="p">)</span> <span class="ow">in</span> <span class="n">alignment</span><span class="p">:</span>
+                        <span class="c"># for each neighboring point (e-new, f-new)</span>
+                        <span class="k">for</span> <span class="n">neighbor</span> <span class="ow">in</span> <span class="n">neighbors</span><span class="p">:</span>
+                            <span class="n">neighbor</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="n">j</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">((</span><span class="n">e</span><span class="p">,</span><span class="n">f</span><span class="p">),</span><span class="n">neighbor</span><span class="p">))</span>
+                            <span class="n">e_new</span><span class="p">,</span> <span class="n">f_new</span> <span class="o">=</span> <span class="n">neighbor</span>
+                            <span class="c"># if ( ( e-new not aligned and f-new not aligned) </span>
+                            <span class="c"># and (e-new, f-new in union(e2f, f2e) )</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="n">e_new</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">aligned</span> <span class="ow">and</span> <span class="n">f_new</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">aligned</span><span class="p">)</span>\
+                            <span class="ow">and</span> <span class="n">neighbor</span> <span class="ow">in</span> <span class="n">union</span><span class="p">:</span>
+                                <span class="n">alignment</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">neighbor</span><span class="p">)</span>
+                                <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;e&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">e_new</span><span class="p">);</span> <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;f&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">f_new</span><span class="p">)</span>
+                                <span class="n">prev_len</span><span class="o">+=</span><span class="mi">1</span>
+                                                                    
+    <span class="k">def</span> <span class="nf">final_and</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Adds remaining points that are not in the intersection, not in the </span>
+<span class="sd">        neighboring alignments but in the original *e2f* and *f2e* alignments</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># for english word e = 0 ... en</span>
+        <span class="k">for</span> <span class="n">e_new</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">srclen</span><span class="p">):</span>
+            <span class="c"># for foreign word f = 0 ... fn</span>
+            <span class="k">for</span> <span class="n">f_new</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">trglen</span><span class="p">):</span>
+                <span class="c"># if ( ( e-new not aligned and f-new not aligned) </span>
+                <span class="c"># and (e-new, f-new in union(e2f, f2e) )</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">e_new</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">aligned</span>
+                    <span class="ow">and</span> <span class="n">f_new</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">aligned</span>
+                    <span class="ow">and</span> <span class="p">(</span><span class="n">e_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">)</span> <span class="ow">in</span> <span class="n">a</span><span class="p">):</span>
+
+                    <span class="n">alignment</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">e_new</span><span class="p">,</span> <span class="n">f_new</span><span class="p">))</span>
+                    <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;e&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">e_new</span><span class="p">);</span> <span class="n">aligned</span><span class="p">[</span><span class="s">&#39;f&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">f_new</span><span class="p">)</span>
+
+    <span class="n">grow_diag</span><span class="p">()</span>
+    <span class="n">final_and</span><span class="p">(</span><span class="n">e2f</span><span class="p">)</span>
+    <span class="n">final_and</span><span class="p">(</span><span class="n">f2e</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">alignment</span>
+
+<span class="c"># run doctests</span></div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">doctest</span>
+    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <h3 style="margin-top: 1.5em;">Search</h3>
+          <form class="search" action="../../../search.html" method="get">
+            <input type="text" name="q" />
+            <input type="submit" value="Go" />
+            <input type="hidden" name="check_keywords" value="yes" />
+            <input type="hidden" name="area" value="default" />
+          </form>
+          <p class="searchtip" style="font-size: 90%">
+            Enter search terms or a module, class or function name.
+          </p>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             >index</a>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer">
+        &copy; Copyright 2013, NLTK Project.
+      Last updated on Aug 07, 2014.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
