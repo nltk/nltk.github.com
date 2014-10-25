@@ -9,5 +9,8 @@ def freq_words(url, freqdist, n):
     raw = BeautifulSoup(html).get_text()
     for word in word_tokenize(raw):
         freqdist[word.lower()] += 1
-    print(freqdist.most_common(n))
+    result = []
+    for word, count in freqdist.most_common(n):
+        result = result + [word]
+    print(result)
 
