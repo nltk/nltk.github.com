@@ -6,7 +6,7 @@ def raw(file):
     contents = re.sub('\s+', ' ', contents)
     return contents
 
-def snippet(doc, term): # buggy
+def snippet(doc, term):
     text = ' '*30 + raw(doc) + ' '*30
     pos = text.index(term)
     return text[pos-30:pos+30]
