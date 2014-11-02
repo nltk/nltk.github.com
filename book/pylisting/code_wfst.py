@@ -30,4 +30,25 @@
          for j in range(1, len(wfst)):
              print("%-4s" % (wfst[i][j] or '.'), end=" ")
          print()
+ >>> tokens = "I shot an elephant in my pajamas".split()
+ >>> wfst0 = init_wfst(tokens, groucho_grammar)
+ >>> display(wfst0, tokens)
+ WFST 1    2    3    4    5    6    7
+ 0    NP   .    .    .    .    .    .
+ 1    .    V    .    .    .    .    .
+ 2    .    .    Det  .    .    .    .
+ 3    .    .    .    N    .    .    .
+ 4    .    .    .    .    P    .    .
+ 5    .    .    .    .    .    Det  .
+ 6    .    .    .    .    .    .    N
+ >>> wfst1 = complete_wfst(wfst0, tokens, groucho_grammar)
+ >>> display(wfst1, tokens)
+ WFST 1    2    3    4    5    6    7
+ 0    NP   .    .    S    .    .    S
+ 1    .    V    .    VP   .    .    VP
+ 2    .    .    Det  NP   .    .    .
+ 3    .    .    .    N    .    .    .
+ 4    .    .    .    .    P    .    PP
+ 5    .    .    .    .    .    Det  NP
+ 6    .    .    .    .    .    .    N
 
