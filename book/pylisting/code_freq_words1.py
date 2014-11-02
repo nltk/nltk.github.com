@@ -1,11 +1,10 @@
 # Natural Language Toolkit: code_freq_words1
 
-from bs4 import BeautifulSoup
 from urllib import request
+from bs4 import BeautifulSoup
 
 def freq_words(url, freqdist, n):
-    response = request.urlopen(url)
-    html = response.read().decode('utf8')
+    html = request.urlopen(url).read().decode('utf8')
     raw = BeautifulSoup(html).get_text()
     for word in word_tokenize(raw):
         freqdist[word.lower()] += 1

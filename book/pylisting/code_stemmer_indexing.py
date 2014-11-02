@@ -14,8 +14,8 @@ class IndexedText(object):
         for i in self._index[key]:
             lcontext = ' '.join(self._text[i-wc:i])
             rcontext = ' '.join(self._text[i:i+wc])
-            ldisplay = '%*s'  % (width, lcontext[-width:])
-            rdisplay = '%-*s' % (width, rcontext[:width])
+            ldisplay = '{:>{width}}'.format(lcontext[-width:], width=width)
+            rdisplay = '{:{width}}'.format(rcontext[:width], width=width)
             print(ldisplay, rdisplay)
 
     def _stem(self, word):

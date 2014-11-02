@@ -17,7 +17,7 @@ idx = nltk.Index((w, f) for f in files for w in raw(f).split())
 
 query = ''
 while query != "quit":
-    query = raw_input("query> ")
+    query = input("query> ")     # use raw_input() in Python 2
     if query in idx:
         for doc in idx[query]:
             print(snippet(doc, query))

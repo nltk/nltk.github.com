@@ -1241,6 +1241,8 @@ program that computes the same thing:</p>
 </td>
 </tr></table></td></tr>
 </table></div>
+<!-- Monkey patching so that the next example doesn't take forever
+>>> tokens = "the cat sat on the mat".split() -->
 <p>The first line uses a generator expression to sum the token lengths,
 while the second line computes the average as before.
 Each line of code performs a complete, meaningful task, which
@@ -1844,12 +1846,11 @@ passed in as a parameter, and it also prints a list of the
         onclick="javascript:copy_codeblock_to_clipboard(this.nextSibling);"
         >&nbsp;</td>
 <td class="pysrc"><pre class="doctest">
-<span class="pysrc-keyword">from</span> bs4 <span class="pysrc-keyword">import</span> BeautifulSoup
 <span class="pysrc-keyword">from</span> urllib <span class="pysrc-keyword">import</span> request
+<span class="pysrc-keyword">from</span> bs4 <span class="pysrc-keyword">import</span> BeautifulSoup
 
 <span class="pysrc-keyword">def</span> <span class="pysrc-defname">freq_words</span>(url, freqdist, n):
-    response = request.urlopen(url)
-    html = response.read().decode(<span class="pysrc-string">'utf8'</span>)
+    html = request.urlopen(url).read().decode(<span class="pysrc-string">'utf8'</span>)
     raw = BeautifulSoup(html).get_text()
     <span class="pysrc-keyword">for</span> word <span class="pysrc-keyword">in</span> word_tokenize(raw):
         freqdist[word.lower()] += 1
@@ -1867,9 +1868,10 @@ passed in as a parameter, and it also prints a list of the
 <td class="pysrc"><pre class="doctest">
 <span class="pysrc-prompt">&gt;&gt;&gt; </span>constitution = <span class="pysrc-string">&quot;http://www.archives.gov/exhibits/charters/constitution_transcript.html&quot;</span>
 <span class="pysrc-prompt">&gt;&gt;&gt; </span>fd = nltk.FreqDist()
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>freq_words(constitution, fd, 20)
-<span class="pysrc-output">['the', ',', 'of', 'and', 'shall', '.', 'be', 'to', ';', 'in',</span>
-<span class="pysrc-output">'states', 'or', 'united', 'a', 'state', 'by', 'for', 'any', '=', 'president']</span></pre>
+<span class="pysrc-prompt">&gt;&gt;&gt; </span>freq_words(constitution, fd, 30)
+<span class="pysrc-output">['the', ',', 'of', 'and', 'shall', '.', 'be', 'to', ';', 'in', 'states',</span>
+<span class="pysrc-output">'or', 'united', 'a', 'state', 'by', 'for', 'any', '=', 'which', 'president',</span>
+<span class="pysrc-output">'all', 'on', 'may', 'such', 'as', 'have', ')', '(', 'congress']</span></pre>
 </td>
 </tr></table></td></tr>
 <tr><td class="caption"><p class="caption"><a class="reference external" href="pylisting/code_freq_words1.py" type="text/x-python"><span class="caption-label">Example 4.3 (code_freq_words1.py)</span></a>: <span class="caption-label">Figure 4.3</span>: Poorly Designed Function to Compute Frequent Words</td></tr></p>
@@ -1880,8 +1882,10 @@ parameter, and it prints a selection of the results it has computed.
 The function would be easier to understand and to reuse elsewhere if we
 initialize the <tt class="doctest"><span class="pre">FreqDist()</span></tt> object inside the function (in the same place
 it is populated), and if we moved the selection and display of results to the
-calling program.  In <a class="reference internal" href="#code-freq-words2">4.4</a> we <a name="refactor_index_term" /><span class="termdef">refactor</span> this function,
-and simplify its interface by providing a single <tt class="doctest"><span class="pre">url</span></tt> parameter.</p>
+calling program. Given that its task is to identify frequent words, it
+should probably just return a list, not the whole frequency distribution.
+In <a class="reference internal" href="#code-freq-words2">4.4</a> we <a name="refactor_index_term" /><span class="termdef">refactor</span> this function,
+and simplify its interface by dropping the <tt class="doctest"><span class="pre">freqdist</span></tt> parameter.</p>
 <span class="target" id="code-freq-words2"></span><div class="pylisting">
 <table border="0" cellpadding="0" cellspacing="0" class="pylisting" width="95%">
 <tr><td class="codeblock">
@@ -1890,10 +1894,14 @@ and simplify its interface by providing a single <tt class="doctest"><span class
         onclick="javascript:copy_codeblock_to_clipboard(this.nextSibling);"
         >&nbsp;</td>
 <td class="pysrc"><pre class="doctest">
-<span class="pysrc-keyword">def</span> <span class="pysrc-defname">freq_words</span>(url):
-    text = nltk.clean_url(url)
+<span class="pysrc-keyword">from</span> urllib <span class="pysrc-keyword">import</span> request
+<span class="pysrc-keyword">from</span> bs4 <span class="pysrc-keyword">import</span> BeautifulSoup
+
+<span class="pysrc-keyword">def</span> <span class="pysrc-defname">freq_words</span>(url, n):
+    html = request.urlopen(url).read().decode(<span class="pysrc-string">'utf8'</span>)
+    text = BeautifulSoup(html).get_text()
     freqdist = nltk.FreqDist(word.lower() <span class="pysrc-keyword">for</span> word <span class="pysrc-keyword">in</span> word_tokenize(text))
-    return freqdist</pre>
+    return [word <span class="pysrc-keyword">for</span> (word, _) <span class="pysrc-keyword">in</span> fd.most_common(n)]</pre>
 </td>
 </tr></table></td></tr>
 <tr><td class="doctest">
@@ -1902,35 +1910,21 @@ and simplify its interface by providing a single <tt class="doctest"><span class
         onclick="javascript:copy_doctest_to_clipboard(this.nextSibling);"
         >&nbsp;</td>
 <td class="pysrc"><pre class="doctest">
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>fd = freq_words(constitution)
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>[word <span class="pysrc-keyword">for</span> (word, count) <span class="pysrc-keyword">in</span> fd.most_common(20)]
-<span class="pysrc-output">['the', 'of', 'charters', 'bill', 'constitution', 'rights', ',',</span>
-<span class="pysrc-output">'declaration', 'impact', 'freedom', '-', 'making', 'independence']</span></pre>
+<span class="pysrc-prompt">&gt;&gt;&gt; </span>freq_words(constitution, 30)
+<span class="pysrc-output">['the', ',', 'of', 'and', 'shall', '.', 'be', 'to', ';', 'in', 'states',</span>
+<span class="pysrc-output">'or', 'united', 'a', 'state', 'by', 'for', 'any', '=', 'which', 'president',</span>
+<span class="pysrc-output">'all', 'on', 'may', 'such', 'as', 'have', ')', '(', 'congress']</span></pre>
 </td>
 </tr></table></td></tr>
 <tr><td class="caption"><p class="caption"><a class="reference external" href="pylisting/code_freq_words2.py" type="text/x-python"><span class="caption-label">Example 4.4 (code_freq_words2.py)</span></a>: <span class="caption-label">Figure 4.4</span>: Well-Designed Function to Compute Frequent Words</td></tr></p>
 </table></div>
-<p>Note that we have now simplified the work of <tt class="doctest"><span class="pre">freq_words</span></tt>
-to the point that we can do its work with three lines of code:</p>
-<div class="doctest">
-<table border="0" cellpadding="0" cellspacing="0" class="doctest" width="95%">
-<tr><td class="doctest">
-<table border="0" cellpadding="0" cellspacing="0" width="100%">
-<tr><td width="1" class="copybar"
-        onclick="javascript:copy_doctest_to_clipboard(this.nextSibling);"
-        >&nbsp;</td>
-<td class="pysrc"><pre class="doctest">
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>words = word_tokenize(nltk.clean_url(constitution))
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>fd = nltk.FreqDist(word.lower() <span class="pysrc-keyword">for</span> word <span class="pysrc-keyword">in</span> words)
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>[word <span class="pysrc-keyword">for</span> (word, _) <span class="pysrc-keyword">in</span> fd.most_common(20)]
-<span class="pysrc-output">['the', 'of', 'charters', 'bill', 'constitution', 'rights', ',',</span>
-<span class="pysrc-output">'declaration', 'impact', 'freedom', '-', 'making', 'independence']</span></pre>
-</td>
-</tr></table></td></tr>
-</table></div>
-<p>We have used <tt class="doctest"><span class="pre">_</span></tt> as a variable name. This is no different to any other
-variable except it signals that we don't have a use for the information
-it holds.</p>
+<p>The readability and usability of the <tt class="doctest"><span class="pre">freq_words</span></tt> function is improved.</p>
+<div class="note">
+<p class="first admonition-title">Note</p>
+<p class="last">We have used <tt class="doctest"><span class="pre">_</span></tt> as a variable name. This is no different to any other
+variable except it signals to the reader that we don't have a use
+for the information it holds.</p>
+</div>
 </div>
 <div class="section" id="documenting-functions">
 <h3>Documenting Functions</h3>
@@ -2386,6 +2380,26 @@ a parameter.  A series of calls to the function will use the
 same object, sometimes with bizarre results as we will see in
 the discussion of debugging below.</p>
 </div>
+<div class="caution">
+<p class="first admonition-title">Caution!</p>
+<p>If your program will work with a lot of files, it is a good idea to
+close any open files once they are no longer required. Python will
+close open files automatically if you use the <tt class="doctest"><span class="pre">with</span></tt> statement:</p>
+<div class="doctest">
+<table border="0" cellpadding="0" cellspacing="0" class="doctest" width="95%">
+<tr><td class="doctest">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr><td width="1" class="copybar"
+        onclick="javascript:copy_doctest_to_clipboard(this.nextSibling);"
+        >&nbsp;</td>
+<td class="pysrc"><pre class="doctest">
+<span class="pysrc-prompt">&gt;&gt;&gt; </span>with open(<span class="pysrc-string">&quot;lexicon.txt&quot;</span>) <span class="pysrc-keyword">as</span> f:
+<span class="pysrc-more">... </span>    data = f.read()
+<span class="pysrc-more">... </span>    <span class="pysrc-comment"># process the data</span></pre>
+</td>
+</tr></table></td></tr>
+</table></div>
+</div>
 </div>
 </div>
 <div class="section" id="program-development">
@@ -2633,32 +2647,24 @@ but it stops execution at the next line in the current function.  The
 Type the name of any variable to inspect its value.</p>
 <p>We can use the Python debugger to locate the problem in our <tt class="doctest"><span class="pre">find_words()</span></tt>
 function.  Remember that the problem arose the second time the function was
-called.  We'll start by calling the function without using the debugger <a class="reference internal" href="#first-run"><span id="ref-first-run"><img src="callouts/callout1.gif" alt="[1]" class="callout" /></span></a>,
+called.  We'll start by calling the function without using the debugger <a href="#id9"><span class="problematic" id="id10">first-run_</span></a>,
 using the smallest possible input.  The second time, we'll call it with the
-debugger <a class="reference internal" href="#second-run"><span id="ref-second-run"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></span></a>.</p>
-<div class="doctest">
-<table border="0" cellpadding="0" cellspacing="0" class="doctest" width="95%">
-<tr><td class="doctest">
-<table border="0" cellpadding="0" cellspacing="0" width="100%">
-<tr><td width="1" class="copybar"
-        onclick="javascript:copy_doctest_to_clipboard(this.nextSibling);"
-        >&nbsp;</td>
-<td class="pysrc"><pre class="doctest">
-<span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">import</span> pdb
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>find_words([<span class="pysrc-string">'cat'</span>], 3) <a name="first-run" /><a href="#ref-first-run"><img src="callouts/callout1.gif" alt="[1]" class="callout" /></a>
-<span class="pysrc-output">['cat']</span>
-<span class="pysrc-output"></span><span class="pysrc-prompt">&gt;&gt;&gt; </span>pdb.run(<span class="pysrc-string">&quot;find_words(['dog'], 3)&quot;</span>) <a name="second-run" /><a href="#ref-second-run"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></a>
-<span class="pysrc-output">&gt; &lt;string&gt;(1)&lt;module&gt;()</span>
-<span class="pysrc-output">(Pdb) step</span>
-<span class="pysrc-output">--Call--</span>
-<span class="pysrc-output">&gt; &lt;stdin&gt;(1)find_words()</span>
-<span class="pysrc-output">(Pdb) args</span>
-<span class="pysrc-output">text = ['dog']</span>
-<span class="pysrc-output">wordlength = 3</span>
-<span class="pysrc-output">result = ['cat']</span></pre>
-</td>
-</tr></table></td></tr>
-</table></div>
+debugger <a href="#id11"><span class="problematic" id="id12">second-run_</span></a>.
+.. doctest-ignore:</p>
+<pre class="literal-block">
+&gt;&gt;&gt; import pdb
+&gt;&gt;&gt; find_words(['cat'], 3) # [_first-run]
+['cat']
+&gt;&gt;&gt; pdb.run(&quot;find_words(['dog'], 3)&quot;) # [_second-run]
+&gt; &lt;string&gt;(1)&lt;module&gt;()
+(Pdb) step
+--Call--
+&gt; &lt;stdin&gt;(1)find_words()
+(Pdb) args
+text = ['dog']
+wordlength = 3
+result = ['cat']
+</pre>
 <p>Here we typed just two commands into the debugger: <tt class="doctest"><span class="pre">step</span></tt> took us inside
 the function, and <tt class="doctest"><span class="pre">args</span></tt> showed the values of its arguments (or parameters).
 We see immediately that <tt class="doctest"><span class="pre">result</span></tt> has an initial value of <tt class="doctest"><span class="pre">[<span class="pysrc-string">'cat'</span>]</span></tt>, and not
@@ -2968,7 +2974,7 @@ idx = nltk.Index((w, f) <span class="pysrc-keyword">for</span> f <span class="py
 
 query = <span class="pysrc-string">''</span>
 while query != <span class="pysrc-string">&quot;quit&quot;</span>:
-    query = raw_input(<span class="pysrc-string">&quot;query&gt; &quot;</span>)
+    query = input(<span class="pysrc-string">&quot;query&gt; &quot;</span>)     <span class="pysrc-comment"># use raw_input() in Python 2</span>
     <span class="pysrc-keyword">if</span> query <span class="pysrc-keyword">in</span> idx:
         <span class="pysrc-keyword">for</span> doc <span class="pysrc-keyword">in</span> idx[query]:
             <span class="pysrc-keyword">print</span>(snippet(doc, query))
@@ -3214,22 +3220,25 @@ format.  The output is shown in <a class="reference internal" href="#fig-modal-g
         onclick="javascript:copy_codeblock_to_clipboard(this.nextSibling);"
         >&nbsp;</td>
 <td class="pysrc"><pre class="doctest">
+<span class="pysrc-keyword">from</span> numpy <span class="pysrc-keyword">import</span> arange
+<span class="pysrc-keyword">from</span> matplotlib <span class="pysrc-keyword">import</span> pyplot
+
 colors = <span class="pysrc-string">'rgbcmyk'</span> <span class="pysrc-comment"># red, green, blue, cyan, magenta, yellow, black</span>
+
 <span class="pysrc-keyword">def</span> <span class="pysrc-defname">bar_chart</span>(categories, words, counts):
     <span class="pysrc-string">&quot;Plot a bar chart showing counts for each word by category&quot;</span>
-    <span class="pysrc-keyword">import</span> pylab
-    ind = pylab.arange(len(words))
+    ind = arange(len(words))
     width = 1 / (len(categories) + 1)
     bar_groups = []
     <span class="pysrc-keyword">for</span> c <span class="pysrc-keyword">in</span> range(len(categories)):
-        bars = pylab.bar(ind+c*width, counts[categories[c]], width,
+        bars = pyplot.bar(ind+c*width, counts[categories[c]], width,
                          color=colors[c % len(colors)])
         bar_groups.append(bars)
-    pylab.xticks(ind+width, words)
-    pylab.legend([b[0] <span class="pysrc-keyword">for</span> b <span class="pysrc-keyword">in</span> bar_groups], categories, loc=<span class="pysrc-string">'upper left'</span>)
-    pylab.ylabel(<span class="pysrc-string">'Frequency'</span>)
-    pylab.title(<span class="pysrc-string">'Frequency of Six Modal Verbs by Genre'</span>)
-    pylab.show()</pre>
+    pyplot.xticks(ind+width, words)
+    pyplot.legend([b[0] <span class="pysrc-keyword">for</span> b <span class="pysrc-keyword">in</span> bar_groups], categories, loc=<span class="pysrc-string">'upper left'</span>)
+    pyplot.ylabel(<span class="pysrc-string">'Frequency'</span>)
+    pyplot.title(<span class="pysrc-string">'Frequency of Six Modal Verbs by Genre'</span>)
+    pyplot.show()</pre>
 </td>
 </tr></table></td></tr>
 <tr><td class="doctest">
@@ -3274,9 +3283,9 @@ search parameters, submit the form, and see a dynamically generated
 visualization.
 To do this we have to specify the <tt class="doctest"><span class="pre">Agg</span></tt> backend for <tt class="doctest"><span class="pre">matplotlib</span></tt>,
 which is a library for producing raster (pixel) images <a class="reference internal" href="#agg-backend"><span id="ref-agg-backend"><img src="callouts/callout1.gif" alt="[1]" class="callout" /></span></a>.
-Next, we use all the same PyLab methods as before, but instead of displaying the
-result on a graphical terminal using <tt class="doctest"><span class="pre">pylab.show()</span></tt>, we save it to a file
-using <tt class="doctest"><span class="pre">pylab.savefig()</span></tt> <a class="reference internal" href="#pylab-savefig"><span id="ref-pylab-savefig"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></span></a>.  We specify the filename
+Next, we use all the same Matplotlib methods as before, but instead of displaying the
+result on a graphical terminal using <tt class="doctest"><span class="pre">pyplot.show()</span></tt>, we save it to a file
+using <tt class="doctest"><span class="pre">pyplot.savefig()</span></tt> <a class="reference internal" href="#pyplot-savefig"><span id="ref-pyplot-savefig"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></span></a>.  We specify the filename
 then print HTML markup that directs the web browser to load the file.</p>
 <div class="doctest">
 <table border="0" cellpadding="0" cellspacing="0" class="doctest" width="95%">
@@ -3286,9 +3295,9 @@ then print HTML markup that directs the web browser to load the file.</p>
         onclick="javascript:copy_doctest_to_clipboard(this.nextSibling);"
         >&nbsp;</td>
 <td class="pysrc"><pre class="doctest">
-<span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">import</span> matplotlib
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>matplotlib.use(<span class="pysrc-string">'Agg'</span>) <a name="agg-backend" /><a href="#ref-agg-backend"><img src="callouts/callout1.gif" alt="[1]" class="callout" /></a>
-<span class="pysrc-prompt">&gt;&gt;&gt; </span>pylab.savefig(<span class="pysrc-string">'modals.png'</span>) <a name="pylab-savefig" /><a href="#ref-pylab-savefig"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></a>
+<span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">from</span> matplotlib <span class="pysrc-keyword">import</span> use, pyplot
+<span class="pysrc-prompt">&gt;&gt;&gt; </span>use(<span class="pysrc-string">'Agg'</span>) <a name="agg-backend" /><a href="#ref-agg-backend"><img src="callouts/callout1.gif" alt="[1]" class="callout" /></a>
+<span class="pysrc-prompt">&gt;&gt;&gt; </span>pyplot.savefig(<span class="pysrc-string">'modals.png'</span>) <a name="pyplot-savefig" /><a href="#ref-pyplot-savefig"><img src="callouts/callout2.gif" alt="[2]" class="callout" /></a>
 <span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">print</span>(<span class="pysrc-string">'Content-Type: text/html'</span>)
 <span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">print</span>()
 <span class="pysrc-prompt">&gt;&gt;&gt; </span><span class="pysrc-keyword">print</span>(<span class="pysrc-string">'&lt;html&gt;&lt;body&gt;'</span>)
@@ -3786,9 +3795,18 @@ Version 3.0, under the terms of the
 <em>Creative Commons Attribution-Noncommercial-No Derivative Works 3.0 United States License</em>
 [<a class="reference external" href="http://creativecommons.org/licenses/by-nc-nd/3.0/us/">http://creativecommons.org/licenses/by-nc-nd/3.0/us/</a>].</p>
 <p class="last">This document was built on
-Sat 25 Oct 2014 16:04:44 PDT</p>
+Sat  1 Nov 2014 21:24:58 PDT</p>
 </div>
 </div>
+</div>
+<div class="system-messages section">
+<h1>Docutils System Messages</h1>
+<div class="system-message" id="id9">
+<p class="system-message-title">System Message: ERROR/3 (<tt class="docutils">ch04.rst2</tt>, line 1781); <em><a href="#id10">backlink</a></em></p>
+Unknown target name: &quot;first-run&quot;.</div>
+<div class="system-message" id="id11">
+<p class="system-message-title">System Message: ERROR/3 (<tt class="docutils">ch04.rst2</tt>, line 1781); <em><a href="#id12">backlink</a></em></p>
+Unknown target name: &quot;second-run&quot;.</div>
 </div>
 </div>
 </body>
