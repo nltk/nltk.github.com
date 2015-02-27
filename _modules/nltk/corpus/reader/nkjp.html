@@ -1,0 +1,536 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.corpus.reader.nkjp &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="nltk.corpus.reader" href="../reader.html" /> 
+  </head>
+  <body>
+    <div class="header-wrapper">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel">
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for nltk.corpus.reader.nkjp</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: NKJP Corpus Reader</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Gabriela Kaczka</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
+
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.util</span> <span class="kn">import</span> <span class="n">concat</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus.reader.xmldocs</span> <span class="kn">import</span> <span class="n">XMLCorpusReader</span><span class="p">,</span> <span class="n">XMLCorpusView</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+
+<span class="k">def</span> <span class="nf">_parse_args</span><span class="p">(</span><span class="n">fun</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wraps function arguments:</span>
+<span class="sd">    if fileids not specified then function set NKJPCorpusReader paths.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">fun</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">decorator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fileids</span><span class="p">:</span>
+            <span class="n">fileids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span>
+        <span class="k">return</span> <span class="n">fun</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">decorator</span>
+
+
+<div class="viewcode-block" id="NKJPCorpusReader"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader">[docs]</a><span class="k">class</span> <span class="nc">NKJPCorpusReader</span><span class="p">(</span><span class="n">XMLCorpusReader</span><span class="p">):</span>
+    <span class="n">WORDS_MODE</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">SENTS_MODE</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">HEADER_MODE</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">RAW_MODE</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="s">&#39;.*&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Corpus reader designed to work with National Corpus of Polish.</span>
+<span class="sd">        See http://nkjp.pl/ for more details about NKJP.</span>
+<span class="sd">        use example:</span>
+<span class="sd">        import nltk</span>
+<span class="sd">        import nkjp</span>
+<span class="sd">        from nkjp import NKJPCorpusReader</span>
+<span class="sd">        x = NKJPCorpusReader(root=&#39;/home/USER/nltk_data/corpora/nkjp/&#39;, fileids=&#39;&#39;) # obtain the whole corpus</span>
+<span class="sd">        x.header()</span>
+<span class="sd">        x.raw()</span>
+<span class="sd">        x.words()</span>
+<span class="sd">        x.tagged_words(tags=[&#39;subst&#39;, &#39;comp&#39;])  #Link to find more tags: nkjp.pl/poliqarp/help/ense2.html</span>
+<span class="sd">        x.sents()</span>
+<span class="sd">        x = NKJPCorpusReader(root=&#39;/home/USER/nltk_data/corpora/nkjp/&#39;, fileids=&#39;Wilk*&#39;) # obtain particular file(s)</span>
+<span class="sd">        x.header(fileids=[&#39;WilkDom&#39;, &#39;/home/USER/nltk_data/corpora/nkjp/WilkWilczy&#39;])</span>
+<span class="sd">        x.tagged_words(fileids=[&#39;WilkDom&#39;, &#39;/home/USER/nltk_data/corpora/nkjp/WilkWilczy&#39;], tags=[&#39;subst&#39;, &#39;comp&#39;])</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fileids</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+            <span class="n">XMLCorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span> <span class="o">+</span> <span class="s">&#39;.*/header.xml&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">XMLCorpusReader</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="p">[</span><span class="n">fileid</span> <span class="o">+</span> <span class="s">&#39;/header.xml&#39;</span> <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_paths</span><span class="p">()</span>
+
+<div class="viewcode-block" id="NKJPCorpusReader.get_paths"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.get_paths">[docs]</a>    <span class="k">def</span> <span class="nf">get_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_root</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;header.xml&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpusReader.fileids"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.fileids">[docs]</a>    <span class="k">def</span> <span class="nf">fileids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a list of file identifiers for the fileids that make up</span>
+<span class="sd">        this corpus.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;header.xml&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fileids</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">_view</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a view specialised for use with particular corpus file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;mode&#39;</span><span class="p">,</span> <span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">WORDS_MODE</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">is</span> <span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">WORDS_MODE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NKJPCorpus_Morph_View</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">is</span> <span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">SENTS_MODE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NKJPCorpus_Segmentation_View</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">is</span> <span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">HEADER_MODE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NKJPCorpus_Header_View</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">is</span> <span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">RAW_MODE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NKJPCorpus_Text_View</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpus_Text_View</span><span class="o">.</span><span class="n">RAW_MODE</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NameError</span><span class="p">(</span><span class="s">&#39;No such mode!&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NKJPCorpusReader.add_root"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.add_root">[docs]</a>    <span class="k">def</span> <span class="nf">add_root</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileid</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add root if necessary to specified fileid.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="ow">in</span> <span class="n">fileid</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">fileid</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">+</span> <span class="n">fileid</span>
+</div>
+    <span class="nd">@_parse_args</span>
+<div class="viewcode-block" id="NKJPCorpusReader.header"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.header">[docs]</a>    <span class="k">def</span> <span class="nf">header</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns header(s) of specified fileids.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add_root</span><span class="p">(</span><span class="n">fileid</span><span class="p">),</span>
+                                  <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">HEADER_MODE</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+                       <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+</div>
+    <span class="nd">@_parse_args</span>
+<div class="viewcode-block" id="NKJPCorpusReader.sents"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.sents">[docs]</a>    <span class="k">def</span> <span class="nf">sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns sentences in specified fileids.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add_root</span><span class="p">(</span><span class="n">fileid</span><span class="p">),</span>
+                                  <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">SENTS_MODE</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+                       <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+</div>
+    <span class="nd">@_parse_args</span>
+<div class="viewcode-block" id="NKJPCorpusReader.words"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.words">[docs]</a>    <span class="k">def</span> <span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns words in specified fileids.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add_root</span><span class="p">(</span><span class="n">fileid</span><span class="p">),</span>
+                                  <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">WORDS_MODE</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+                       <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+</div>
+    <span class="nd">@_parse_args</span>
+<div class="viewcode-block" id="NKJPCorpusReader.tagged_words"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.tagged_words">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_words</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call with specified tags as a list, e.g. tags=[&#39;subst&#39;, &#39;comp&#39;].</span>
+<span class="sd">        Returns tagged words in specified fileids.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;tags&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add_root</span><span class="p">(</span><span class="n">fileid</span><span class="p">),</span>
+                                  <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">WORDS_MODE</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+                       <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+</div>
+    <span class="nd">@_parse_args</span>
+<div class="viewcode-block" id="NKJPCorpusReader.raw"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpusReader.raw">[docs]</a>    <span class="k">def</span> <span class="nf">raw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fileids</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns words in specified fileids.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">concat</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add_root</span><span class="p">(</span><span class="n">fileid</span><span class="p">),</span>
+                                  <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpusReader</span><span class="o">.</span><span class="n">RAW_MODE</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+                       <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">])</span>
+
+</div></div>
+<div class="viewcode-block" id="NKJPCorpus_Header_View"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Header_View">[docs]</a><span class="k">class</span> <span class="nc">NKJPCorpus_Header_View</span><span class="p">(</span><span class="n">XMLCorpusView</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        HEADER_MODE</span>
+<span class="sd">        A stream backed corpus view specialized for use with</span>
+<span class="sd">        header.xml files in NKJP corpus.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span> <span class="o">=</span> <span class="s">&quot;.*/sourceDesc$&quot;</span>
+        <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span> <span class="o">+</span> <span class="s">&#39;header.xml&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NKJPCorpus_Header_View.handle_query"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Header_View.handle_query">[docs]</a>    <span class="k">def</span> <span class="nf">handle_query</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_open</span><span class="p">()</span>
+        <span class="n">header</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">segm</span> <span class="o">=</span> <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">segm</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">header</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">segm</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">header</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Header_View.handle_elt"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Header_View.handle_elt">[docs]</a>    <span class="k">def</span> <span class="nf">handle_elt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="n">titles</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/title&#39;</span><span class="p">)</span>
+        <span class="n">title</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">titles</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">title</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">title</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">)</span>
+
+        <span class="n">authors</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/author&#39;</span><span class="p">)</span>
+        <span class="n">author</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">authors</span><span class="p">:</span>
+            <span class="n">author</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">author</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">author</span> <span class="ow">in</span> <span class="n">authors</span><span class="p">)</span>
+
+        <span class="n">dates</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/date&#39;</span><span class="p">)</span>
+        <span class="n">date</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">dates</span><span class="p">:</span>
+            <span class="n">date</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">date</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">date</span> <span class="ow">in</span> <span class="n">dates</span><span class="p">)</span>
+
+        <span class="n">publishers</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/publisher&#39;</span><span class="p">)</span>
+        <span class="n">publisher</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">publishers</span><span class="p">:</span>
+            <span class="n">publisher</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">publisher</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">publisher</span> <span class="ow">in</span> <span class="n">publishers</span><span class="p">)</span>
+
+        <span class="n">idnos</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/idno&#39;</span><span class="p">)</span>
+        <span class="n">idno</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">idnos</span><span class="p">:</span>
+            <span class="n">idno</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">idno</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">idno</span> <span class="ow">in</span> <span class="n">idnos</span><span class="p">)</span>
+
+        <span class="n">notes</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">&#39;bibl/note&#39;</span><span class="p">)</span>
+        <span class="n">note</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">notes</span><span class="p">:</span>
+            <span class="n">note</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">note</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">note</span> <span class="ow">in</span> <span class="n">notes</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">{</span><span class="s">&#39;title&#39;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span> <span class="s">&#39;author&#39;</span><span class="p">:</span> <span class="n">author</span><span class="p">,</span> <span class="s">&#39;date&#39;</span><span class="p">:</span> <span class="n">date</span><span class="p">,</span> <span class="s">&#39;publisher&#39;</span><span class="p">:</span> <span class="n">publisher</span><span class="p">,</span>
+                <span class="s">&#39;idno&#39;</span><span class="p">:</span> <span class="n">idno</span><span class="p">,</span> <span class="s">&#39;note&#39;</span><span class="p">:</span> <span class="n">note</span><span class="p">}</span>
+
+</div></div>
+<div class="viewcode-block" id="XML_Tool"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.XML_Tool">[docs]</a><span class="k">class</span> <span class="nc">XML_Tool</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Helper class creating xml file to one without references to nkjp: namespace.</span>
+<span class="sd">    That&#39;s needed because the XMLCorpusView assumes that one can find short substrings</span>
+<span class="sd">    of XML that are valid XML, which is not true if a namespace is declared at top level</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">read_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_file</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+<div class="viewcode-block" id="XML_Tool.build_preprocessed_file"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.XML_Tool.build_preprocessed_file">[docs]</a>    <span class="k">def</span> <span class="nf">build_preprocessed_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fr</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">read_file</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+            <span class="n">fw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">write_file</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="s">&#39; &#39;</span>
+            <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">fr</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">r&#39;nkjp:[^ ]* &#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>  <span class="c">#in all files</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;nkjp:paren&gt;&#39;</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>   <span class="c">#in ann_segmentation.xml</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;/nkjp:paren&gt;&#39;</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>  <span class="c">#in ann_segmentation.xml</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;choice&gt;&#39;</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>   <span class="c">#in ann_segmentation.xml</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;/choice&gt;&#39;</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>  <span class="c">#in ann_segmentation.xml</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">fw</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+            <span class="n">fr</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">fw</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">write_file</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">Exception</span>
+</div>
+<div class="viewcode-block" id="XML_Tool.remove_preprocessed_file"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.XML_Tool.remove_preprocessed_file">[docs]</a>    <span class="k">def</span> <span class="nf">remove_preprocessed_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">write_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">pass</span>
+
+</div></div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View">[docs]</a><span class="k">class</span> <span class="nc">NKJPCorpus_Segmentation_View</span><span class="p">(</span><span class="n">XMLCorpusView</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A stream backed corpus view specialized for use with</span>
+<span class="sd">    ann_segmentation.xml files in NKJP corpus.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span> <span class="o">=</span> <span class="s">&#39;.*p/.*s&#39;</span>
+        <span class="c">#intersperse NKJPCorpus_Text_View</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">text_view</span> <span class="o">=</span> <span class="n">NKJPCorpus_Text_View</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="n">NKJPCorpus_Text_View</span><span class="o">.</span><span class="n">SENTS_MODE</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">text_view</span><span class="o">.</span><span class="n">handle_query</span><span class="p">()</span>
+        <span class="c">#xml preprocessing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span> <span class="o">=</span> <span class="n">XML_Tool</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;ann_segmentation.xml&#39;</span><span class="p">)</span>
+        <span class="c">#base class init</span>
+        <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">build_preprocessed_file</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.get_segm_id"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.get_segm_id">[docs]</a>    <span class="k">def</span> <span class="nf">get_segm_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">example_word</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">example_word</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.get_sent_beg"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.get_sent_beg">[docs]</a>    <span class="k">def</span> <span class="nf">get_sent_beg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">beg_word</span><span class="p">):</span>
+        <span class="c">#returns index of beginning letter in sentence</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">beg_word</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.get_sent_end"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.get_sent_end">[docs]</a>    <span class="k">def</span> <span class="nf">get_sent_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">end_word</span><span class="p">):</span>
+        <span class="c">#returns index of end letter in sentence</span>
+        <span class="n">splitted</span> <span class="o">=</span> <span class="n">end_word</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;)&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">splitted</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">splitted</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.get_sentences"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.get_sentences">[docs]</a>    <span class="k">def</span> <span class="nf">get_sentences</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sent_segm</span><span class="p">):</span>
+        <span class="c">#returns one sentence</span>
+        <span class="nb">id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_segm_id</span><span class="p">(</span><span class="n">sent_segm</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">segm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">text_view</span><span class="o">.</span><span class="n">segm_dict</span><span class="p">[</span><span class="nb">id</span><span class="p">]</span>    <span class="c">#text segment</span>
+        <span class="n">beg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sent_beg</span><span class="p">(</span><span class="n">sent_segm</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sent_end</span><span class="p">(</span><span class="n">sent_segm</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">sent_segm</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">segm</span><span class="p">[</span><span class="n">beg</span><span class="p">:</span><span class="n">end</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.remove_choice"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.remove_choice">[docs]</a>    <span class="k">def</span> <span class="nf">remove_choice</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">segm</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">prev_txt_end</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">prev_txt_nr</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">segm</span><span class="p">:</span>
+            <span class="n">txt_nr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_segm_id</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+            <span class="c">#get increasing sequence of ids: in case of choice get first possibility</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sent_beg</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">prev_txt_end</span><span class="o">-</span><span class="mi">1</span> <span class="ow">or</span> <span class="n">prev_txt_nr</span> <span class="o">!=</span> <span class="n">txt_nr</span><span class="p">:</span>
+                <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+                <span class="n">prev_txt_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sent_end</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+            <span class="n">prev_txt_nr</span> <span class="o">=</span> <span class="n">txt_nr</span>
+
+        <span class="k">return</span> <span class="n">ret</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.handle_query"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.handle_query">[docs]</a>    <span class="k">def</span> <span class="nf">handle_query</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open</span><span class="p">()</span>
+            <span class="n">sentences</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="n">sent_segm</span> <span class="o">=</span> <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sent_segm</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="k">for</span> <span class="n">segm</span> <span class="ow">in</span> <span class="n">sent_segm</span><span class="p">:</span>
+                    <span class="n">segm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">remove_choice</span><span class="p">(</span><span class="n">segm</span><span class="p">)</span>
+                    <span class="n">sentences</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_sentences</span><span class="p">(</span><span class="n">segm</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">sentences</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">Exception</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Segmentation_View.handle_elt"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Segmentation_View.handle_elt">[docs]</a>    <span class="k">def</span> <span class="nf">handle_elt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">elt</span><span class="p">:</span>
+            <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">seg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;corresp&#39;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">ret</span>
+
+</div></div>
+<div class="viewcode-block" id="NKJPCorpus_Text_View"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Text_View">[docs]</a><span class="k">class</span> <span class="nc">NKJPCorpus_Text_View</span><span class="p">(</span><span class="n">XMLCorpusView</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A stream backed corpus view specialized for use with</span>
+<span class="sd">    text.xml files in NKJP corpus.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">SENTS_MODE</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">RAW_MODE</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;mode&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span> <span class="o">=</span> <span class="s">&#39;.*/div/ab&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">segm_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="c">#xml preprocessing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span> <span class="o">=</span> <span class="n">XML_Tool</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;text.xml&#39;</span><span class="p">)</span>
+        <span class="c">#base class init</span>
+        <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">build_preprocessed_file</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NKJPCorpus_Text_View.handle_query"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Text_View.handle_query">[docs]</a>    <span class="k">def</span> <span class="nf">handle_query</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open</span><span class="p">()</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_block</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">x</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">Exception</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Text_View.read_block"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Text_View.read_block">[docs]</a>    <span class="k">def</span> <span class="nf">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">tagspec</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">elt_handler</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns text as a list of sentences.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">txt</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">segm</span> <span class="o">=</span> <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">segm</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">segm</span><span class="p">:</span>
+                <span class="n">txt</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">part</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">segm</span> <span class="k">for</span> <span class="n">segm</span> <span class="ow">in</span> <span class="n">txt</span><span class="p">])]</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Text_View.get_segm_id"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Text_View.get_segm_id">[docs]</a>    <span class="k">def</span> <span class="nf">get_segm_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">elt</span><span class="o">.</span><span class="n">attrib</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">attr</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;id&#39;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">elt</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">attr</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Text_View.handle_elt"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Text_View.handle_elt">[docs]</a>    <span class="k">def</span> <span class="nf">handle_elt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="c">#fill dictionary to use later in sents mode</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mode</span> <span class="ow">is</span> <span class="n">NKJPCorpus_Text_View</span><span class="o">.</span><span class="n">SENTS_MODE</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">segm_dict</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_segm_id</span><span class="p">(</span><span class="n">elt</span><span class="p">)]</span> <span class="o">=</span> <span class="n">elt</span><span class="o">.</span><span class="n">text</span>
+        <span class="k">return</span> <span class="n">elt</span><span class="o">.</span><span class="n">text</span>
+
+</div></div>
+<div class="viewcode-block" id="NKJPCorpus_Morph_View"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Morph_View">[docs]</a><span class="k">class</span> <span class="nc">NKJPCorpus_Morph_View</span><span class="p">(</span><span class="n">XMLCorpusView</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A stream backed corpus view specialized for use with</span>
+<span class="sd">    ann_morphosyntax.xml files in NKJP corpus.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tags</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;tags&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span> <span class="o">=</span> <span class="s">&#39;.*/seg/fs&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span> <span class="o">=</span> <span class="n">XML_Tool</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;ann_morphosyntax.xml&#39;</span><span class="p">)</span>
+        <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">build_preprocessed_file</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagspec</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NKJPCorpus_Morph_View.handle_query"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Morph_View.handle_query">[docs]</a>    <span class="k">def</span> <span class="nf">handle_query</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open</span><span class="p">()</span>
+            <span class="n">words</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="n">segm</span> <span class="o">=</span> <span class="n">XMLCorpusView</span><span class="o">.</span><span class="n">read_block</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">segm</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">segm</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">part</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                        <span class="n">words</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">part</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">words</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xml_tool</span><span class="o">.</span><span class="n">remove_preprocessed_file</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">Exception</span>
+</div>
+<div class="viewcode-block" id="NKJPCorpus_Morph_View.handle_elt"><a class="viewcode-back" href="../../../../api/nltk.corpus.reader.html#nltk.corpus.reader.nkjp.NKJPCorpus_Morph_View.handle_elt">[docs]</a>    <span class="k">def</span> <span class="nf">handle_elt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">elt</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="n">flag</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="n">is_not_interp</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="c">#if tags not specified, then always return word</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tags</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">flag</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">elt</span><span class="p">:</span>
+
+            <span class="c">#get word</span>
+            <span class="k">if</span> <span class="s">&#39;name&#39;</span> <span class="ow">in</span> <span class="n">child</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="n">child</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;name&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;orth&#39;</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">child</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">symbol</span><span class="o">.</span><span class="n">tag</span> <span class="o">==</span> <span class="s">&#39;string&#39;</span><span class="p">:</span>
+                        <span class="n">word</span> <span class="o">=</span> <span class="n">symbol</span><span class="o">.</span><span class="n">text</span>
+            <span class="k">elif</span> <span class="s">&#39;name&#39;</span> <span class="ow">in</span> <span class="n">child</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="n">child</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;name&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;interps&#39;</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">child</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="s">&#39;type&#39;</span> <span class="ow">in</span> <span class="n">symbol</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="n">symbol</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;lex&#39;</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">symbol2</span> <span class="ow">in</span> <span class="n">symbol</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="s">&#39;name&#39;</span> <span class="ow">in</span> <span class="n">symbol2</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="n">symbol2</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;name&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;ctag&#39;</span><span class="p">:</span>
+                                <span class="k">for</span> <span class="n">symbol3</span> <span class="ow">in</span> <span class="n">symbol2</span><span class="p">:</span>
+                                    <span class="k">if</span> <span class="s">&#39;value&#39;</span> <span class="ow">in</span> <span class="n">symbol3</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">tags</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">symbol3</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;value&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tags</span><span class="p">:</span>
+                                        <span class="n">flag</span> <span class="o">=</span> <span class="bp">True</span>
+                                    <span class="k">elif</span> <span class="s">&#39;value&#39;</span> <span class="ow">in</span> <span class="n">symbol3</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="n">symbol3</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s">&#39;value&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;interp&#39;</span><span class="p">:</span>
+                                        <span class="n">is_not_interp</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">flag</span> <span class="ow">and</span> <span class="n">is_not_interp</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">word</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <h3 style="margin-top: 1.5em;">Search</h3>
+          <form class="search" action="../../../../search.html" method="get">
+            <input type="text" name="q" />
+            <input type="submit" value="Go" />
+            <input type="hidden" name="check_keywords" value="yes" />
+            <input type="hidden" name="area" value="default" />
+          </form>
+          <p class="searchtip" style="font-size: 90%">
+            Enter search terms or a module, class or function name.
+          </p>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Feb 26, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.3.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

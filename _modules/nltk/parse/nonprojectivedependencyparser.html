@@ -51,7 +51,7 @@
   <h1>Source code for nltk.parse.nonprojectivedependencyparser</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Dependency Grammars</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2014 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
 <span class="c"># Author: Jason Narad &lt;jason.narad@gmail.com&gt;</span>
 <span class="c">#</span>
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
@@ -60,14 +60,19 @@
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
 
 <span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">logging</span>
 
 <span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="nb">xrange</span>
 
-<span class="kn">from</span> <span class="nn">nltk.parse.dependencygraph</span> <span class="kn">import</span> <span class="n">DependencyGraph</span><span class="p">,</span> <span class="n">conll_data2</span>
+<span class="kn">from</span> <span class="nn">nltk.parse.dependencygraph</span> <span class="kn">import</span> <span class="n">DependencyGraph</span>
+<span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">NaiveBayesClassifier</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
 
 <span class="c">#################################################################</span>
 <span class="c"># DependencyScorerI - Interface for Graph-Edge Weight Calculation</span>
 <span class="c">#################################################################</span>
+
 
 <div class="viewcode-block" id="DependencyScorerI"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.DependencyScorerI">[docs]</a><span class="k">class</span> <span class="nc">DependencyScorerI</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -120,11 +125,10 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span>
 
-
-
 <span class="c">#################################################################</span>
 <span class="c"># NaiveBayesDependencyScorer</span>
 <span class="c">#################################################################</span>
+
 </div></div>
 <div class="viewcode-block" id="NaiveBayesDependencyScorer"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.NaiveBayesDependencyScorer">[docs]</a><span class="k">class</span> <span class="nc">NaiveBayesDependencyScorer</span><span class="p">(</span><span class="n">DependencyScorerI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -132,10 +136,20 @@
 <span class="sd">    particular class that classifier is a ``NaiveBayesClassifier``.</span>
 <span class="sd">    It uses head-word, head-tag, child-word, and child-tag features</span>
 <span class="sd">    for classification.</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.parse.dependencygraph import DependencyGraph, conll_data2</span>
+
+<span class="sd">    &gt;&gt;&gt; graphs = [DependencyGraph(entry) for entry in conll_data2.split(&#39;\\n\\n&#39;) if entry]</span>
+<span class="sd">    &gt;&gt;&gt; npp = ProbabilisticNonprojectiveParser()</span>
+<span class="sd">    &gt;&gt;&gt; npp.train(graphs, NaiveBayesDependencyScorer())</span>
+<span class="sd">    &gt;&gt;&gt; parses = npp.parse([&#39;Cathy&#39;, &#39;zag&#39;, &#39;hen&#39;, &#39;zwaaien&#39;, &#39;.&#39;], [&#39;N&#39;, &#39;V&#39;, &#39;Pron&#39;, &#39;Adj&#39;, &#39;N&#39;, &#39;Punc&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; len(list(parses))</span>
+<span class="sd">    1</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">pass</span> <span class="c"># Do nothing without throwing error</span>
+        <span class="k">pass</span>  <span class="c"># Do nothing without throwing error</span>
 
 <div class="viewcode-block" id="NaiveBayesDependencyScorer.train"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.NaiveBayesDependencyScorer.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graphs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -151,18 +165,25 @@
         <span class="c"># Create training labeled training examples</span>
         <span class="n">labeled_examples</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">graph</span> <span class="ow">in</span> <span class="n">graphs</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">head_node</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">child_index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)):</span>
-                    <span class="n">child_node</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">child_index</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">head_node</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">child_index</span><span class="p">,</span> <span class="n">child_node</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                     <span class="k">if</span> <span class="n">child_index</span> <span class="ow">in</span> <span class="n">head_node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]:</span>
                         <span class="n">label</span> <span class="o">=</span> <span class="s">&quot;T&quot;</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="n">label</span> <span class="o">=</span> <span class="s">&quot;F&quot;</span>
-                    <span class="n">labeled_examples</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">dict</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span><span class="n">b</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span><span class="n">c</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span><span class="n">d</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">]),</span> <span class="n">label</span><span class="p">))</span>
-        <span class="c"># Train the classifier</span>
-        <span class="kn">import</span> <span class="nn">nltk</span>
-        <span class="n">nltk</span><span class="o">.</span><span class="n">usage</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">ClassifierI</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">classify</span><span class="o">.</span><span class="n">NaiveBayesClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">labeled_examples</span><span class="p">)</span>
+                    <span class="n">labeled_examples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">(</span>
+                            <span class="nb">dict</span><span class="p">(</span>
+                                <span class="n">a</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span>
+                                <span class="n">b</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span>
+                                <span class="n">c</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span>
+                                <span class="n">d</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span>
+                            <span class="p">),</span>
+                            <span class="n">label</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span> <span class="o">=</span> <span class="n">NaiveBayesClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">labeled_examples</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="NaiveBayesDependencyScorer.score"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.NaiveBayesDependencyScorer.score">[docs]</a>    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graph</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -178,22 +199,29 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Convert graph to feature representation</span>
         <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)):</span>
-            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">)):</span>
-                <span class="n">head_node</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
-                <span class="n">child_node</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
-                <span class="k">print</span><span class="p">(</span><span class="n">head_node</span><span class="p">)</span>
-                <span class="k">print</span><span class="p">(</span><span class="n">child_node</span><span class="p">)</span>
-                <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">dict</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span><span class="n">b</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span><span class="n">c</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span><span class="n">d</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">])))</span>
+        <span class="k">for</span> <span class="n">head_node</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">child_node</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="p">(</span>
+                        <span class="nb">dict</span><span class="p">(</span>
+                            <span class="n">a</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span>
+                            <span class="n">b</span><span class="o">=</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span>
+                            <span class="n">c</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span>
+                            <span class="n">d</span><span class="o">=</span><span class="n">child_node</span><span class="p">[</span><span class="s">&#39;tag&#39;</span><span class="p">],</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+
         <span class="c"># Score edges</span>
         <span class="n">edge_scores</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">row</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">for</span> <span class="n">pdist</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">classifier</span><span class="o">.</span><span class="n">prob_classify_many</span><span class="p">(</span><span class="n">edges</span><span class="p">):</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%.4f</span><span class="s"> </span><span class="si">%.4f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;T&#39;</span><span class="p">),</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;F&#39;</span><span class="p">)))</span>
-            <span class="n">row</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&quot;T&quot;</span><span class="p">))])</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%.4f</span><span class="s"> </span><span class="si">%.4f</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;T&#39;</span><span class="p">),</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&#39;F&#39;</span><span class="p">))</span>
+            <span class="c"># smoothing in case the probability = 0</span>
+            <span class="n">row</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="s">&quot;T&quot;</span><span class="p">)</span><span class="o">+</span><span class="mf">0.00000000001</span><span class="p">)])</span>
             <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
-            <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">):</span>
                 <span class="n">edge_scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
                 <span class="n">row</span> <span class="o">=</span> <span class="p">[]</span>
                 <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
@@ -218,22 +246,63 @@
 <span class="c">#################################################################</span>
 <span class="c"># Non-Projective Probabilistic Parsing</span>
 <span class="c">#################################################################</span>
+
 </div></div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser">[docs]</a><span class="k">class</span> <span class="nc">ProbabilisticNonprojectiveParser</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A probabilistic non-projective dependency parser.  Nonprojective</span>
-<span class="sd">    dependencies allows for &quot;crossing branches&quot; in the parse tree</span>
-<span class="sd">    which is necessary for representing particular linguistic</span>
-<span class="sd">    phenomena, or even typical parses in some languages.  This parser</span>
-<span class="sd">    follows the MST parsing algorithm, outlined in McDonald(2005),</span>
-<span class="sd">    which likens the search for the best non-projective parse to</span>
-<span class="sd">    finding the maximum spanning tree in a weighted directed graph.</span>
+    <span class="sd">&quot;&quot;&quot;A probabilistic non-projective dependency parser.</span>
+
+<span class="sd">    Nonprojective dependencies allows for &quot;crossing branches&quot; in the parse tree</span>
+<span class="sd">    which is necessary for representing particular linguistic phenomena, or even</span>
+<span class="sd">    typical parses in some languages.  This parser follows the MST parsing</span>
+<span class="sd">    algorithm, outlined in McDonald(2005), which likens the search for the best</span>
+<span class="sd">    non-projective parse to finding the maximum spanning tree in a weighted</span>
+<span class="sd">    directed graph.</span>
+
+<span class="sd">    &gt;&gt;&gt; class Scorer(DependencyScorerI):</span>
+<span class="sd">    ...     def train(self, graphs):</span>
+<span class="sd">    ...         pass</span>
+<span class="sd">    ...</span>
+<span class="sd">    ...     def score(self, graph):</span>
+<span class="sd">    ...         return [</span>
+<span class="sd">    ...             [[], [5],  [1],  [1]],</span>
+<span class="sd">    ...             [[], [],   [11], [4]],</span>
+<span class="sd">    ...             [[], [10], [],   [5]],</span>
+<span class="sd">    ...             [[], [8],  [8],  []],</span>
+<span class="sd">    ...         ]</span>
+
+
+<span class="sd">    &gt;&gt;&gt; npp = ProbabilisticNonprojectiveParser()</span>
+<span class="sd">    &gt;&gt;&gt; npp.train([], Scorer())</span>
+
+<span class="sd">    &gt;&gt;&gt; parses = npp.parse([&#39;v1&#39;, &#39;v2&#39;, &#39;v3&#39;], [None, None, None])</span>
+<span class="sd">    &gt;&gt;&gt; len(list(parses))</span>
+<span class="sd">    1</span>
+
+<span class="sd">    Rule based example</span>
+<span class="sd">    ------------------</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.grammar import DependencyGrammar</span>
+
+<span class="sd">    &gt;&gt;&gt; grammar = DependencyGrammar.fromstring(&#39;&#39;&#39;</span>
+<span class="sd">    ... &#39;taught&#39; -&gt; &#39;play&#39; | &#39;man&#39;</span>
+<span class="sd">    ... &#39;man&#39; -&gt; &#39;the&#39; | &#39;in&#39;</span>
+<span class="sd">    ... &#39;in&#39; -&gt; &#39;corner&#39;</span>
+<span class="sd">    ... &#39;corner&#39; -&gt; &#39;the&#39;</span>
+<span class="sd">    ... &#39;play&#39; -&gt; &#39;golf&#39; | &#39;dachshund&#39; | &#39;to&#39;</span>
+<span class="sd">    ... &#39;dachshund&#39; -&gt; &#39;his&#39;</span>
+<span class="sd">    ... &#39;&#39;&#39;)</span>
+
+<span class="sd">    &gt;&gt;&gt; ndp = NonprojectiveDependencyParser(grammar)</span>
+<span class="sd">    &gt;&gt;&gt; parses = ndp.parse([&#39;the&#39;, &#39;man&#39;, &#39;in&#39;, &#39;the&#39;, &#39;corner&#39;, &#39;taught&#39;, &#39;his&#39;, &#39;dachshund&#39;, &#39;to&#39;, &#39;play&#39;, &#39;golf&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; len(list(parses))</span>
+<span class="sd">    4</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Creates a new non-projective parser.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;initializing prob. nonprojective...&#39;</span><span class="p">)</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;initializing prob. nonprojective...&#39;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.train"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graphs</span><span class="p">,</span> <span class="n">dependency_scorer</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -275,11 +344,11 @@
 <span class="sd">        :type g_graph, b_graph, c_graph: DependencyGraph</span>
 <span class="sd">        :param g_graph, b_graph, c_graph: Graphs which need to be updated.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Collapsing nodes...&#39;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Collapsing nodes...&#39;</span><span class="p">)</span>
         <span class="c"># Collapse all cycle nodes into v_n+1 in G_Graph</span>
         <span class="k">for</span> <span class="n">cycle_node_index</span> <span class="ow">in</span> <span class="n">cycle_path</span><span class="p">:</span>
             <span class="n">g_graph</span><span class="o">.</span><span class="n">remove_by_address</span><span class="p">(</span><span class="n">cycle_node_index</span><span class="p">)</span>
-        <span class="n">g_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_node</span><span class="p">)</span>
+        <span class="n">g_graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="n">new_node</span><span class="p">)</span>
         <span class="n">g_graph</span><span class="o">.</span><span class="n">redirect_arcs</span><span class="p">(</span><span class="n">cycle_path</span><span class="p">,</span> <span class="n">new_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">])</span>
 </div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.update_edge_scores"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.update_edge_scores">[docs]</a>    <span class="k">def</span> <span class="nf">update_edge_scores</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_node</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">):</span>
@@ -292,25 +361,37 @@
 <span class="sd">        :type cycle_path: A list of integers.</span>
 <span class="sd">        :param cycle_path: A list of node addresses that belong to the cycle.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;cycle&#39;</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;cycle </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
+
         <span class="n">cycle_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_original_indexes</span><span class="p">(</span><span class="n">cycle_path</span><span class="p">)</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;old cycle &#39;</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Prior to update:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;old cycle </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Prior to update: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">):</span>
             <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">column</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">]):</span>
-                <span class="k">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">])</span>
-                <span class="k">if</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">cycle_path</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cycle_path</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">new_vals</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">])</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">j</span> <span class="ow">in</span> <span class="n">cycle_path</span>
+                    <span class="ow">and</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cycle_path</span>
+                    <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+                <span class="p">):</span>
                     <span class="n">subtract_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_max_subtract_score</span><span class="p">(</span><span class="n">j</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
-                    <span class="k">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">],</span> <span class="s">&#39; - &#39;</span><span class="p">,</span> <span class="n">subtract_val</span><span class="p">)</span>
+
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s"> - </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">],</span> <span class="n">subtract_val</span><span class="p">)</span>
+
+                    <span class="n">new_vals</span> <span class="o">=</span> <span class="p">[]</span>
                     <span class="k">for</span> <span class="n">cur_val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]:</span>
                         <span class="n">new_vals</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cur_val</span> <span class="o">-</span> <span class="n">subtract_val</span><span class="p">)</span>
+
                     <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_vals</span>
+
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">):</span>
             <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">cell</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">]):</span>
                 <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cycle_path</span> <span class="ow">and</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">cycle_path</span><span class="p">:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;After update:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;After update: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
 </div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.compute_original_indexes"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.compute_original_indexes">[docs]</a>    <span class="k">def</span> <span class="nf">compute_original_indexes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_indexes</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -331,7 +412,7 @@
             <span class="k">for</span> <span class="n">new_index</span> <span class="ow">in</span> <span class="n">new_indexes</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">new_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">:</span>
                     <span class="k">for</span> <span class="n">old_val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">[</span><span class="n">new_index</span><span class="p">]:</span>
-                        <span class="k">if</span> <span class="ow">not</span> <span class="n">old_val</span> <span class="ow">in</span> <span class="n">originals</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">old_val</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">originals</span><span class="p">:</span>
                             <span class="n">originals</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">old_val</span><span class="p">)</span>
                             <span class="n">swapped</span> <span class="o">=</span> <span class="bp">True</span>
                 <span class="k">else</span><span class="p">:</span>
@@ -358,7 +439,6 @@
                 <span class="k">if</span> <span class="n">subtract_val</span> <span class="o">&gt;</span> <span class="n">max_score</span><span class="p">:</span>
                     <span class="n">max_score</span> <span class="o">=</span> <span class="n">subtract_val</span>
         <span class="k">return</span> <span class="n">max_score</span>
-
 </div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.best_incoming_arc"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.best_incoming_arc">[docs]</a>    <span class="k">def</span> <span class="nf">best_incoming_arc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_index</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -370,27 +450,28 @@
 <span class="sd">        the node that is arced to.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">originals</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_original_indexes</span><span class="p">([</span><span class="n">node_index</span><span class="p">])</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;originals:&#39;</span><span class="p">,</span> <span class="n">originals</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;originals: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">originals</span><span class="p">)</span>
+
         <span class="n">max_arc</span> <span class="o">=</span> <span class="bp">None</span>
         <span class="n">max_score</span> <span class="o">=</span> <span class="bp">None</span>
         <span class="k">for</span> <span class="n">row_index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)):</span>
             <span class="k">for</span> <span class="n">col_index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">row_index</span><span class="p">])):</span>
-<span class="c">#               print self.scores[row_index][col_index]</span>
+                <span class="c"># print self.scores[row_index][col_index]</span>
                 <span class="k">if</span> <span class="n">col_index</span> <span class="ow">in</span> <span class="n">originals</span> <span class="ow">and</span> <span class="p">(</span><span class="n">max_score</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">row_index</span><span class="p">][</span><span class="n">col_index</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">max_score</span><span class="p">):</span>
                     <span class="n">max_score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">[</span><span class="n">row_index</span><span class="p">][</span><span class="n">col_index</span><span class="p">]</span>
                     <span class="n">max_arc</span> <span class="o">=</span> <span class="n">row_index</span>
-                    <span class="k">print</span><span class="p">(</span><span class="n">row_index</span><span class="p">,</span> <span class="s">&#39;,&#39;</span><span class="p">,</span> <span class="n">col_index</span><span class="p">)</span>
-        <span class="k">print</span><span class="p">(</span><span class="n">max_score</span><span class="p">)</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s">, </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">row_index</span><span class="p">,</span> <span class="n">col_index</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">max_score</span><span class="p">)</span>
+
         <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">:</span>
             <span class="n">replaced_nodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">max_arc</span> <span class="ow">in</span> <span class="n">replaced_nodes</span><span class="p">:</span>
                 <span class="k">return</span> <span class="n">key</span>
+
         <span class="k">return</span> <span class="n">max_arc</span>
 </div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.original_best_arc"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.original_best_arc">[docs]</a>    <span class="k">def</span> <span class="nf">original_best_arc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_index</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ???</span>
-<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">originals</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_original_indexes</span><span class="p">([</span><span class="n">node_index</span><span class="p">])</span>
         <span class="n">max_arc</span> <span class="o">=</span> <span class="bp">None</span>
         <span class="n">max_score</span> <span class="o">=</span> <span class="bp">None</span>
@@ -402,7 +483,6 @@
                     <span class="n">max_arc</span> <span class="o">=</span> <span class="n">row_index</span>
                     <span class="n">max_orig</span> <span class="o">=</span> <span class="n">col_index</span>
         <span class="k">return</span> <span class="p">[</span><span class="n">max_arc</span><span class="p">,</span> <span class="n">max_orig</span><span class="p">]</span>
-
 </div>
 <div class="viewcode-block" id="ProbabilisticNonprojectiveParser.parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.ProbabilisticNonprojectiveParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">tags</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -420,100 +500,139 @@
 <span class="sd">        :rtype: iter(DependencyGraph)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span> <span class="o">=</span> <span class="p">{}</span>
+
         <span class="c"># Initialize g_graph</span>
         <span class="n">g_graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
-            <span class="n">g_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="n">token</span><span class="p">,</span> <span class="s">&#39;tag&#39;</span><span class="p">:</span><span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span><span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">})</span>
+            <span class="n">g_graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s">&#39;tag&#39;</span><span class="p">:</span> <span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span>
+                    <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="c">#print (g_graph.nodes)</span>
+
+
         <span class="c"># Fully connect non-root nodes in g_graph</span>
         <span class="n">g_graph</span><span class="o">.</span><span class="n">connect_graph</span><span class="p">()</span>
         <span class="n">original_graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
-            <span class="n">original_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="n">token</span><span class="p">,</span> <span class="s">&#39;tag&#39;</span><span class="p">:</span><span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span><span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">})</span>
+            <span class="n">original_graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s">&#39;tag&#39;</span><span class="p">:</span> <span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span>
+                    <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
 
-        <span class="c"># Initialize b_graph</span>
         <span class="n">b_graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
-        <span class="n">b_graph</span><span class="o">.</span><span class="n">nodelist</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="c"># Initialize c_graph</span>
         <span class="n">c_graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
-        <span class="n">c_graph</span><span class="o">.</span><span class="n">nodelist</span> <span class="o">=</span> <span class="p">[{</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="n">token</span><span class="p">,</span> <span class="s">&#39;tag&#39;</span><span class="p">:</span><span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span>
-                             <span class="s">&#39;rel&#39;</span><span class="p">:</span><span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">}</span>
-                            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">)]</span>
+
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+            <span class="n">c_graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                    <span class="s">&#39;tag&#39;</span><span class="p">:</span> <span class="n">tags</span><span class="p">[</span><span class="n">index</span><span class="p">],</span>
+                    <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
         <span class="c"># Assign initial scores to g_graph edges</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">initialize_edge_scores</span><span class="p">(</span><span class="n">g_graph</span><span class="p">)</span>
-        <span class="k">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
         <span class="c"># Initialize a list of unvisited vertices (by node address)</span>
-        <span class="n">unvisited_vertices</span> <span class="o">=</span> <span class="p">[</span><span class="n">vertex</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">vertex</span> <span class="ow">in</span> <span class="n">c_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">]</span>
+        <span class="n">unvisited_vertices</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">vertex</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">vertex</span> <span class="ow">in</span> <span class="n">c_graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="p">]</span>
         <span class="c"># Iterate over unvisited vertices</span>
         <span class="n">nr_vertices</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
         <span class="n">betas</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">unvisited_vertices</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">unvisited_vertices</span><span class="p">:</span>
             <span class="c"># Mark current node as visited</span>
             <span class="n">current_vertex</span> <span class="o">=</span> <span class="n">unvisited_vertices</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;current_vertex:&#39;</span><span class="p">,</span> <span class="n">current_vertex</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;current_vertex: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">current_vertex</span><span class="p">)</span>
             <span class="c"># Get corresponding node n_i to vertex v_i</span>
             <span class="n">current_node</span> <span class="o">=</span> <span class="n">g_graph</span><span class="o">.</span><span class="n">get_by_address</span><span class="p">(</span><span class="n">current_vertex</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;current_node:&#39;</span><span class="p">,</span> <span class="n">current_node</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;current_node: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">current_node</span><span class="p">)</span>
             <span class="c"># Get best in-edge node b for current node</span>
             <span class="n">best_in_edge</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">best_incoming_arc</span><span class="p">(</span><span class="n">current_vertex</span><span class="p">)</span>
             <span class="n">betas</span><span class="p">[</span><span class="n">current_vertex</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">original_best_arc</span><span class="p">(</span><span class="n">current_vertex</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;best in arc: &#39;</span><span class="p">,</span> <span class="n">best_in_edge</span><span class="p">,</span> <span class="s">&#39; --&gt; &#39;</span><span class="p">,</span> <span class="n">current_vertex</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;best in arc: </span><span class="si">%s</span><span class="s"> --&gt; </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">best_in_edge</span><span class="p">,</span> <span class="n">current_vertex</span><span class="p">)</span>
             <span class="c"># b_graph = Union(b_graph, b)</span>
             <span class="k">for</span> <span class="n">new_vertex</span> <span class="ow">in</span> <span class="p">[</span><span class="n">current_vertex</span><span class="p">,</span> <span class="n">best_in_edge</span><span class="p">]:</span>
-                <span class="n">b_graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">({</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="s">&#39;TEMP&#39;</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">new_vertex</span><span class="p">})</span>
+                <span class="n">b_graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">new_vertex</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="s">&#39;TEMP&#39;</span><span class="p">,</span>
+                        <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                        <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">new_vertex</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
             <span class="n">b_graph</span><span class="o">.</span><span class="n">add_arc</span><span class="p">(</span><span class="n">best_in_edge</span><span class="p">,</span> <span class="n">current_vertex</span><span class="p">)</span>
             <span class="c"># Beta(current node) = b  - stored for parse recovery</span>
             <span class="c"># If b_graph contains a cycle, collapse it</span>
             <span class="n">cycle_path</span> <span class="o">=</span> <span class="n">b_graph</span><span class="o">.</span><span class="n">contains_cycle</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">cycle_path</span><span class="p">:</span>
-            <span class="c"># Create a new node v_n+1 with address = len(nodes) + 1</span>
-                <span class="n">new_node</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="s">&#39;NONE&#39;</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">nr_vertices</span> <span class="o">+</span> <span class="mi">1</span><span class="p">}</span>
-            <span class="c"># c_graph = Union(c_graph, v_n+1)</span>
+                <span class="c"># Create a new node v_n+1 with address = len(nodes) + 1</span>
+                <span class="n">new_node</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="s">&#39;NONE&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">nr_vertices</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="p">}</span>
+                <span class="c"># c_graph = Union(c_graph, v_n+1)</span>
                 <span class="n">c_graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="n">new_node</span><span class="p">)</span>
-            <span class="c"># Collapse all nodes in cycle C into v_n+1</span>
+                <span class="c"># Collapse all nodes in cycle C into v_n+1</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">update_edge_scores</span><span class="p">(</span><span class="n">new_node</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">collapse_nodes</span><span class="p">(</span><span class="n">new_node</span><span class="p">,</span> <span class="n">cycle_path</span><span class="p">,</span> <span class="n">g_graph</span><span class="p">,</span> <span class="n">b_graph</span><span class="p">,</span> <span class="n">c_graph</span><span class="p">)</span>
                 <span class="k">for</span> <span class="n">cycle_index</span> <span class="ow">in</span> <span class="n">cycle_path</span><span class="p">:</span>
                     <span class="n">c_graph</span><span class="o">.</span><span class="n">add_arc</span><span class="p">(</span><span class="n">new_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">],</span> <span class="n">cycle_index</span><span class="p">)</span>
-<span class="c">#                   self.replaced_by[cycle_index] = new_node[&#39;address&#39;]</span>
+                    <span class="c"># self.replaced_by[cycle_index] = new_node[&#39;address&#39;]</span>
 
                 <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">[</span><span class="n">new_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">cycle_path</span>
 
-            <span class="c"># Add v_n+1 to list of unvisited vertices</span>
+                <span class="c"># Add v_n+1 to list of unvisited vertices</span>
                 <span class="n">unvisited_vertices</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">nr_vertices</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="c"># increment # of nodes counter</span>
+
+                <span class="c"># increment # of nodes counter</span>
                 <span class="n">nr_vertices</span> <span class="o">+=</span> <span class="mi">1</span>
-            <span class="c"># Remove cycle nodes from b_graph; B = B - cycle c</span>
+
+                <span class="c"># Remove cycle nodes from b_graph; B = B - cycle c</span>
                 <span class="k">for</span> <span class="n">cycle_node_address</span> <span class="ow">in</span> <span class="n">cycle_path</span><span class="p">:</span>
                     <span class="n">b_graph</span><span class="o">.</span><span class="n">remove_by_address</span><span class="p">(</span><span class="n">cycle_node_address</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;g_graph:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">g_graph</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">()</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;b_graph:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">b_graph</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">()</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;c_graph:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">c_graph</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">()</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Betas:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">betas</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">(</span><span class="s">&#39;replaced nodes&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">)</span>
-            <span class="k">print</span><span class="p">()</span>
-        <span class="c">#Recover parse tree</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Final scores:</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Recovering parse...&#39;</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;g_graph: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">g_graph</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;b_graph: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">b_graph</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;c_graph: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">c_graph</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Betas: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">betas</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;replaced nodes </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">inner_nodes</span><span class="p">)</span>
+
+        <span class="c"># Recover parse tree</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Final scores: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scores</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Recovering parse...&#39;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nr_vertices</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
             <span class="n">betas</span><span class="p">[</span><span class="n">betas</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">betas</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Betas: &#39;</span><span class="p">,</span> <span class="n">betas</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">original_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
-            <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Betas: </span><span class="si">%s</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">betas</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">original_graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="c"># TODO: It&#39;s dangerous to assume that deps it a dictionary</span>
+            <span class="c"># because it&#39;s a default dictionary. Ideally, here we should not</span>
+            <span class="c"># be concerned how dependencies are stored inside of a dependency</span>
+            <span class="c"># graph.</span>
+            <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-<span class="c">#           print i, betas[i]</span>
             <span class="n">original_graph</span><span class="o">.</span><span class="n">add_arc</span><span class="p">(</span><span class="n">betas</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">betas</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
-<span class="c">#       print original_graph</span>
-        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Done.&#39;</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&#39;Done.&#39;</span><span class="p">)</span>
         <span class="k">yield</span> <span class="n">original_graph</span>
-
-
 
 <span class="c">#################################################################</span>
 <span class="c"># Rule-based Non-Projective Parser</span>
 <span class="c">#################################################################</span>
+
 </div></div>
 <div class="viewcode-block" id="NonprojectiveDependencyParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.NonprojectiveDependencyParser">[docs]</a><span class="k">class</span> <span class="nc">NonprojectiveDependencyParser</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -531,7 +650,7 @@
 
 <span class="sd">        :param dependency_grammar: a grammar of word-to-word relations.</span>
 <span class="sd">        :type dependency_grammar: DependencyGrammar</span>
-<span class="sd">	    &quot;&quot;&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span> <span class="o">=</span> <span class="n">dependency_grammar</span>
 
 <div class="viewcode-block" id="NonprojectiveDependencyParser.parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.NonprojectiveDependencyParser.parse">[docs]</a>    <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
@@ -551,15 +670,25 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c"># Create graph representation of tokens</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodelist</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c"># Remove the default root</span>
+
         <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s">&#39;word&#39;</span><span class="p">:</span><span class="n">token</span><span class="p">,</span> <span class="s">&#39;deps&#39;</span><span class="p">:[],</span> <span class="s">&#39;rel&#39;</span><span class="p">:</span><span class="s">&#39;NTOP&#39;</span><span class="p">,</span> <span class="s">&#39;address&#39;</span><span class="p">:</span><span class="n">index</span><span class="p">})</span>
-        <span class="k">for</span> <span class="n">head_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                <span class="s">&#39;deps&#39;</span><span class="p">:</span> <span class="p">[],</span>
+                <span class="s">&#39;rel&#39;</span><span class="p">:</span> <span class="s">&#39;NTOP&#39;</span><span class="p">,</span>
+                <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">index</span><span class="p">,</span>
+            <span class="p">}</span>
+
+        <span class="k">for</span> <span class="n">head_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
             <span class="n">deps</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="k">for</span> <span class="n">dep_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">:</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">dep_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">])</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">dep_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">dep_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>  <span class="p">:</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_grammar</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">],</span> <span class="n">dep_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">])</span>
+                    <span class="ow">and</span> <span class="n">head_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">dep_node</span><span class="p">[</span><span class="s">&#39;word&#39;</span><span class="p">]</span>
+                <span class="p">):</span>
                     <span class="n">deps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dep_node</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">])</span>
             <span class="n">head_node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">deps</span>
+
         <span class="c"># Create lattice of possible heads</span>
         <span class="n">roots</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">possible_heads</span> <span class="o">=</span> <span class="p">[]</span>
@@ -598,24 +727,22 @@
                 <span class="k">if</span> <span class="ow">not</span> <span class="n">forward</span><span class="p">:</span>
                     <span class="n">index_on_stack</span> <span class="o">=</span> <span class="bp">False</span>
                     <span class="k">for</span> <span class="n">stack_item</span> <span class="ow">in</span> <span class="n">stack</span><span class="p">:</span>
-<span class="c">#                       print stack_item</span>
                         <span class="k">if</span> <span class="n">stack_item</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
                             <span class="n">index_on_stack</span> <span class="o">=</span> <span class="bp">True</span>
                     <span class="n">orig_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">possible_heads</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-<span class="c">#                   print len(possible_heads[i])</span>
+
                     <span class="k">if</span> <span class="n">index_on_stack</span> <span class="ow">and</span> <span class="n">orig_length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
                             <span class="n">stack_item</span> <span class="o">=</span> <span class="n">stack</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
                             <span class="k">if</span> <span class="n">stack_item</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
                                 <span class="n">possible_heads</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">j</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
-<span class="c">#                       print stack</span>
+
                     <span class="k">elif</span> <span class="n">index_on_stack</span> <span class="ow">and</span> <span class="n">orig_length</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                         <span class="n">head</span> <span class="o">=</span> <span class="n">possible_heads</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
                         <span class="n">analysis</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">head</span>
                         <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">i</span><span class="p">,</span> <span class="n">head</span><span class="p">])</span>
                         <span class="n">forward</span> <span class="o">=</span> <span class="bp">True</span>
 
-<span class="c">#                   print &#39;Index on stack:&#39;, i, index_on_stack</span>
                 <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">possible_heads</span><span class="p">):</span>
                     <span class="n">analyses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">analysis</span><span class="p">[:])</span>
                     <span class="n">forward</span> <span class="o">=</span> <span class="bp">False</span>
@@ -627,22 +754,32 @@
         <span class="c"># Filter parses</span>
         <span class="c"># ensure 1 root, every thing has 1 head</span>
         <span class="k">for</span> <span class="n">analysis</span> <span class="ow">in</span> <span class="n">analyses</span><span class="p">:</span>
-            <span class="n">root_count</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">root</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">cell</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">analysis</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">cell</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
-                    <span class="n">root_count</span> <span class="o">+=</span> <span class="mi">1</span>
-                    <span class="n">root</span> <span class="o">=</span> <span class="n">i</span>
-            <span class="k">if</span> <span class="n">root_count</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-                <span class="n">graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
-                <span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">root</span> <span class="o">+</span> <span class="mi">1</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)):</span>
-                    <span class="n">node</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">}</span>
-                    <span class="n">node</span><span class="p">[</span><span class="s">&#39;deps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span> <span class="k">if</span> <span class="n">analysis</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="n">i</span><span class="p">]</span>
-                    <span class="n">graph</span><span class="o">.</span><span class="n">nodelist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
-<span class="c">#               cycle = graph.contains_cycle()</span>
-<span class="c">#               if not cycle:</span>
-                <span class="k">yield</span> <span class="n">graph</span>
+            <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c"># there are several root elements!</span>
+                <span class="k">continue</span>
+
+            <span class="n">graph</span> <span class="o">=</span> <span class="n">DependencyGraph</span><span class="p">()</span>
+            <span class="n">graph</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">analysis</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+
+            <span class="k">for</span> <span class="n">address</span><span class="p">,</span> <span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">head_index</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">analysis</span><span class="p">),</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+                <span class="n">head_address</span> <span class="o">=</span> <span class="n">head_index</span> <span class="o">+</span> <span class="mi">1</span>
+
+                <span class="n">node</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">address</span><span class="p">]</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s">&#39;word&#39;</span><span class="p">:</span> <span class="n">token</span><span class="p">,</span>
+                        <span class="s">&#39;address&#39;</span><span class="p">:</span> <span class="n">address</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">head_address</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">rel</span> <span class="o">=</span> <span class="s">&#39;ROOT&#39;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">rel</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+                <span class="n">graph</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">head_index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">][</span><span class="s">&#39;deps&#39;</span><span class="p">][</span><span class="n">rel</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+
+            <span class="c"># TODO: check for cycles</span>
+            <span class="k">yield</span> <span class="n">graph</span>
 
 
 <span class="c">#################################################################</span>
@@ -650,7 +787,7 @@
 <span class="c">#################################################################</span>
 </div></div>
 <div class="viewcode-block" id="demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.demo">[docs]</a><span class="k">def</span> <span class="nf">demo</span><span class="p">():</span>
-<span class="c">#   hall_demo()</span>
+    <span class="c"># hall_demo()</span>
     <span class="n">nonprojective_conll_parse_demo</span><span class="p">()</span>
     <span class="n">rule_based_demo</span><span class="p">()</span>
 
@@ -660,14 +797,19 @@
     <span class="n">npp</span><span class="o">.</span><span class="n">train</span><span class="p">([],</span> <span class="n">DemoScorer</span><span class="p">())</span>
     <span class="k">for</span> <span class="n">parse_graph</span> <span class="ow">in</span> <span class="n">npp</span><span class="o">.</span><span class="n">parse</span><span class="p">([</span><span class="s">&#39;v1&#39;</span><span class="p">,</span> <span class="s">&#39;v2&#39;</span><span class="p">,</span> <span class="s">&#39;v3&#39;</span><span class="p">],</span> <span class="p">[</span><span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">]):</span>
         <span class="k">print</span><span class="p">(</span><span class="n">parse_graph</span><span class="p">)</span>
+
 </div>
 <div class="viewcode-block" id="nonprojective_conll_parse_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.nonprojective_conll_parse_demo">[docs]</a><span class="k">def</span> <span class="nf">nonprojective_conll_parse_demo</span><span class="p">():</span>
-    <span class="n">graphs</span> <span class="o">=</span> <span class="p">[</span><span class="n">DependencyGraph</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
-              <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conll_data2</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">entry</span><span class="p">]</span>
+    <span class="kn">from</span> <span class="nn">nltk.parse.dependencygraph</span> <span class="kn">import</span> <span class="n">conll_data2</span>
+
+    <span class="n">graphs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">DependencyGraph</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">conll_data2</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">entry</span>
+    <span class="p">]</span>
     <span class="n">npp</span> <span class="o">=</span> <span class="n">ProbabilisticNonprojectiveParser</span><span class="p">()</span>
     <span class="n">npp</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">graphs</span><span class="p">,</span> <span class="n">NaiveBayesDependencyScorer</span><span class="p">())</span>
     <span class="k">for</span> <span class="n">parse_graph</span> <span class="ow">in</span> <span class="n">npp</span><span class="o">.</span><span class="n">parse</span><span class="p">([</span><span class="s">&#39;Cathy&#39;</span><span class="p">,</span> <span class="s">&#39;zag&#39;</span><span class="p">,</span> <span class="s">&#39;hen&#39;</span><span class="p">,</span> <span class="s">&#39;zwaaien&#39;</span><span class="p">,</span> <span class="s">&#39;.&#39;</span><span class="p">],</span> <span class="p">[</span><span class="s">&#39;N&#39;</span><span class="p">,</span> <span class="s">&#39;V&#39;</span><span class="p">,</span> <span class="s">&#39;Pron&#39;</span><span class="p">,</span> <span class="s">&#39;Adj&#39;</span><span class="p">,</span> <span class="s">&#39;N&#39;</span><span class="p">,</span> <span class="s">&#39;Punc&#39;</span><span class="p">]):</span>
         <span class="k">print</span><span class="p">(</span><span class="n">parse_graph</span><span class="p">)</span>
+
 </div>
 <div class="viewcode-block" id="rule_based_demo"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.nonprojectivedependencyparser.rule_based_demo">[docs]</a><span class="k">def</span> <span class="nf">rule_based_demo</span><span class="p">():</span>
     <span class="kn">from</span> <span class="nn">nltk.grammar</span> <span class="kn">import</span> <span class="n">DependencyGrammar</span>
@@ -735,9 +877,9 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2013, NLTK Project.
-      Last updated on Aug 21, 2014.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Feb 26, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.3.
     </div>
         </div>
         <div class="clearer"></div>

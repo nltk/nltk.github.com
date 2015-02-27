@@ -51,9 +51,10 @@
   <h1>Source code for nltk.model.ngram</h1><div class="highlight"><pre>
 <span class="c"># Natural Language Toolkit: Language Models</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2013 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2014 NLTK Project</span>
 <span class="c"># Authors: Steven Bird &lt;stevenbird1@gmail.com&gt;</span>
 <span class="c">#          Daniel Blanchard &lt;dblanchard@ets.org&gt;</span>
+<span class="c">#          Ilia Kurenkov &lt;ilia.kurenkov@gmail.com&gt;</span>
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">unicode_literals</span>
@@ -61,21 +62,23 @@
 <span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span>
 <span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">log</span>
 
-<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="p">(</span><span class="n">ConditionalProbDist</span><span class="p">,</span> <span class="n">ConditionalFreqDist</span><span class="p">,</span>
-                              <span class="n">SimpleGoodTuringProbDist</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span>
+    <span class="n">ConditionalProbDist</span><span class="p">,</span>
+    <span class="n">ConditionalFreqDist</span><span class="p">,</span>
+    <span class="n">LidstoneProbDist</span><span class="p">)</span>
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ngrams</span>
 <span class="kn">from</span> <span class="nn">nltk.model.api</span> <span class="kn">import</span> <span class="n">ModelI</span>
 
 <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 
 
-<span class="k">def</span> <span class="nf">_estimator</span><span class="p">(</span><span class="n">fdist</span><span class="p">,</span> <span class="n">bins</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">_estimator</span><span class="p">(</span><span class="n">fdist</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Default estimator function using a SimpleGoodTuringProbDist.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c"># can&#39;t be an instance method of NgramModel as they</span>
     <span class="c"># can&#39;t be pickled either.</span>
-    <span class="k">return</span> <span class="n">SimpleGoodTuringProbDist</span><span class="p">(</span><span class="n">fdist</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">LidstoneProbDist</span><span class="p">(</span><span class="n">fdist</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">)</span>
 
 
 <span class="nd">@compat.python_2_unicode_compatible</span>
@@ -84,7 +87,6 @@
 <span class="sd">    A processing interface for assigning a probability to the next word.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="c"># add cutoff</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span> <span class="n">pad_left</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">pad_right</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
                  <span class="n">estimator</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -136,7 +138,14 @@
         <span class="k">assert</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">pad_left</span><span class="p">,</span> <span class="nb">bool</span><span class="p">))</span>
         <span class="k">assert</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">pad_right</span><span class="p">,</span> <span class="nb">bool</span><span class="p">))</span>
 
+        <span class="c"># make sure n is greater than zero, otherwise print it</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span> <span class="n">n</span>
+
+        <span class="c"># For explicitness save the check whether this is a unigram model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_unigram_model</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="c"># save the ngram order number</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="c"># save left and right padding</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_lpad</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">pad_left</span> <span class="k">else</span> <span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_rpad</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">pad_right</span> <span class="k">else</span> <span class="p">()</span>
 
@@ -144,29 +153,66 @@
             <span class="n">estimator</span> <span class="o">=</span> <span class="n">_estimator</span>
 
         <span class="n">cfd</span> <span class="o">=</span> <span class="n">ConditionalFreqDist</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 
+        <span class="c"># set read-only ngrams set (see property declaration below to reconfigure)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
 
         <span class="c"># If given a list of strings instead of a list of lists, create enclosing list</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">train</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">train</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
             <span class="n">train</span> <span class="o">=</span> <span class="p">[</span><span class="n">train</span><span class="p">]</span>
 
         <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">train</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">ngram</span> <span class="ow">in</span> <span class="n">ngrams</span><span class="p">(</span><span class="n">chain</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lpad</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rpad</span><span class="p">),</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">raw_ngrams</span> <span class="o">=</span> <span class="n">ngrams</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">pad_left</span><span class="p">,</span> <span class="n">pad_right</span><span class="p">,</span> <span class="n">pad_symbol</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">ngram</span> <span class="ow">in</span> <span class="n">raw_ngrams</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ngram</span><span class="p">)</span>
                 <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ngram</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
                 <span class="n">token</span> <span class="o">=</span> <span class="n">ngram</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                <span class="n">cfd</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">inc</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+                <span class="n">cfd</span><span class="p">[(</span><span class="n">context</span><span class="p">,</span> <span class="n">token</span><span class="p">)]</span> <span class="o">+=</span> <span class="mi">1</span>
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">estimator_args</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">estimator_kwargs</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">ConditionalProbDist</span><span class="p">(</span><span class="n">cfd</span><span class="p">,</span> <span class="n">estimator</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">cfd</span><span class="p">))</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">ConditionalProbDist</span><span class="p">(</span><span class="n">cfd</span><span class="p">,</span> <span class="n">estimator</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_probdist</span> <span class="o">=</span> <span class="n">estimator</span><span class="p">(</span><span class="n">cfd</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">)</span>
 
         <span class="c"># recursively construct the lower-order models</span>
-        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span> <span class="o">=</span> <span class="n">NgramModel</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span> <span class="n">pad_left</span><span class="p">,</span> <span class="n">pad_right</span><span class="p">,</span>
-                                       <span class="n">estimator</span><span class="p">,</span> <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span> <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_unigram_model</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span> <span class="o">=</span> <span class="n">NgramModel</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span>
+                                        <span class="n">pad_left</span><span class="p">,</span> <span class="n">pad_right</span><span class="p">,</span>
+                                        <span class="n">estimator</span><span class="p">,</span>
+                                        <span class="o">*</span><span class="n">estimator_args</span><span class="p">,</span>
+                                        <span class="o">**</span><span class="n">estimator_kwargs</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_backoff_alphas</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+            <span class="c"># For each condition (or context)</span>
+            <span class="k">for</span> <span class="n">ctxt</span> <span class="ow">in</span> <span class="n">cfd</span><span class="o">.</span><span class="n">conditions</span><span class="p">():</span>
+                <span class="n">backoff_ctxt</span> <span class="o">=</span> <span class="n">ctxt</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="n">backoff_total_pr</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">total_observed_pr</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+                <span class="c"># this is the subset of words that we OBSERVED following</span>
+                <span class="c"># this context.</span>
+                <span class="c"># i.e. Count(word | context) &gt; 0</span>
+                <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words_following</span><span class="p">(</span><span class="n">ctxt</span><span class="p">,</span> <span class="n">cfd</span><span class="p">):</span>
+                    <span class="n">total_observed_pr</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">ctxt</span><span class="p">)</span>
+                    <span class="c"># we also need the total (n-1)-gram probability of</span>
+                    <span class="c"># words observed in this n-gram context</span>
+                    <span class="n">backoff_total_pr</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">backoff_ctxt</span><span class="p">)</span>
+
+                <span class="k">assert</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">total_observed_pr</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">),</span> <span class="n">total_observed_pr</span>
+                <span class="c"># beta is the remaining probability weight after we factor out</span>
+                <span class="c"># the probability of observed words.</span>
+                <span class="c"># As a sanity check, both total_observed_pr and backoff_total_pr</span>
+                <span class="c"># must be GE 0, since probabilities are never negative</span>
+                <span class="n">beta</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">total_observed_pr</span>
+
+                <span class="c"># backoff total has to be less than one, otherwise we get</span>
+                <span class="c"># an error when we try subtracting it from 1 in the denominator</span>
+                <span class="k">assert</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">backoff_total_pr</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">),</span> <span class="n">backoff_total_pr</span>
+                <span class="n">alpha_ctxt</span> <span class="o">=</span> <span class="n">beta</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">backoff_total_pr</span><span class="p">)</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">_backoff_alphas</span><span class="p">[</span><span class="n">ctxt</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_ctxt</span>
+
+    <span class="k">def</span> <span class="nf">_words_following</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">cond_freq_dist</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">ctxt</span><span class="p">,</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">cond_freq_dist</span><span class="o">.</span><span class="n">iterkeys</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">ctxt</span> <span class="o">==</span> <span class="n">context</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">word</span>
 
 <div class="viewcode-block" id="NgramModel.prob"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.prob">[docs]</a>    <span class="k">def</span> <span class="nf">prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -177,18 +223,22 @@
 <span class="sd">        :param context: the context the word is in</span>
 <span class="sd">        :type context: list(str)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-
         <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
-        <span class="k">if</span> <span class="p">(</span><span class="n">context</span> <span class="o">+</span> <span class="p">(</span><span class="n">word</span><span class="p">,)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">context</span> <span class="o">+</span> <span class="p">(</span><span class="n">word</span><span class="p">,)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">is_unigram_model</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_probdist</span><span class="o">.</span><span class="n">prob</span><span class="p">((</span><span class="n">context</span><span class="p">,</span> <span class="n">word</span><span class="p">))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_alpha</span><span class="p">(</span><span class="n">context</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
 </div>
-    <span class="k">def</span> <span class="nf">_alpha</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_beta</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span><span class="o">.</span><span class="n">_beta</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+    <span class="k">def</span> <span class="nf">_alpha</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get the backoff alpha value for the given context</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">error_message</span> <span class="o">=</span> <span class="s">&quot;Alphas and backoff are not defined for unigram models&quot;</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_unigram_model</span><span class="p">,</span> <span class="n">error_message</span>
 
-    <span class="k">def</span> <span class="nf">_beta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
-        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">tokens</span><span class="p">]</span><span class="o">.</span><span class="n">discount</span><span class="p">()</span> <span class="k">if</span> <span class="n">tokens</span> <span class="ow">in</span> <span class="bp">self</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">context</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff_alphas</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff_alphas</span><span class="p">[</span><span class="n">context</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">1</span>
 
 <div class="viewcode-block" id="NgramModel.logprob"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.logprob">[docs]</a>    <span class="k">def</span> <span class="nf">logprob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -199,8 +249,19 @@
 <span class="sd">        :param context: the context the word is in</span>
 <span class="sd">        :type context: list(str)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-
         <span class="k">return</span> <span class="o">-</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+</div>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="NgramModel.ngrams"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.ngrams">[docs]</a>    <span class="k">def</span> <span class="nf">ngrams</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span>
+</div>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="NgramModel.backoff"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.backoff">[docs]</a>    <span class="k">def</span> <span class="nf">backoff</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_backoff</span>
+</div>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="NgramModel.probdist"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.probdist">[docs]</a>    <span class="k">def</span> <span class="nf">probdist</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_probdist</span>
 </div>
 <div class="viewcode-block" id="NgramModel.choose_random_word"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.choose_random_word">[docs]</a>    <span class="k">def</span> <span class="nf">choose_random_word</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
@@ -230,8 +291,7 @@
         <span class="k">return</span> <span class="n">text</span>
 </div>
     <span class="k">def</span> <span class="nf">_generate_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
-        <span class="n">context</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lpad</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">))[</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
-        <span class="c"># print &quot;Context (%d): &lt;%s&gt;&quot; % (self._n, &#39;,&#39;.join(context))</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lpad</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">context</span><span class="p">))[</span><span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:]</span>
         <span class="k">if</span> <span class="n">context</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">context</span><span class="p">]</span><span class="o">.</span><span class="n">generate</span><span class="p">()</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
@@ -251,11 +311,11 @@
 
         <span class="n">e</span> <span class="o">=</span> <span class="mf">0.0</span>
         <span class="n">text</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lpad</span><span class="p">)</span> <span class="o">+</span> <span class="n">text</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rpad</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)):</span>
-            <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span><span class="n">i</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)):</span>
+            <span class="n">context</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">text</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span><span class="n">i</span><span class="p">])</span>
             <span class="n">token</span> <span class="o">=</span> <span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
             <span class="n">e</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logprob</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">e</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">e</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
 </div>
 <div class="viewcode-block" id="NgramModel.perplexity"><a class="viewcode-back" href="../../../api/nltk.model.html#nltk.model.ngram.NgramModel.perplexity">[docs]</a>    <span class="k">def</span> <span class="nf">perplexity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -269,10 +329,10 @@
         <span class="k">return</span> <span class="nb">pow</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
 </div>
     <span class="k">def</span> <span class="nf">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_probdist</span><span class="o">.</span><span class="n">freqdist</span>
 
     <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_probdist</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">item</span><span class="p">)]</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="s">&#39;&lt;NgramModel with </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s">-grams&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ngrams</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_n</span><span class="p">)</span>
@@ -297,11 +357,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
-<li class="toctree-l1"><a class="reference external" href="http://nltk.org/howto">HOWTO</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk">NLTK Development</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../team.html">Team NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
 </ul>
 
           <h3 style="margin-top: 1.5em;">Search</h3>
@@ -331,9 +391,9 @@
         <div class="right">
           
     <div class="footer">
-        &copy; Copyright 2013, NLTK Project.
-      Last updated on Nov 05, 2013.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b3.
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Feb 26, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.3.
     </div>
         </div>
         <div class="clearer"></div>
