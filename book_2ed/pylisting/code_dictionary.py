@@ -9,7 +9,7 @@
  >>> counts['NOUN']
  30640
  >>> sorted(counts)
- ['ADJ', 'PRT', 'ADV', 'X', 'CONJ', 'PRON', 'VERB', '.', 'NUM', 'NOUN', 'ADP', 'DET']
+ ['.', 'ADJ', 'ADP', 'ADV', 'CONJ', 'DET', 'NOUN', 'NUM', 'PRON', 'PRT', 'VERB', 'X']
 
  >>> from operator import itemgetter
  >>> sorted(counts.items(), key=itemgetter(1), reverse=True)
