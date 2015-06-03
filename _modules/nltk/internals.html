@@ -1,0 +1,1032 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.internals &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.internals</h1><div class="highlight"><pre>
+<span class="c"># Natural Language Toolkit: Internal utility functions</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Steven Bird &lt;stevenbird1@gmail.com&gt;</span>
+<span class="c">#         Edward Loper &lt;edloper@gmail.com&gt;</span>
+<span class="c">#         Nitin Madnani &lt;nmadnani@ets.org&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span><span class="o">,</span> <span class="nn">sre_constants</span><span class="o">,</span> <span class="nn">sre_parse</span><span class="o">,</span> <span class="nn">sre_compile</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">import</span> <span class="nn">types</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">stat</span>
+<span class="kn">import</span> <span class="nn">locale</span>
+
+<span class="c"># Use the c version of ElementTree, which is faster, if possible:</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">cElementTree</span> <span class="k">as</span> <span class="n">ElementTree</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">xml.etree</span> <span class="kn">import</span> <span class="n">ElementTree</span>
+
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">__file__</span>
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
+<span class="c">######################################################################</span>
+<span class="c"># Regular Expression Processing</span>
+<span class="c">######################################################################</span>
+
+<span class="k">def</span> <span class="nf">compile_regexp_to_noncapturing</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compile the regexp pattern after switching all grouping parentheses</span>
+<span class="sd">    in the given regexp pattern to non-capturing groups.</span>
+
+<span class="sd">    :type pattern: str</span>
+<span class="sd">    :rtype: str</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">convert_regexp_to_noncapturing_parsed</span><span class="p">(</span><span class="n">parsed_pattern</span><span class="p">):</span>
+        <span class="n">res_data</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">parsed_pattern</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="n">sre_constants</span><span class="o">.</span><span class="n">SUBPATTERN</span><span class="p">:</span>
+                <span class="n">index</span><span class="p">,</span> <span class="n">subpattern</span> <span class="o">=</span> <span class="n">value</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="n">convert_regexp_to_noncapturing_parsed</span><span class="p">(</span><span class="n">subpattern</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="n">sre_constants</span><span class="o">.</span><span class="n">GROUPREF</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Regular expressions with back-references are not supported: {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pattern</span><span class="p">))</span>
+            <span class="n">res_data</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+        <span class="n">parsed_pattern</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">res_data</span>
+        <span class="n">parsed_pattern</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">groups</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">parsed_pattern</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">groupdict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">parsed_pattern</span>
+
+    <span class="k">return</span> <span class="n">sre_compile</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">convert_regexp_to_noncapturing_parsed</span><span class="p">(</span><span class="n">sre_parse</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">pattern</span><span class="p">)),</span> <span class="n">flags</span><span class="o">=</span><span class="n">flags</span><span class="p">)</span>
+
+
+<span class="c">##########################################################################</span>
+<span class="c"># Java Via Command-Line</span>
+<span class="c">##########################################################################</span>
+
+<span class="n">_java_bin</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">_java_options</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="c"># [xx] add classpath option to config_java?</span>
+<span class="k">def</span> <span class="nf">config_java</span><span class="p">(</span><span class="nb">bin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Configure nltk&#39;s java interface, by letting nltk know where it can</span>
+<span class="sd">    find the Java binary, and what extra options (if any) should be</span>
+<span class="sd">    passed to Java when it is run.</span>
+
+<span class="sd">    :param bin: The full path to the Java binary.  If not specified,</span>
+<span class="sd">        then nltk will search the system for a Java binary; and if</span>
+<span class="sd">        one is not found, it will raise a ``LookupError`` exception.</span>
+<span class="sd">    :type bin: str</span>
+<span class="sd">    :param options: A list of options that should be passed to the</span>
+<span class="sd">        Java binary when it is called.  A common value is</span>
+<span class="sd">        ``&#39;-Xmx512m&#39;``, which tells Java binary to increase</span>
+<span class="sd">        the maximum heap size to 512 megabytes.  If no options are</span>
+<span class="sd">        specified, then do not modify the options list.</span>
+<span class="sd">    :type options: list(str)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_java_bin</span><span class="p">,</span> <span class="n">_java_options</span>
+    <span class="n">_java_bin</span> <span class="o">=</span> <span class="n">find_binary</span><span class="p">(</span><span class="s">&#39;java&#39;</span><span class="p">,</span> <span class="nb">bin</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;JAVAHOME&#39;</span><span class="p">,</span> <span class="s">&#39;JAVA_HOME&#39;</span><span class="p">],</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">binary_names</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;java.exe&#39;</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">options</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+            <span class="n">options</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">_java_options</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">java</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">classpath</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+         <span class="n">blocking</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Execute the given java command, by opening a subprocess that calls</span>
+<span class="sd">    Java.  If java has not yet been configured, it will be configured</span>
+<span class="sd">    by calling ``config_java()`` with no arguments.</span>
+
+<span class="sd">    :param cmd: The java command that should be called, formatted as</span>
+<span class="sd">        a list of strings.  Typically, the first string will be the name</span>
+<span class="sd">        of the java class; and the remaining strings will be arguments</span>
+<span class="sd">        for that java class.</span>
+<span class="sd">    :type cmd: list(str)</span>
+
+<span class="sd">    :param classpath: A ``&#39;:&#39;`` separated list of directories, JAR</span>
+<span class="sd">        archives, and ZIP archives to search for class files.</span>
+<span class="sd">    :type classpath: str</span>
+
+<span class="sd">    :param stdin, stdout, stderr: Specify the executed programs&#39;</span>
+<span class="sd">        standard input, standard output and standard error file</span>
+<span class="sd">        handles, respectively.  Valid values are ``subprocess.PIPE``,</span>
+<span class="sd">        an existing file descriptor (a positive integer), an existing</span>
+<span class="sd">        file object, and None.  ``subprocess.PIPE`` indicates that a</span>
+<span class="sd">        new pipe to the child should be created.  With None, no</span>
+<span class="sd">        redirection will occur; the child&#39;s file handles will be</span>
+<span class="sd">        inherited from the parent.  Additionally, stderr can be</span>
+<span class="sd">        ``subprocess.STDOUT``, which indicates that the stderr data</span>
+<span class="sd">        from the applications should be captured into the same file</span>
+<span class="sd">        handle as for stdout.</span>
+
+<span class="sd">    :param blocking: If ``false``, then return immediately after</span>
+<span class="sd">        spawning the subprocess.  In this case, the return value is</span>
+<span class="sd">        the ``Popen`` object, and not a ``(stdout, stderr)`` tuple.</span>
+
+<span class="sd">    :return: If ``blocking=True``, then return a tuple ``(stdout,</span>
+<span class="sd">        stderr)``, containing the stdout and stderr outputs generated</span>
+<span class="sd">        by the java command if the ``stdout`` and ``stderr`` parameters</span>
+<span class="sd">        were set to ``subprocess.PIPE``; or None otherwise.  If</span>
+<span class="sd">        ``blocking=False``, then return a ``subprocess.Popen`` object.</span>
+
+<span class="sd">    :raise OSError: If the java command returns a nonzero return code.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">stdin</span> <span class="o">==</span> <span class="s">&#39;pipe&#39;</span><span class="p">:</span> <span class="n">stdin</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span>
+    <span class="k">if</span> <span class="n">stdout</span> <span class="o">==</span> <span class="s">&#39;pipe&#39;</span><span class="p">:</span> <span class="n">stdout</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span>
+    <span class="k">if</span> <span class="n">stderr</span> <span class="o">==</span> <span class="s">&#39;pipe&#39;</span><span class="p">:</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;cmd should be a list of strings&#39;</span><span class="p">)</span>
+
+    <span class="c"># Make sure we know where a java binary is.</span>
+    <span class="k">if</span> <span class="n">_java_bin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">config_java</span><span class="p">()</span>
+
+    <span class="c"># Set up the classpath.</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">classpath</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+        <span class="n">classpaths</span><span class="o">=</span><span class="p">[</span><span class="n">classpath</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">classpaths</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">classpath</span><span class="p">)</span>
+    <span class="n">classpath</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">pathsep</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">classpaths</span><span class="p">)</span>
+
+    <span class="c"># Construct the full command string.</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;-cp&#39;</span><span class="p">,</span> <span class="n">classpath</span><span class="p">]</span> <span class="o">+</span> <span class="n">cmd</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">_java_bin</span><span class="p">]</span> <span class="o">+</span> <span class="n">_java_options</span> <span class="o">+</span> <span class="n">cmd</span>
+
+    <span class="c"># Call java via a subprocess</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="n">stdin</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">stderr</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">blocking</span><span class="p">:</span> <span class="k">return</span> <span class="n">p</span>
+    <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">communicate</span><span class="p">()</span>
+
+    <span class="c"># Check the return code.</span>
+    <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">_decode_stdoutdata</span><span class="p">(</span><span class="n">stderr</span><span class="p">))</span>
+        <span class="k">raise</span> <span class="ne">OSError</span><span class="p">(</span><span class="s">&#39;Java command failed : &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">cmd</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="c">#config_java(options=&#39;-Xmx512m&#39;)</span>
+    <span class="c"># Write:</span>
+    <span class="c">#java(&#39;weka.classifiers.bayes.NaiveBayes&#39;,</span>
+    <span class="c">#     [&#39;-d&#39;, &#39;/tmp/names.model&#39;, &#39;-t&#39;, &#39;/tmp/train.arff&#39;],</span>
+    <span class="c">#     classpath=&#39;/Users/edloper/Desktop/weka/weka.jar&#39;)</span>
+    <span class="c"># Read:</span>
+    <span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">)</span> <span class="o">=</span> <span class="n">java</span><span class="p">([</span><span class="s">&#39;weka.classifiers.bayes.NaiveBayes&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;-l&#39;</span><span class="p">,</span> <span class="s">&#39;/tmp/names.model&#39;</span><span class="p">,</span> <span class="s">&#39;-T&#39;</span><span class="p">,</span> <span class="s">&#39;/tmp/test.arff&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;-p&#39;</span><span class="p">,</span> <span class="s">&#39;0&#39;</span><span class="p">],</span><span class="c">#, &#39;-distribution&#39;],</span>
+                 <span class="n">classpath</span><span class="o">=</span><span class="s">&#39;/Users/edloper/Desktop/weka/weka.jar&#39;</span><span class="p">)</span>
+
+
+<span class="c">######################################################################</span>
+<span class="c"># Parsing</span>
+<span class="c">######################################################################</span>
+
+<span class="k">class</span> <span class="nc">ReadError</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exception raised by read_* functions when they fail.</span>
+<span class="sd">    :param position: The index in the input string where an error occurred.</span>
+<span class="sd">    :param expected: What was expected when an error occurred.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expected</span><span class="p">,</span> <span class="n">position</span><span class="p">):</span>
+        <span class="ne">ValueError</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expected</span><span class="p">,</span> <span class="n">position</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">expected</span> <span class="o">=</span> <span class="n">expected</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">position</span> <span class="o">=</span> <span class="n">position</span>
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;Expected </span><span class="si">%s</span><span class="s"> at </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">expected</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+
+<span class="n">_STRING_START_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&quot;[uU]?[rR]?(</span><span class="se">\&quot;\&quot;\&quot;</span><span class="s">|\&#39;\&#39;\&#39;|</span><span class="se">\&quot;</span><span class="s">|\&#39;)&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">read_str</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    If a Python string literal begins at the specified position in the</span>
+<span class="sd">    given string, then return a tuple ``(val, end_position)``</span>
+<span class="sd">    containing the value of the string literal and the position where</span>
+<span class="sd">    it ends.  Otherwise, raise a ``ReadError``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Read the open quote, and any modifiers.</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_STRING_START_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span><span class="p">:</span> <span class="k">raise</span> <span class="n">ReadError</span><span class="p">(</span><span class="s">&#39;open quote&#39;</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="n">quotemark</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c"># Find the close quote.</span>
+    <span class="n">_STRING_END_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;</span><span class="se">\\</span><span class="s">|</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">quotemark</span><span class="p">)</span>
+    <span class="n">position</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">match</span> <span class="o">=</span> <span class="n">_STRING_END_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">position</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">match</span><span class="p">:</span> <span class="k">raise</span> <span class="n">ReadError</span><span class="p">(</span><span class="s">&#39;close quote&#39;</span><span class="p">,</span> <span class="n">position</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">:</span> <span class="n">position</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span> <span class="k">break</span>
+
+    <span class="c"># Process it, using eval.  Strings with invalid escape sequences</span>
+    <span class="c"># might raise ValueEerror.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">eval</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">start_position</span><span class="p">:</span><span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">()]),</span> <span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ReadError</span><span class="p">(</span><span class="s">&#39;invalid string (</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">e</span><span class="p">)</span>
+
+<span class="n">_READ_INT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;-?\d+&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">read_int</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    If an integer begins at the specified position in the given</span>
+<span class="sd">    string, then return a tuple ``(val, end_position)`` containing the</span>
+<span class="sd">    value of the integer and the position where it ends.  Otherwise,</span>
+<span class="sd">    raise a ``ReadError``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_READ_INT_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span><span class="p">:</span> <span class="k">raise</span> <span class="n">ReadError</span><span class="p">(</span><span class="s">&#39;integer&#39;</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">()),</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+<span class="n">_READ_NUMBER_VALUE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;-?(\d*)([.]?\d*)?&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">read_number</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    If an integer or float begins at the specified position in the</span>
+<span class="sd">    given string, then return a tuple ``(val, end_position)``</span>
+<span class="sd">    containing the value of the number and the position where it ends.</span>
+<span class="sd">    Otherwise, raise a ``ReadError``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_READ_NUMBER_VALUE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">m</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="n">ReadError</span><span class="p">(</span><span class="s">&#39;number&#39;</span><span class="p">,</span> <span class="n">start_position</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span> <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">()),</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span> <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">()),</span> <span class="n">m</span><span class="o">.</span><span class="n">end</span><span class="p">()</span>
+
+
+
+<span class="c">######################################################################</span>
+<span class="c"># Check if a method has been overridden</span>
+<span class="c">######################################################################</span>
+
+<span class="k">def</span> <span class="nf">overridden</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    :return: True if ``method`` overrides some method with the same</span>
+<span class="sd">    name in a base class.  This is typically used when defining</span>
+<span class="sd">    abstract base classes or interfaces, to allow subclasses to define</span>
+<span class="sd">    either of two related methods:</span>
+
+<span class="sd">        &gt;&gt;&gt; class EaterI:</span>
+<span class="sd">        ...     &#39;&#39;&#39;Subclass must define eat() or batch_eat().&#39;&#39;&#39;</span>
+<span class="sd">        ...     def eat(self, food):</span>
+<span class="sd">        ...         if overridden(self.batch_eat):</span>
+<span class="sd">        ...             return self.batch_eat([food])[0]</span>
+<span class="sd">        ...         else:</span>
+<span class="sd">        ...             raise NotImplementedError()</span>
+<span class="sd">        ...     def batch_eat(self, foods):</span>
+<span class="sd">        ...         return [self.eat(food) for food in foods]</span>
+
+<span class="sd">    :type method: instance method</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># [xx] breaks on classic classes!</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">MethodType</span><span class="p">)</span> <span class="ow">and</span> <span class="n">compat</span><span class="o">.</span><span class="n">get_im_class</span><span class="p">(</span><span class="n">method</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="n">cls</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+                 <span class="k">for</span> <span class="n">cls</span> <span class="ow">in</span> <span class="n">_mro</span><span class="p">(</span><span class="n">compat</span><span class="o">.</span><span class="n">get_im_class</span><span class="p">(</span><span class="n">method</span><span class="p">))</span>
+                 <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">cls</span><span class="o">.</span><span class="n">__dict__</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">funcs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;Expected an instance method.&#39;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_mro</span><span class="p">(</span><span class="n">cls</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the method resolution order for ``cls`` -- i.e., a list</span>
+<span class="sd">    containing ``cls`` and all its base classes, in the order in which</span>
+<span class="sd">    they would be checked by ``getattr``.  For new-style classes, this</span>
+<span class="sd">    is just cls.__mro__.  For classic classes, this can be obtained by</span>
+<span class="sd">    a depth-first left-to-right traversal of ``__bases__``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="nb">type</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">__mro__</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">mro</span> <span class="o">=</span> <span class="p">[</span><span class="n">cls</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">base</span> <span class="ow">in</span> <span class="n">cls</span><span class="o">.</span><span class="n">__bases__</span><span class="p">:</span> <span class="n">mro</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_mro</span><span class="p">(</span><span class="n">base</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">mro</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># Deprecation decorator &amp; base class</span>
+<span class="c">######################################################################</span>
+<span class="c"># [xx] dedent msg first if it comes from  a docstring.</span>
+
+<span class="k">def</span> <span class="nf">_add_epytext_field</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Add an epytext @field to a given object&#39;s docstring.&quot;&quot;&quot;</span>
+    <span class="n">indent</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+    <span class="c"># If we already have a docstring, then add a blank line to separate</span>
+    <span class="c"># it from the new field, and check its indentation.</span>
+    <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span><span class="p">:</span>
+        <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span><span class="o">+</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">&#39;</span>
+        <span class="n">indents</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s">r&#39;(?&lt;=\n)[ ]+(?!\s)&#39;</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span><span class="o">.</span><span class="n">expandtabs</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">indents</span><span class="p">:</span> <span class="n">indent</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">indents</span><span class="p">)</span>
+    <span class="c"># If we don&#39;t have a docstring, add an empty one.</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+    <span class="n">obj</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">+=</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="s">&#39;@</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">message</span><span class="p">),</span>
+                                 <span class="n">initial_indent</span><span class="o">=</span><span class="n">indent</span><span class="p">,</span>
+                                 <span class="n">subsequent_indent</span><span class="o">=</span><span class="n">indent</span><span class="o">+</span><span class="s">&#39;    &#39;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">deprecated</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A decorator used to mark functions as deprecated.  This will cause</span>
+<span class="sd">    a warning to be printed the when the function is used.  Usage:</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.internals import deprecated</span>
+<span class="sd">        &gt;&gt;&gt; @deprecated(&#39;Use foo() instead&#39;)</span>
+<span class="sd">        ... def bar(x):</span>
+<span class="sd">        ...     print(x/10)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;Function </span><span class="si">%s</span><span class="s">() has been deprecated.  </span><span class="si">%s</span><span class="s">&quot;</span>
+               <span class="o">%</span> <span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">message</span><span class="p">))</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">initial_indent</span><span class="o">=</span><span class="s">&#39;  &#39;</span><span class="p">,</span>
+                                   <span class="n">subsequent_indent</span><span class="o">=</span><span class="s">&#39;  &#39;</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">newFunc</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="ne">DeprecationWarning</span><span class="p">,</span> <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c"># Copy the old function&#39;s name, docstring, &amp; dict</span>
+        <span class="n">newFunc</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">__dict__</span><span class="p">)</span>
+        <span class="n">newFunc</span><span class="o">.</span><span class="n">__name__</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="n">newFunc</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">__doc__</span>
+        <span class="n">newFunc</span><span class="o">.</span><span class="n">__deprecated__</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="c"># Add a @deprecated field to the docstring.</span>
+        <span class="n">_add_epytext_field</span><span class="p">(</span><span class="n">newFunc</span><span class="p">,</span> <span class="s">&#39;deprecated&#39;</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">newFunc</span>
+    <span class="k">return</span> <span class="n">decorator</span>
+
+<span class="k">class</span> <span class="nc">Deprecated</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A base class used to mark deprecated classes.  A typical usage is to</span>
+<span class="sd">    alert users that the name of a class has changed:</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.internals import Deprecated</span>
+<span class="sd">        &gt;&gt;&gt; class NewClassName(object):</span>
+<span class="sd">        ...     pass # All logic goes here.</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; class OldClassName(Deprecated, NewClassName):</span>
+<span class="sd">        ...     &quot;Use NewClassName instead.&quot;</span>
+
+<span class="sd">    The docstring of the deprecated class will be used in the</span>
+<span class="sd">    deprecation warning message.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># Figure out which class is the deprecated one.</span>
+        <span class="n">dep_cls</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">base</span> <span class="ow">in</span> <span class="n">_mro</span><span class="p">(</span><span class="n">cls</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">Deprecated</span> <span class="ow">in</span> <span class="n">base</span><span class="o">.</span><span class="n">__bases__</span><span class="p">:</span>
+                <span class="n">dep_cls</span> <span class="o">=</span> <span class="n">base</span><span class="p">;</span> <span class="k">break</span>
+        <span class="k">assert</span> <span class="n">dep_cls</span><span class="p">,</span> <span class="s">&#39;Unable to determine which base is deprecated.&#39;</span>
+
+        <span class="c"># Construct an appropriate warning.</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">dep_cls</span><span class="o">.</span><span class="n">__doc__</span> <span class="ow">or</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="c"># If there&#39;s a @deprecated field, strip off the field marker.</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;\A\s*@deprecated:&#39;</span><span class="p">,</span> <span class="s">r&#39;&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">)</span>
+        <span class="c"># Strip off any indentation.</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;(?m)^\s*&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">)</span>
+        <span class="c"># Construct a &#39;name&#39; string.</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;Class </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">dep_cls</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">if</span> <span class="n">cls</span> <span class="o">!=</span> <span class="n">dep_cls</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">+=</span> <span class="s">&#39; (base class for </span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="n">cls</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="c"># Put it all together.</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s"> has been deprecated.  </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">doc</span><span class="p">)</span>
+        <span class="c"># Wrap it.</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">initial_indent</span><span class="o">=</span><span class="s">&#39;    &#39;</span><span class="p">,</span>
+                                   <span class="n">subsequent_indent</span><span class="o">=</span><span class="s">&#39;    &#39;</span><span class="p">)</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="ne">DeprecationWarning</span><span class="p">,</span> <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="c"># Do the actual work of __new__.</span>
+        <span class="k">return</span> <span class="nb">object</span><span class="o">.</span><span class="n">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">)</span>
+
+<span class="c">##########################################################################</span>
+<span class="c"># COUNTER, FOR UNIQUE NAMING</span>
+<span class="c">##########################################################################</span>
+
+<span class="k">class</span> <span class="nc">Counter</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A counter that auto-increments each time its value is read.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_value</span> <span class="o">=</span> <span class="n">initial_value</span>
+    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_value</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span>
+
+<span class="c">##########################################################################</span>
+<span class="c"># Search for files/binaries</span>
+<span class="c">##########################################################################</span>
+
+<span class="k">def</span> <span class="nf">find_file_iter</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
+        <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Search for a file to be used by nltk.</span>
+
+<span class="sd">    :param filename: The name or path of the file.</span>
+<span class="sd">    :param env_vars: A list of environment variable names to check.</span>
+<span class="sd">    :param file_names: A list of alternative file names to check.</span>
+<span class="sd">    :param searchpath: List of directories to search.</span>
+<span class="sd">    :param url: URL presented to user for download help.</span>
+<span class="sd">    :param verbose: Whether or not to print path when a file is found.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">file_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">filename</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">file_names</span> <span class="ow">or</span> <span class="p">[])</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_names</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">env_vars</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+        <span class="n">env_vars</span> <span class="o">=</span> <span class="n">env_vars</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">yielded</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="c"># File exists, no magic</span>
+    <span class="k">for</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="n">file_names</span><span class="p">:</span>
+        <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_file</span><span class="p">))</span>
+            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">yield</span> <span class="n">path_to_file</span>
+        <span class="c"># Check the bare alternatives</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">alternative</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">alternative</span><span class="p">))</span>
+            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">yield</span> <span class="n">alternative</span>
+        <span class="c"># Check if the alternative is inside a &#39;file&#39; directory</span>
+        <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;file&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_file</span><span class="p">))</span>
+            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">yield</span> <span class="n">path_to_file</span>
+
+    <span class="c"># Check environment variables</span>
+    <span class="k">for</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">env_vars</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">env_dir</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">env_var</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="p">):</span>
+                <span class="c"># Check if the environment variable contains a direct path to the bin</span>
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">env_dir</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_dir</span><span class="p">))</span>
+                    <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                    <span class="k">yield</span> <span class="n">env_dir</span>
+                <span class="c"># Check if the possible bin names exist inside the environment variable directories</span>
+                <span class="k">for</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="n">file_names</span><span class="p">:</span>
+                    <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">env_dir</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_file</span><span class="p">))</span>
+                        <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                        <span class="k">yield</span> <span class="n">path_to_file</span>
+                    <span class="c"># Check if the alternative is inside a &#39;file&#39; directory</span>
+                    <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">env_dir</span><span class="p">,</span> <span class="s">&#39;file&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_file</span><span class="p">))</span>
+                        <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                        <span class="k">yield</span> <span class="n">path_to_file</span>
+
+    <span class="c"># Check the path list.</span>
+    <span class="k">for</span> <span class="n">directory</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="n">file_names</span><span class="p">:</span>
+            <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
+                <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">yield</span> <span class="n">path_to_file</span>
+
+    <span class="c"># If we&#39;re on a POSIX system, then try using the &#39;which&#39; command</span>
+    <span class="c"># to find the file.</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s">&#39;posix&#39;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="n">file_names</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="s">&#39;which&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="p">],</span>
+                        <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">)</span>
+                <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">communicate</span><span class="p">()</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="n">_decode_stdoutdata</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">alternative</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path</span><span class="p">))</span>
+                    <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                    <span class="k">yield</span> <span class="n">path</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">KeyboardInterrupt</span><span class="p">,</span> <span class="ne">SystemExit</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+                <span class="k">raise</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">yielded</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;NLTK was unable to find the </span><span class="si">%s</span><span class="s"> file!&quot;</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">Use software specific &quot;</span>
+               <span class="s">&quot;configuration paramaters&quot;</span> <span class="o">%</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">env_vars</span><span class="p">:</span> <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39; or set the </span><span class="si">%s</span><span class="s"> environment variable&#39;</span> <span class="o">%</span> <span class="n">env_vars</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;.&#39;</span>
+        <span class="k">if</span> <span class="n">searchpath</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n\n</span><span class="s">  Searched in:&#39;</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">    - </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">url</span><span class="p">:</span> <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">  For more information on </span><span class="si">%s</span><span class="s">, see:</span><span class="se">\n</span><span class="s">    &lt;</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span>
+                        <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">url</span><span class="p">))</span>
+        <span class="n">div</span> <span class="o">=</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">75</span>
+        <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">div</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="n">div</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">find_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
+        <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_file_iter</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span> <span class="n">searchpath</span><span class="p">,</span>
+                               <span class="n">file_names</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">find_binary_iter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">path_to_bin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
+                <span class="n">binary_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Search for a file to be used by nltk.</span>
+
+<span class="sd">    :param name: The name or path of the file.</span>
+<span class="sd">    :param path_to_bin: The user-supplied binary location (deprecated)</span>
+<span class="sd">    :param env_vars: A list of environment variable names to check.</span>
+<span class="sd">    :param file_names: A list of alternative file names to check.</span>
+<span class="sd">    :param searchpath: List of directories to search.</span>
+<span class="sd">    :param url: URL presented to user for download help.</span>
+<span class="sd">    :param verbose: Whether or not to print path when a file is found.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="nb">file</span> <span class="ow">in</span>  <span class="n">find_file_iter</span><span class="p">(</span><span class="n">path_to_bin</span> <span class="ow">or</span> <span class="n">name</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span> <span class="n">searchpath</span><span class="p">,</span> <span class="n">binary_names</span><span class="p">,</span>
+                     <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="nb">file</span>
+
+<span class="k">def</span> <span class="nf">find_binary</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">path_to_bin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
+                <span class="n">binary_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_binary_iter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">path_to_bin</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span> <span class="n">searchpath</span><span class="p">,</span>
+                                 <span class="n">binary_names</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">find_jar_iter</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span>
+        <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Search for a jar that is used by nltk.</span>
+
+<span class="sd">    :param name_pattern: The name of the jar file</span>
+<span class="sd">    :param path_to_jar: The user-supplied jar location, or None.</span>
+<span class="sd">    :param env_vars: A list of environment variable names to check</span>
+<span class="sd">                     in addition to the CLASSPATH variable which is</span>
+<span class="sd">                     checked by default.</span>
+<span class="sd">    :param searchpath: List of directories to search.</span>
+<span class="sd">    :param is_regex: Whether name is a regular expression.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">env_vars</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+        <span class="n">env_vars</span> <span class="o">=</span> <span class="n">env_vars</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">yielded</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="c"># Make sure we check the CLASSPATH first</span>
+    <span class="n">env_vars</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;CLASSPATH&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="n">env_vars</span><span class="p">)</span>
+
+    <span class="c"># If an explicit location was given, then check it, and yield it if</span>
+    <span class="c"># it&#39;s present; otherwise, complain.</span>
+    <span class="k">if</span> <span class="n">path_to_jar</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_jar</span><span class="p">):</span>
+            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">yield</span> <span class="n">path_to_jar</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&#39;Could not find </span><span class="si">%s</span><span class="s"> jar file at </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                            <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">))</span>
+
+    <span class="c"># Check environment variables</span>
+    <span class="k">for</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">env_vars</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">env_var</span> <span class="o">==</span> <span class="s">&#39;CLASSPATH&#39;</span><span class="p">:</span>
+                <span class="n">classpath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s">&#39;CLASSPATH&#39;</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">cp</span> <span class="ow">in</span> <span class="n">classpath</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">pathsep</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">cp</span><span class="p">):</span>
+                        <span class="n">filename</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">cp</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">is_regex</span> <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> <span class="ow">or</span> \
+                                <span class="p">(</span><span class="ow">not</span> <span class="n">is_regex</span> <span class="ow">and</span> <span class="n">filename</span> <span class="o">==</span> <span class="n">name_pattern</span><span class="p">):</span>
+                            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                                <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">cp</span><span class="p">))</span>
+                            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                            <span class="k">yield</span> <span class="n">cp</span>
+                    <span class="c"># The case where user put directory containing the jar file in the classpath </span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">cp</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_regex</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span><span class="n">name_pattern</span><span class="p">)):</span>
+                                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                                    <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">cp</span><span class="p">))</span>
+                                <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                                <span class="k">yield</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span><span class="n">name_pattern</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="c"># Look for file using regular expression </span>
+                            <span class="k">for</span> <span class="n">file_name</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">cp</span><span class="p">):</span>
+                                <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span><span class="n">file_name</span><span class="p">):</span>
+                                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                                        <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span><span class="n">file_name</span><span class="p">)))</span>
+                                    <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                                    <span class="k">yield</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cp</span><span class="p">,</span><span class="n">file_name</span><span class="p">)</span>
+                                
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">jar_env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">env_var</span><span class="p">]</span>
+                <span class="n">jar_iter</span> <span class="o">=</span> <span class="p">((</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">jar_env</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">)</span> <span class="k">for</span> <span class="n">path_to_jar</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">jar_env</span><span class="p">))</span>
+                            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">jar_env</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">jar_env</span><span class="p">,))</span>
+                <span class="k">for</span> <span class="n">path_to_jar</span> <span class="ow">in</span> <span class="n">jar_iter</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_jar</span><span class="p">):</span>
+                        <span class="n">filename</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">path_to_jar</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">is_regex</span> <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> <span class="ow">or</span> \
+                                <span class="p">(</span><span class="ow">not</span> <span class="n">is_regex</span> <span class="ow">and</span> <span class="n">filename</span> <span class="o">==</span> <span class="n">name_pattern</span><span class="p">):</span>
+                            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                                <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">))</span>
+                            <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                            <span class="k">yield</span> <span class="n">path_to_jar</span>
+
+    <span class="c"># Check the path list.</span>
+    <span class="k">for</span> <span class="n">directory</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">is_regex</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">directory</span><span class="p">):</span>
+                <span class="n">path_to_jar</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_jar</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">))</span>
+                <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">yield</span> <span class="n">path_to_jar</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">path_to_jar</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">name_pattern</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_jar</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">))</span>
+                <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">yield</span> <span class="n">path_to_jar</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">yielded</span><span class="p">:</span>
+        <span class="c"># If nothing was found, raise an error</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;NLTK was unable to find </span><span class="si">%s</span><span class="s">!&quot;</span> <span class="o">%</span> <span class="n">name_pattern</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">env_vars</span><span class="p">:</span> <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39; Set the </span><span class="si">%s</span><span class="s"> environment variable&#39;</span> <span class="o">%</span> <span class="n">env_vars</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">msg</span><span class="o">+</span><span class="s">&#39;.&#39;</span><span class="p">,</span> <span class="n">initial_indent</span><span class="o">=</span><span class="s">&#39;  &#39;</span><span class="p">,</span>
+                            <span class="n">subsequent_indent</span><span class="o">=</span><span class="s">&#39;  &#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">searchpath</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n\n</span><span class="s">  Searched in:&#39;</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">    - </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">url</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="s">  For more information, on </span><span class="si">%s</span><span class="s">, see:</span><span class="se">\n</span><span class="s">    &lt;</span><span class="si">%s</span><span class="s">&gt;&#39;</span> <span class="o">%</span>
+                    <span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">url</span><span class="p">))</span>
+        <span class="n">div</span> <span class="o">=</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">75</span>
+        <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">div</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="n">div</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">find_jar</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span>
+        <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_jar_iter</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span>
+                         <span class="n">searchpath</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">is_regex</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">_decode_stdoutdata</span><span class="p">(</span><span class="n">stdoutdata</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Convert data read from stdout/stderr to unicode &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stdoutdata</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">stdoutdata</span>
+    
+    <span class="n">encoding</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">__stdout__</span><span class="p">,</span> <span class="s">&quot;encoding&quot;</span><span class="p">,</span> <span class="n">locale</span><span class="o">.</span><span class="n">getpreferredencoding</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">encoding</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">stdoutdata</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">stdoutdata</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+
+<span class="c">##########################################################################</span>
+<span class="c"># Import Stdlib Module</span>
+<span class="c">##########################################################################</span>
+
+<span class="k">def</span> <span class="nf">import_from_stdlib</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    When python is run from within the nltk/ directory tree, the</span>
+<span class="sd">    current directory is included at the beginning of the search path.</span>
+<span class="sd">    Unfortunately, that means that modules within nltk can sometimes</span>
+<span class="sd">    shadow standard library modules.  As an example, the stdlib</span>
+<span class="sd">    &#39;inspect&#39; module will attempt to import the stdlib &#39;tokenize&#39;</span>
+<span class="sd">    module, but will instead end up importing NLTK&#39;s &#39;tokenize&#39; module</span>
+<span class="sd">    instead (causing the import to fail).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">old_path</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="k">if</span> <span class="n">d</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="s">&#39;.&#39;</span><span class="p">)]</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="nb">__import__</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">old_path</span>
+    <span class="k">return</span> <span class="n">m</span>
+
+
+<span class="c">##########################################################################</span>
+<span class="c"># Wrapper for ElementTree Elements</span>
+<span class="c">##########################################################################</span>
+
+<span class="nd">@compat.python_2_unicode_compatible</span>
+<span class="k">class</span> <span class="nc">ElementWrapper</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A wrapper around ElementTree Element objects whose main purpose is</span>
+<span class="sd">    to provide nicer __repr__ and __str__ methods.  In addition, any</span>
+<span class="sd">    of the wrapped Element&#39;s methods that return other Element objects</span>
+<span class="sd">    are overridden to wrap those values before returning them.</span>
+
+<span class="sd">    This makes Elements more convenient to work with in</span>
+<span class="sd">    interactive sessions and doctests, at the expense of some</span>
+<span class="sd">    efficiency.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># Prevent double-wrapping:</span>
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">etree</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create and return a wrapper around a given Element object.</span>
+<span class="sd">        If ``etree`` is an ``ElementWrapper``, then ``etree`` is</span>
+<span class="sd">        returned as-is.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">etree</span><span class="p">,</span> <span class="n">ElementWrapper</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">etree</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">object</span><span class="o">.</span><span class="n">__new__</span><span class="p">(</span><span class="n">ElementWrapper</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">etree</span><span class="p">):</span>
+        <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">        Initialize a new Element wrapper for ``etree``.</span>
+
+<span class="sd">        If ``etree`` is a string, then it will be converted to an</span>
+<span class="sd">        Element object using ``ElementTree.fromstring()`` first:</span>
+
+<span class="sd">            &gt;&gt;&gt; ElementWrapper(&quot;&lt;test&gt;&lt;/test&gt;&quot;)</span>
+<span class="sd">            &lt;Element &quot;&lt;?xml version=&#39;1.0&#39; encoding=&#39;utf8&#39;?&gt;\n&lt;test /&gt;&quot;&gt;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">etree</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">string_types</span><span class="p">):</span>
+            <span class="n">etree</span> <span class="o">=</span> <span class="n">ElementTree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">etree</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="s">&#39;_etree&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">etree</span>
+
+    <span class="k">def</span> <span class="nf">unwrap</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the Element object wrapped by this wrapper.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span>
+
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+    <span class="c">#{ String Representation</span>
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">ElementTree</span><span class="o">.</span><span class="n">tostring</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">60</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">-</span><span class="n">e</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="p">:</span> <span class="n">e</span> <span class="o">=</span> <span class="o">-</span><span class="mi">20</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">...</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">s</span><span class="p">[:</span><span class="mi">30</span><span class="p">],</span> <span class="n">s</span><span class="p">[</span><span class="n">e</span><span class="p">:])</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;Element </span><span class="si">%r</span><span class="s">&gt;&#39;</span> <span class="o">%</span> <span class="n">s</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: the result of applying ``ElementTree.tostring()`` to</span>
+<span class="sd">        the wrapped Element object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">ElementTree</span><span class="o">.</span><span class="n">tostring</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+    <span class="c">#{ Element interface Delegation (pass-through)</span>
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attrib</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">,</span> <span class="n">attrib</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">,</span> <span class="n">attr</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__delattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">element</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">element</span>
+
+    <span class="k">def</span> <span class="nf">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__setslice__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">,</span> <span class="n">elements</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">]</span> <span class="o">=</span> <span class="n">elements</span>
+
+    <span class="k">def</span> <span class="nf">__delslice__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">):</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">)</span>
+
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+    <span class="c">#{ Element interface Delegation (wrap result)</span>
+    <span class="c">##////////////////////////////////////////////////////////////</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ElementWrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">index</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">__getslice__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span> <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">]]</span>
+
+    <span class="k">def</span> <span class="nf">getchildren</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span> <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">getiterator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="o">.</span><span class="n">getiterator</span><span class="p">(</span><span class="n">tag</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">makeelement</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">attrib</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ElementWrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="o">.</span><span class="n">makeelement</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="n">attrib</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="n">elt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">elt</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="k">return</span> <span class="n">elt</span>
+        <span class="k">else</span><span class="p">:</span> <span class="k">return</span> <span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">findall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">ElementWrapper</span><span class="p">(</span><span class="n">elt</span><span class="p">)</span> <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_etree</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">path</span><span class="p">)]</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># Helper for Handling Slicing</span>
+<span class="c">######################################################################</span>
+
+<span class="k">def</span> <span class="nf">slice_bounds</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="n">slice_obj</span><span class="p">,</span> <span class="n">allow_step</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a slice, return the corresponding (start, stop) bounds,</span>
+<span class="sd">    taking into account None indices and negative indices.  The</span>
+<span class="sd">    following guarantees are made for the returned start and stop values:</span>
+
+<span class="sd">      - 0 &lt;= start &lt;= len(sequence)</span>
+<span class="sd">      - 0 &lt;= stop &lt;= len(sequence)</span>
+<span class="sd">      - start &lt;= stop</span>
+
+<span class="sd">    :raise ValueError: If ``slice_obj.step`` is not None.</span>
+<span class="sd">    :param allow_step: If true, then the slice object may have a</span>
+<span class="sd">        non-None step.  If it does, then return a tuple</span>
+<span class="sd">        (start, stop, step).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">start</span><span class="p">,</span> <span class="n">stop</span> <span class="o">=</span> <span class="p">(</span><span class="n">slice_obj</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">slice_obj</span><span class="o">.</span><span class="n">stop</span><span class="p">)</span>
+
+    <span class="c"># If allow_step is true, then include the step in our return</span>
+    <span class="c"># value tuple.</span>
+    <span class="k">if</span> <span class="n">allow_step</span><span class="p">:</span>
+        <span class="n">step</span> <span class="o">=</span> <span class="n">slice_obj</span><span class="o">.</span><span class="n">step</span>
+        <span class="k">if</span> <span class="n">step</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">step</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c"># Use a recursive call without allow_step to find the slice</span>
+        <span class="c"># bounds.  If step is negative, then the roles of start and</span>
+        <span class="c"># stop (in terms of default values, etc), are swapped.</span>
+        <span class="k">if</span> <span class="n">step</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">stop</span> <span class="o">=</span> <span class="n">slice_bounds</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="nb">slice</span><span class="p">(</span><span class="n">stop</span><span class="p">,</span> <span class="n">start</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">stop</span> <span class="o">=</span> <span class="n">slice_bounds</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="nb">slice</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">,</span> <span class="n">step</span>
+
+    <span class="c"># Otherwise, make sure that no non-default step value is used.</span>
+    <span class="k">elif</span> <span class="n">slice_obj</span><span class="o">.</span><span class="n">step</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;slices with steps are not supported by </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                         <span class="n">sequence</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+
+    <span class="c"># Supply default offsets.</span>
+    <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">stop</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="n">stop</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span>
+
+    <span class="c"># Handle negative indices.</span>
+    <span class="k">if</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span> <span class="n">start</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span><span class="o">+</span><span class="n">start</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">stop</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span> <span class="n">stop</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span><span class="o">+</span><span class="n">stop</span><span class="p">)</span>
+
+    <span class="c"># Make sure stop doesn&#39;t go past the end of the list.  Note that</span>
+    <span class="c"># we avoid calculating len(sequence) if possible, because for lazy</span>
+    <span class="c"># sequences, calculating the length of a sequence can be expensive.</span>
+    <span class="k">if</span> <span class="n">stop</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span> <span class="n">sequence</span><span class="p">[</span><span class="n">stop</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span> <span class="n">stop</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence</span><span class="p">)</span>
+
+    <span class="c"># Make sure start isn&#39;t past stop.</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">)</span>
+
+    <span class="c"># That&#39;s all folks!</span>
+    <span class="k">return</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># Permission Checking</span>
+<span class="c">######################################################################</span>
+
+<span class="k">def</span> <span class="nf">is_writable</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="c"># Ensure that it exists.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="c"># If we&#39;re on a posix system, check its permissions.</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s">&#39;getuid&#39;</span><span class="p">):</span>
+        <span class="n">statdata</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">perm</span> <span class="o">=</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IMODE</span><span class="p">(</span><span class="n">statdata</span><span class="o">.</span><span class="n">st_mode</span><span class="p">)</span>
+        <span class="c"># is it world-writable?</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">perm</span> <span class="o">&amp;</span> <span class="mi">0</span><span class="n">o002</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="c"># do we own it?</span>
+        <span class="k">elif</span> <span class="n">statdata</span><span class="o">.</span><span class="n">st_uid</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">getuid</span><span class="p">()</span> <span class="ow">and</span> <span class="p">(</span><span class="n">perm</span> <span class="o">&amp;</span> <span class="mi">0</span><span class="n">o200</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="c"># are we in a group that can write to it?</span>
+        <span class="k">elif</span> <span class="p">(</span><span class="n">statdata</span><span class="o">.</span><span class="n">st_gid</span> <span class="ow">in</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">getgid</span><span class="p">()]</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">getgroups</span><span class="p">())</span> \
+            <span class="ow">and</span> <span class="p">(</span><span class="n">perm</span> <span class="o">&amp;</span> <span class="mi">0</span><span class="n">o020</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="c"># otherwise, we can&#39;t write to it.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="c"># Otherwise, we&#39;ll assume it&#39;s writable.</span>
+    <span class="c"># [xx] should we do other checks on other platforms?</span>
+    <span class="k">return</span> <span class="bp">True</span>
+
+<span class="c">######################################################################</span>
+<span class="c"># NLTK Error reporting</span>
+<span class="c">######################################################################</span>
+
+<span class="k">def</span> <span class="nf">raise_unorderable_types</span><span class="p">(</span><span class="n">ordering</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;unorderable types: </span><span class="si">%s</span><span class="s">() </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">()&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">ordering</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">))</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Jun 04, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
