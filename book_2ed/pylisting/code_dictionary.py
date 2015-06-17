@@ -16,4 +16,5 @@
  [('NOUN', 30640), ('VERB', 14399), ('ADP', 12355), ('.', 11928), ...]
  >>> [t for t, c in sorted(counts.items(), key=itemgetter(1), reverse=True)]
  ['NOUN', 'VERB', 'ADP', '.', 'DET', 'ADJ', 'ADV', 'CONJ', 'PRON', 'PRT', 'NUM', 'X']
+ >>>
 

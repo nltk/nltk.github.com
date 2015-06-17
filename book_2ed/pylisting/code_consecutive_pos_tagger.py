@@ -31,5 +31,5 @@ class ConsecutivePosTagger(nltk.TaggerI): # [_consec-pos-tagger]
             featureset = pos_features(sentence, i, history)
             tag = self.classifier.classify(featureset)
             history.append(tag)
-        return zip(sentence, history)
+        return list(zip(sentence, history))
 
