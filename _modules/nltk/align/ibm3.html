@@ -26,12 +26,12 @@
     <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
     <link rel="up" title="Module code" href="../../index.html" /> 
   </head>
-  <body>
-    <div class="header-wrapper">
+  <body role="document">
+    <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
           href="../../../index.html">NLTK 3.0 documentation</a></div>
-        <div class="rel">
+        <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
           <a href="../../../genindex.html" title="General Index"
@@ -46,7 +46,7 @@
             
       <div class="documentwrapper">
         <div class="bodywrapper">
-          <div class="body">
+          <div class="body" role="main">
             
   <h1>Source code for nltk.align.ibm3</h1><div class="highlight"><pre>
 <span class="c"># -*- coding: utf-8 -*-</span>
@@ -57,401 +57,351 @@
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 
-<span class="kn">from</span> <span class="nn">__future__</span>  <span class="kn">import</span> <span class="n">division</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Translation model that considers how a word can be aligned to</span>
+<span class="sd">multiple words in another language.</span>
+
+<span class="sd">IBM Model 3 improves on Model 2 by directly modeling the phenomenon</span>
+<span class="sd">where a word in one language may be translated into zero or more words</span>
+<span class="sd">in another. This is expressed by the fertility probability,</span>
+<span class="sd">n(phi | source word).</span>
+
+<span class="sd">If a source word translates into more than one word, it is possible to</span>
+<span class="sd">generate sentences that have the same alignment in multiple ways. This</span>
+<span class="sd">is modeled by a distortion step. The distortion probability, d(j|i,l,m),</span>
+<span class="sd">predicts a target word position, given its aligned source word&#39;s</span>
+<span class="sd">position. The distortion probability replaces the alignment probability</span>
+<span class="sd">of Model 2.</span>
+
+<span class="sd">The fertility probability is not applicable for NULL. Target words that</span>
+<span class="sd">align to NULL are assumed to be distributed uniformly in the target</span>
+<span class="sd">sentence. The existence of these words is modeled by p1, the probability</span>
+<span class="sd">that a target word produced by a real source word requires another</span>
+<span class="sd">target word that is produced by NULL.</span>
+
+<span class="sd">The EM algorithm used in Model 3 is:</span>
+<span class="sd">E step - In the training data, collect counts, weighted by prior</span>
+<span class="sd">         probabilities.</span>
+<span class="sd">         (a) count how many times a source language word is translated</span>
+<span class="sd">             into a target language word</span>
+<span class="sd">         (b) count how many times a particular position in the target</span>
+<span class="sd">             sentence is aligned to a particular position in the source</span>
+<span class="sd">             sentence</span>
+<span class="sd">         (c) count how many times a source word is aligned to phi number</span>
+<span class="sd">             of target words</span>
+<span class="sd">         (d) count how many times NULL is aligned to a target word</span>
+
+<span class="sd">M step - Estimate new probabilities based on the counts from the E step</span>
+
+<span class="sd">Because there are too many possible alignments, only the most probable</span>
+<span class="sd">ones are considered. First, the best alignment is determined using prior</span>
+<span class="sd">probabilities. Then, a hill climbing approach is used to find other good</span>
+<span class="sd">candidates.</span>
+
+
+<span class="sd">Notations:</span>
+<span class="sd">i: Position in the source sentence</span>
+<span class="sd">    Valid values are 0 (for NULL), 1, 2, ..., length of source sentence</span>
+<span class="sd">j: Position in the target sentence</span>
+<span class="sd">    Valid values are 1, 2, ..., length of target sentence</span>
+<span class="sd">l: Number of words in the source sentence, excluding NULL</span>
+<span class="sd">m: Number of words in the target sentence</span>
+<span class="sd">s: A word in the source language</span>
+<span class="sd">t: A word in the target language</span>
+<span class="sd">phi: Fertility, the number of target words produced by a source word</span>
+<span class="sd">p1: Probability that a target word produced by a source word is</span>
+<span class="sd">    accompanied by another target word that is aligned to NULL</span>
+<span class="sd">p0: 1 - p1</span>
+
+
+<span class="sd">References:</span>
+<span class="sd">Philipp Koehn. 2010. Statistical Machine Translation.</span>
+<span class="sd">Cambridge University Press, New York.</span>
+
+<span class="sd">Peter E Brown, Stephen A. Della Pietra, Vincent J. Della Pietra, and</span>
+<span class="sd">Robert L. Mercer. 1993. The Mathematics of Statistical Machine</span>
+<span class="sd">Translation: Parameter Estimation. Computational Linguistics, 19 (2),</span>
+<span class="sd">263-311.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
-<span class="kn">from</span> <span class="nn">nltk.align</span>  <span class="kn">import</span> <span class="n">AlignedSent</span>
-<span class="kn">from</span> <span class="nn">nltk.align.ibm2</span> <span class="kn">import</span> <span class="n">IBMModel2</span>
 <span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">factorial</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">AlignedSent</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">Alignment</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel2</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
 
-<div class="viewcode-block" id="HashableDict"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.HashableDict">[docs]</a><span class="k">class</span> <span class="nc">HashableDict</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+
+<div class="viewcode-block" id="IBMModel3"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3">[docs]</a><span class="k">class</span> <span class="nc">IBMModel3</span><span class="p">(</span><span class="n">IBMModel</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    This class implements a hashable dict, which can be </span>
-<span class="sd">    put into a set.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">((</span><span class="n">k</span><span class="p">,</span><span class="bp">self</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+<span class="sd">    Translation model that considers how a word can be aligned to</span>
+<span class="sd">    multiple words in another language</span>
 
-    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__key</span><span class="p">())</span>
+<span class="sd">    &gt;&gt;&gt; bitext = []</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;groß&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;big&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;], [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;klein&#39;], [&#39;a&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;], [&#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;buch&#39;], [&#39;a&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ich&#39;, &#39;fasse&#39;, &#39;das&#39;, &#39;buch&#39;, &#39;zusammen&#39;], [&#39;i&#39;, &#39;summarize&#39;, &#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;fasse&#39;, &#39;zusammen&#39;], [&#39;summarize&#39;]))</span>
 
-    <span class="k">def</span> <span class="nf">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__key</span><span class="p">()</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">__key</span><span class="p">()</span>
-</div>
-<div class="viewcode-block" id="IBMModel3"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3">[docs]</a><span class="k">class</span> <span class="nc">IBMModel3</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    This class implements the algorithm of Expectation Maximization for </span>
-<span class="sd">    the IBM Model 3. </span>
+<span class="sd">    &gt;&gt;&gt; ibm3 = IBMModel3(bitext, 5)</span>
 
-<span class="sd">    Step 1 - Run a number of iterations of IBM Model 2 and get the initial</span>
-<span class="sd">             distribution of translation probability. </span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.translation_table[&#39;buch&#39;][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.translation_table[&#39;das&#39;][&#39;book&#39;]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.translation_table[&#39;ja&#39;][None]))</span>
+<span class="sd">    1.000</span>
 
-<span class="sd">    Step 2 - Sample the alignment spaces by using the hillclimb approach. </span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.distortion_table[1][1][2][2]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.distortion_table[1][2][2][2]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.distortion_table[2][2][4][5]))</span>
+<span class="sd">    0.750</span>
 
-<span class="sd">    Step 3 - Collect the evidence of translation probabilities, distortion, </span>
-<span class="sd">    		 the probability of null insertion, and fertility. </span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.fertility_table[2][&#39;summarize&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.fertility_table[1][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
 
-<span class="sd">    Step 4 - Estimate the new probabilities according to the evidence from </span>
-<span class="sd">             Step 3. </span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm3.p1))</span>
+<span class="sd">    0.026</span>
 
-<span class="sd">    &gt;&gt;&gt; align_sents = []</span>
-<span class="sd">    &gt;&gt;&gt; align_sents.append(AlignedSent([&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;Haus&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
-<span class="sd">    &gt;&gt;&gt; align_sents.append(AlignedSent([&#39;das&#39;, &#39;Haus&#39;], [&#39;the&#39;, &#39;house&#39;]))</span>
-<span class="sd">    &gt;&gt;&gt; align_sents.append(AlignedSent([&#39;das&#39;, &#39;Buch&#39;], [&#39;the&#39;, &#39;book&#39;]))</span>
-<span class="sd">    &gt;&gt;&gt; align_sents.append(AlignedSent([&#39;ein&#39;, &#39;Buch&#39;], [&#39;a&#39;, &#39;book&#39;]))</span>
-
-<span class="sd">    &gt;&gt;&gt; ibm3 = IBMModel3(align_sents, 5)</span>
-
-<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.1f}&#39;.format(ibm3.probabilities[&#39;Buch&#39;][&#39;book&#39;]))</span>
-<span class="sd">    1.0</span>
-<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.1f}&#39;.format(ibm3.probabilities[&#39;das&#39;][&#39;book&#39;]))</span>
-<span class="sd">    0.0</span>
-<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.1f}&#39;.format(ibm3.probabilities[None][&#39;book&#39;]))</span>
-<span class="sd">    0.0</span>
-
-<span class="sd">    &gt;&gt;&gt; aligned_sent = ibm3.align(align_sents[0])</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.words</span>
-<span class="sd">    [&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;Haus&#39;]</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.mots</span>
-<span class="sd">    [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.alignment</span>
-<span class="sd">    Alignment([(0, 2), (1, 3), (2, 0), (3, 1)])</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence = bitext[2]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.words</span>
+<span class="sd">    [&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.mots</span>
+<span class="sd">    [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.alignment</span>
+<span class="sd">    Alignment([(0, 0), (1, 1), (2, 2), (3, None), (4, 3)])</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
-        <span class="c"># If there is not an initial value, it throws an exception of </span>
-        <span class="c"># the number divided by zero. And the value of computing </span>
-        <span class="c"># probability will be always zero.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">PROB_SMOOTH</span> <span class="o">=</span> <span class="mf">0.1</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">)</span>
-
-
-<div class="viewcode-block" id="IBMModel3.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This function is the main process of training model, which</span>
-<span class="sd">        initialize all the probability distributions and executes </span>
-<span class="sd">        a specific number of iterations. </span>
+<span class="sd">        Train on ``sentence_aligned_corpus`` and create a lexical</span>
+<span class="sd">        translation model, a distortion model, a fertility model, and a</span>
+<span class="sd">        model for generating NULL-aligned words.</span>
+
+<span class="sd">        Translation direction is from ``AlignedSent.mots`` to</span>
+<span class="sd">        ``AlignedSent.words``.</span>
+
+<span class="sd">        Runs a few iterations of Model 2 training to initialize</span>
+<span class="sd">        model parameters.</span>
+
+<span class="sd">        :param sentence_aligned_corpus: Sentence-aligned parallel corpus</span>
+<span class="sd">        :type sentence_aligned_corpus: list(AlignedSent)</span>
+
+<span class="sd">        :param iterations: Number of iterations to run training algorithm</span>
+<span class="sd">        :type iterations: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel3</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">distortion_table</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">))))</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        dict[int][int][int][int]: float. Probability(j | i,l,m).</span>
+<span class="sd">        Values accessed as ``distortion_table[j][i][l][m]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
         <span class="c"># Get the translation and alignment probabilities from IBM model 2</span>
-        <span class="n">ibm2</span> <span class="o">=</span> <span class="n">IBMModel2</span><span class="p">(</span><span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">align_table</span> <span class="o">=</span> <span class="n">ibm2</span><span class="o">.</span><span class="n">probabilities</span><span class="p">,</span> <span class="n">ibm2</span><span class="o">.</span><span class="n">alignments</span>
+        <span class="n">ibm2</span> <span class="o">=</span> <span class="n">IBMModel2</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">ibm2</span><span class="o">.</span><span class="n">translation_table</span>
 
-        <span class="n">fr_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-        <span class="n">en_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-        <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-            <span class="n">en_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
-            <span class="n">fr_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
-        <span class="n">fr_vocab</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="c"># Alignment table is only used for hill climbing and is not part</span>
+        <span class="c"># of the output of Model 3 training</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">ibm2</span><span class="o">.</span><span class="n">alignment_table</span>
 
-        <span class="c"># Initial probability of null insertion.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">null_insertion</span> <span class="o">=</span> <span class="mf">0.5</span>
+        <span class="c"># Initialize the distribution of distortion probability,</span>
+        <span class="c"># d(j | i,l,m) = 1 / m for all i, j, l, m</span>
+        <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">sentence_aligned_corpus</span><span class="p">:</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+            <span class="n">initial_value</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">m</span>
+            <span class="k">if</span> <span class="n">initial_value</span> <span class="o">&gt;</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">distortion_table</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial_value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s">&quot;Target sentence is too long (&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">+</span>
+                              <span class="s">&quot; words). Results may be less accurate.&quot;</span><span class="p">)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">fertility</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">PROB_SMOOTH</span><span class="p">))</span> 
-        <span class="bp">self</span><span class="o">.</span><span class="n">distortion</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">PROB_SMOOTH</span><span class="p">))))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
-            <span class="n">max_fert</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="c"># Set all count* and total* to 0</span>
-            <span class="n">count_t</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
-            <span class="n">total_t</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+<div class="viewcode-block" id="IBMModel3.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parallel_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+            <span class="n">max_fertility</span> <span class="o">=</span> <span class="mi">0</span>
 
-            <span class="n">count_d</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>
-            <span class="n">total_d</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
+            <span class="c"># Reset all counts</span>
+            <span class="n">count_t_given_s</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+            <span class="n">count_any_t_given_s</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+
+            <span class="n">distortion_count</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>
+            <span class="n">distortion_count_for_any_j</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
 
             <span class="n">count_p0</span> <span class="o">=</span> <span class="mf">0.0</span>
             <span class="n">count_p1</span> <span class="o">=</span> <span class="mf">0.0</span>
 
-            <span class="n">count_f</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
-            <span class="n">total_f</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">fertility_count</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+            <span class="n">fertility_count_for_any_phi</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
 
-            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-
-                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-                <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+                <span class="n">src_sentence</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span>
+                <span class="n">trg_sentence</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;UNUSED&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span>  <span class="c"># 1-indexed</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
 
                 <span class="c"># Sample the alignment space</span>
-                <span class="n">A</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span> <span class="n">en_set</span><span class="p">,</span> <span class="n">fr_set</span><span class="p">)</span>
-                
-                <span class="c"># Collect counts</span>
-                <span class="n">c_total</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">sampled_alignments</span><span class="p">,</span> <span class="n">best_alignment</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span>
+                    <span class="n">aligned_sentence</span><span class="p">)</span>
+                <span class="c"># Record the most probable alignment</span>
+                <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span>
+                    <span class="n">best_alignment</span><span class="o">.</span><span class="n">zero_indexed_alignment</span><span class="p">())</span>
 
-                <span class="k">for</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span> <span class="ow">in</span> <span class="n">A</span><span class="p">:</span>
-                    <span class="n">c_total</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">probability</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">en_set</span><span class="p">,</span> <span class="n">fr_set</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span>
+                <span class="n">total_count</span> <span class="o">=</span> <span class="mf">0.0</span>
 
-                <span class="k">for</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span> <span class="ow">in</span> <span class="n">A</span><span class="p">:</span>
-                    <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">probability</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">en_set</span><span class="p">,</span> <span class="n">fr_set</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span><span class="o">/</span><span class="n">c_total</span>
-                    <span class="n">null</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="c"># E step (a): Compute normalization factors to weigh counts</span>
+                <span class="k">for</span> <span class="n">alignment_info</span> <span class="ow">in</span> <span class="n">sampled_alignments</span><span class="p">:</span>
+                    <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">)</span>
+                    <span class="n">total_count</span> <span class="o">+=</span> <span class="n">count</span>
 
-                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">en_word</span> <span class="o">=</span> <span class="n">en_set</span><span class="p">[</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                        <span class="n">fr_word</span> <span class="o">=</span> <span class="n">fr_set</span><span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
+                <span class="c"># E step (b): Collect counts</span>
+                <span class="k">for</span> <span class="n">alignment_info</span> <span class="ow">in</span> <span class="n">sampled_alignments</span><span class="p">:</span>
+                    <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">)</span>
+                    <span class="n">normalized_count</span> <span class="o">=</span> <span class="n">count</span> <span class="o">/</span> <span class="n">total_count</span>
+                    <span class="n">null_count</span> <span class="o">=</span> <span class="mi">0</span>
+
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="n">t</span> <span class="o">=</span> <span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                        <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                        <span class="n">s</span> <span class="o">=</span> <span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 
                         <span class="c"># Lexical translation</span>
-                        <span class="n">count_t</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">total_t</span><span class="p">[</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+                        <span class="n">count_t_given_s</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">count_any_t_given_s</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
 
                         <span class="c"># Distortion</span>
-                        <span class="n">count_d</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">total_d</span><span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+                        <span class="n">distortion_count</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">distortion_count_for_any_j</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
 
-                        <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                            <span class="n">null</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">null_count</span> <span class="o">+=</span> <span class="mi">1</span>
 
-                    <span class="c"># Collect the counts of null insetion</span>
-                    <span class="n">count_p1</span> <span class="o">+=</span> <span class="n">null</span> <span class="o">*</span> <span class="n">c</span>
-                    <span class="n">count_p0</span> <span class="o">+=</span> <span class="p">(</span><span class="n">l_e</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">null</span><span class="p">)</span> <span class="o">*</span> <span class="n">c</span>
+                    <span class="c"># NULL-aligned words generation</span>
+                    <span class="n">count_p1</span> <span class="o">+=</span> <span class="n">null_count</span> <span class="o">*</span> <span class="n">normalized_count</span>
+                    <span class="n">count_p0</span> <span class="o">+=</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">null_count</span><span class="p">)</span> <span class="o">*</span> <span class="n">normalized_count</span>
 
-                    <span class="c"># Collect the counts of fertility</span>
-                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+                    <span class="c"># Fertility</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
                         <span class="n">fertility</span> <span class="o">=</span> <span class="mi">0</span>
 
-                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
+                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
                                 <span class="n">fertility</span> <span class="o">+=</span> <span class="mi">1</span>
 
-                        <span class="n">fr_word</span> <span class="o">=</span> <span class="n">fr_set</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="n">count_f</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">total_f</span><span class="p">[</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+                        <span class="n">s</span> <span class="o">=</span> <span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                        <span class="n">fertility_count</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">fertility_count_for_any_phi</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
 
-                        <span class="k">if</span> <span class="n">fertility</span> <span class="o">&gt;</span> <span class="n">max_fert</span><span class="p">:</span>
-                            <span class="n">max_fert</span> <span class="o">=</span> <span class="n">fertility</span>
+                        <span class="k">if</span> <span class="n">fertility</span> <span class="o">&gt;</span> <span class="n">max_fertility</span><span class="p">:</span>
+                            <span class="n">max_fertility</span> <span class="o">=</span> <span class="n">fertility</span>
 
-			
-            <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">distortion</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>	
-            <span class="bp">self</span><span class="o">.</span><span class="n">fertility</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+            <span class="c"># M step: Update probabilities with maximum likelihood estimates</span>
+            <span class="c"># If any probability is less than MIN_PROB, clamp it to MIN_PROB</span>
+            <span class="n">MIN_PROB</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
 
-            <span class="c"># Estimate translation probability distribution</span>
-            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fr_vocab</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">en_vocab</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_t</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_t</span><span class="p">[</span><span class="n">f</span><span class="p">]</span>
+            <span class="c"># Lexical translation</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">src_vocab</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">trg_vocab</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="n">count_t_given_s</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">/</span> <span class="n">count_any_t_given_s</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span> <span class="n">MIN_PROB</span><span class="p">)</span>
 
-            <span class="c"># Estimate distortion</span>
-            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-                <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
+            <span class="c"># Distortion</span>
+            <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
 
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">distortion</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_d</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_d</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">distortion_count</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">/</span>
+                                    <span class="n">distortion_count_for_any_j</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">distortion_table</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                                <span class="n">MIN_PROB</span><span class="p">)</span>
 
-            <span class="c"># Estimate the fertility, n(Fertility | input word)</span>
-            <span class="k">for</span> <span class="n">ferti</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_fert</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                <span class="k">for</span> <span class="n">fr_word</span> <span class="ow">in</span> <span class="n">fr_vocab</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">fertility</span><span class="p">[</span><span class="n">ferti</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_f</span><span class="p">[</span><span class="n">ferti</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_f</span><span class="p">[</span><span class="n">fr_word</span><span class="p">]</span>
+            <span class="c"># Fertility</span>
+            <span class="k">for</span> <span class="n">fertility</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_fertility</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">src_vocab</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">fertility_count</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">/</span>
+                                <span class="n">fertility_count_for_any_phi</span><span class="p">[</span><span class="n">s</span><span class="p">])</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span> <span class="n">MIN_PROB</span><span class="p">)</span>
 
-            <span class="c"># Estimate the probability of null insertion</span>
-            <span class="n">p1</span> <span class="o">=</span> <span class="n">count_p1</span> <span class="o">/</span> <span class="p">(</span><span class="n">count_p1</span><span class="o">+</span><span class="n">count_p0</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">null_insertion</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">p1</span>
+            <span class="c"># NULL-aligned words generation</span>
+            <span class="n">p1_estimate</span> <span class="o">=</span> <span class="n">count_p1</span> <span class="o">/</span> <span class="p">(</span><span class="n">count_p1</span> <span class="o">+</span> <span class="n">count_p0</span><span class="p">)</span>
+            <span class="n">p1_estimate</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">p1_estimate</span><span class="p">,</span> <span class="n">MIN_PROB</span><span class="p">)</span>
+
+            <span class="c"># Clip p1 if it is too large, because p0 = 1 - p1 should</span>
+            <span class="c"># not be smaller than MIN_PROB</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p1</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">p1_estimate</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">MIN_PROB</span><span class="p">)</span>
 </div>
-<div class="viewcode-block" id="IBMModel3.sample"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.sample">[docs]</a>    <span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+<div class="viewcode-block" id="IBMModel3.prob_t_a_given_s"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.prob_t_a_given_s">[docs]</a>    <span class="k">def</span> <span class="nf">prob_t_a_given_s</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This function returns a sample from the entire alignment space.</span>
-<span class="sd">        First, it pegs one alignment point and finds out the best alignment</span>
-<span class="sd">        through the IBM model 2. Then, using the hillclimb approach, it </span>
-<span class="sd">        finds out the best alignment on local and returns all its neighborings,</span>
-<span class="sd">        which are swapped or moved one distance from the best alignment.</span>
+<span class="sd">        Probability of target sentence and an alignment given the</span>
+<span class="sd">        source sentence</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">A</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">src_sentence</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span>
+        <span class="n">trg_sentence</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">src_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c"># exclude NULL</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trg_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">p1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p1</span>
+        <span class="n">p0</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">p1</span>
 
-        <span class="n">le</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-        <span class="n">lf</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">probability</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">MIN_PROB</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
 
-        <span class="c"># Compute Normalization</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">lf</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                <span class="n">a</span> <span class="o">=</span> <span class="n">HashableDict</span><span class="p">()</span>
-                <span class="n">fert</span> <span class="o">=</span> <span class="n">HashableDict</span><span class="p">()</span>
-                <span class="c"># Initialize all fertility to zero</span>
-                <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">lf</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">fert</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c"># Combine NULL insertion probability</span>
+        <span class="n">null_fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">probability</span> <span class="o">*=</span> <span class="p">(</span><span class="nb">pow</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">null_fertility</span><span class="p">)</span> <span class="o">*</span>
+                        <span class="nb">pow</span><span class="p">(</span><span class="n">p0</span><span class="p">,</span> <span class="n">m</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">null_fertility</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">MIN_PROB</span>
 
-                <span class="c"># Pegging one alignment point</span>
-                <span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
-                <span class="n">fert</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c"># Compute combination (m - null_fertility) choose null_fertility</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">null_fertility</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">null_fertility</span> <span class="o">-</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">i</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
 
-                <span class="k">for</span> <span class="n">jj</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">if</span> <span class="n">jj</span> <span class="o">!=</span> <span class="n">j</span><span class="p">:</span>
-                        <span class="c"># Find the best alignment according to model 2</span>
-                        <span class="n">maxalignment</span> <span class="o">=</span> <span class="mi">0</span>
-                        <span class="n">besti</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c"># Combine fertility probabilities</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">fertility</span><span class="p">)</span> <span class="o">*</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]])</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
 
-                        <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">lf</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span> 
-                            <span class="c"># Notice that the probabilities returned by IBM model 2, </span>
-                            <span class="c"># which is not distortion, is alignment. </span>
-                            <span class="c">#</span>
-                            <span class="c"># The alignment probability predicts foreign input word</span>
-                            <span class="c"># positions conditioned on English output word positions.</span>
-                            <span class="c"># However, the distortion probability in a reverse direction</span>
-                            <span class="c"># predicts the output word position based on input word </span>
-                            <span class="c"># position. </span>
-                            <span class="c"># </span>
-                            <span class="c"># Actually, you cannot just change the index to get a </span>
-                            <span class="c"># distortion from alignment table, because its process of </span>
-                            <span class="c"># collecting evidence is different from each other.</span>
-                            <span class="n">alignment</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">e</span><span class="p">[</span><span class="n">jj</span><span class="o">-</span><span class="mi">1</span><span class="p">]][</span><span class="n">f</span><span class="p">[</span><span class="n">ii</span><span class="p">]]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">align_table</span><span class="p">[</span><span class="n">ii</span><span class="p">][</span><span class="n">jj</span><span class="p">][</span><span class="n">le</span><span class="p">][</span><span class="n">lf</span><span class="p">]</span>
-                            <span class="k">if</span> <span class="n">alignment</span> <span class="o">&gt;</span> <span class="n">maxalignment</span><span class="p">:</span>
-                                <span class="n">maxalignment</span> <span class="o">=</span> <span class="n">alignment</span>
-                                <span class="n">besti</span> <span class="o">=</span> <span class="n">ii</span>
+        <span class="c"># Combine lexical and distortion probabilities</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 
-                        <span class="n">a</span><span class="p">[</span><span class="n">jj</span><span class="p">]</span> <span class="o">=</span> <span class="n">besti</span>
-                        <span class="n">fert</span><span class="p">[</span><span class="n">besti</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">distortion_table</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
 
-                <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hillclimb</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span>
-                <span class="n">neighbor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighboring</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">fert</span><span class="p">)</span>
-                <span class="n">A</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">neighbor</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">A</span>
-</div>
-<div class="viewcode-block" id="IBMModel3.hillclimb"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.hillclimb">[docs]</a>    <span class="k">def</span> <span class="nf">hillclimb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">j_pegged</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">fert</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This function returns the best alignment on local. It gets </span>
-<span class="sd">        some neighboring alignments and finds out the alignment with </span>
-<span class="sd">        highest probability in those alignment spaces. If the current</span>
-<span class="sd">        alignment recorded has the highest probability, then stop the</span>
-<span class="sd">        search loop. If not, then continue the search loop until it </span>
-<span class="sd">        finds out the highest probability of alignment in local.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">so_far_fert</span> <span class="o">=</span> <span class="n">fert</span>
-
-        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-            <span class="n">a_old</span> <span class="o">=</span> <span class="n">a</span>
-
-            <span class="k">for</span> <span class="p">(</span><span class="n">a_nerghbor</span><span class="p">,</span> <span class="n">neighbor_Fert</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighboring</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">j_pegged</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">so_far_fert</span><span class="p">):</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">probability</span><span class="p">(</span><span class="n">a_nerghbor</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">neighbor_Fert</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">probability</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">so_far_fert</span><span class="p">):</span>
-                    <span class="c"># If the probability of an alignment is higher than </span>
-                    <span class="c"># the current alignment recorded, then replace the </span>
-                    <span class="c"># current one. </span>
-                    <span class="n">a</span> <span class="o">=</span> <span class="n">a_nerghbor</span>
-                    <span class="n">so_far_fert</span> <span class="o">=</span> <span class="n">neighbor_Fert</span>
-
-            <span class="k">if</span> <span class="n">a</span> <span class="o">==</span> <span class="n">a_old</span><span class="p">:</span>
-                <span class="c"># Until this alignment is the highest one in local</span>
-                <span class="k">break</span>
-
-        <span class="k">return</span> <span class="n">a</span>
-</div>
-<div class="viewcode-block" id="IBMModel3.probability"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.probability">[docs]</a>    <span class="k">def</span> <span class="nf">probability</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">Fert</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This function returns the probability given an alignment. </span>
-<span class="sd">        The Fert variable is math syntax &#39;Phi&#39; in the fomula, which </span>
-<span class="sd">        represents the fertility according to the current alignment,</span>
-<span class="sd">        which records how many output words are generated by each </span>
-<span class="sd">        input word.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">es</span><span class="p">)</span>
-        <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-        <span class="n">p1</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">null_insertion</span>
-
-        <span class="n">total</span> <span class="o">=</span> <span class="mf">1.0</span>
-
-        <span class="c"># Compute the NULL insertation</span>
-        <span class="n">total</span> <span class="o">*=</span> <span class="nb">pow</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">Fert</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="nb">pow</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">null_insertion</span><span class="p">,</span> <span class="n">l_e</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">Fert</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-        <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">total</span>
-
-        <span class="c"># Compute the combination (l_e - Fert[0]) choose Fert[0]</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">Fert</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="n">total</span> <span class="o">*=</span> <span class="p">(</span><span class="n">l_e</span> <span class="o">-</span> <span class="n">Fert</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">i</span>
-            <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">total</span>
-
-        <span class="c"># Compute fertilities term</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="n">total</span> <span class="o">*=</span> <span class="n">factorial</span><span class="p">(</span><span class="n">Fert</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">fertility</span><span class="p">[</span><span class="n">Fert</span><span class="p">[</span><span class="n">i</span><span class="p">]][</span><span class="n">fs</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
-            <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">total</span>
-
-        <span class="c"># Multiply the lexical and distortion probabilities</span>
-        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="n">en_word</span> <span class="o">=</span> <span class="n">es</span><span class="p">[</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-            <span class="n">fr_word</span> <span class="o">=</span> <span class="n">fs</span><span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
-
-            <span class="n">total</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span>
-            <span class="n">total</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">distortion</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span>
-            <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">total</span>
-
-        <span class="k">return</span> <span class="n">total</span>
-</div>
-<div class="viewcode-block" id="IBMModel3.neighboring"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.neighboring">[docs]</a>    <span class="k">def</span> <span class="nf">neighboring</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">j_pegged</span><span class="p">,</span> <span class="n">es</span><span class="p">,</span> <span class="n">fs</span><span class="p">,</span> <span class="n">fert</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This function returns the neighboring alignments from</span>
-<span class="sd">        the given alignment by moving or swapping one distance.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">N</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-
-        <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">es</span><span class="p">)</span>
-        <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-
-        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">j</span> <span class="o">!=</span> <span class="n">j_pegged</span><span class="p">:</span>
-                <span class="c"># Moves</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">new_align</span> <span class="o">=</span> <span class="n">HashableDict</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
-                    <span class="n">new_align</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
-
-                    <span class="n">new_fert</span> <span class="o">=</span> <span class="n">fert</span>
-                    <span class="k">if</span> <span class="n">new_fert</span><span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">new_fert</span> <span class="o">=</span> <span class="n">HashableDict</span><span class="p">(</span><span class="n">fert</span><span class="p">)</span>
-                        <span class="n">new_fert</span><span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span> <span class="o">-=</span> <span class="mi">1</span>
-                        <span class="n">new_fert</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-
-                    <span class="n">N</span><span class="o">.</span><span class="n">update</span><span class="p">([(</span><span class="n">new_align</span><span class="p">,</span> <span class="n">new_fert</span><span class="p">)])</span>
-
-
-        <span class="k">for</span> <span class="n">j_one</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">j_one</span> <span class="o">!=</span> <span class="n">j_pegged</span><span class="p">:</span>
-                <span class="c"># Swaps</span>
-                <span class="k">for</span> <span class="n">j_two</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">if</span> <span class="n">j_two</span> <span class="o">!=</span> <span class="n">j_pegged</span> <span class="ow">and</span> <span class="n">j_two</span> <span class="o">!=</span> <span class="n">j_one</span><span class="p">:</span>
-                        <span class="n">new_align</span> <span class="o">=</span> <span class="n">HashableDict</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
-                        <span class="n">new_fert</span> <span class="o">=</span> <span class="n">fert</span>
-                        <span class="n">new_align</span><span class="p">[</span><span class="n">j_one</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">j_two</span><span class="p">]</span>
-                        <span class="n">new_align</span><span class="p">[</span><span class="n">j_two</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">j_one</span><span class="p">]</span>
-
-                        <span class="n">N</span><span class="o">.</span><span class="n">update</span><span class="p">([(</span><span class="n">new_align</span><span class="p">,</span> <span class="n">new_fert</span><span class="p">)])</span>
-
-        <span class="k">return</span> <span class="n">N</span>
-</div>
-<div class="viewcode-block" id="IBMModel3.align"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm3.IBMModel3.align">[docs]</a>    <span class="k">def</span> <span class="nf">align</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sent</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Returns the alignment result for one sentence pair. </span>
-<span class="sd">        &quot;&quot;&quot;</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">distortion</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;The model does not train.&quot;</span><span class="p">)</span>
-
-        <span class="n">alignment</span> <span class="o">=</span> <span class="p">[]</span>
-
-        <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
-        <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
-
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">en_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">):</span>
-            
-            <span class="c"># Initialize the maximum probability with Null token</span>
-            <span class="n">max_align_prob</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="bp">None</span><span class="p">]</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">distortion</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">],</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fr_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">):</span>
-                <span class="c"># Find out the maximum probability</span>
-                <span class="n">max_align_prob</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_align_prob</span><span class="p">,</span>
-                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">distortion</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">],</span> <span class="n">i</span><span class="p">))</span>
-
-            <span class="c"># If the maximum probability is not Null token,</span>
-            <span class="c"># then append it to the alignment. </span>
-            <span class="k">if</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-                <span class="n">alignment</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">j</span><span class="p">,</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
-
-        <span class="k">return</span> <span class="n">AlignedSent</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">,</span> <span class="n">alignment</span><span class="p">)</span>
-
-<span class="c"># run doctests</span></div></div>
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">doctest</span>
-    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">probability</span></div></div>
 </pre></div>
 
           </div>
@@ -471,16 +421,18 @@
 <li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
 </ul>
 
-          <h3 style="margin-top: 1.5em;">Search</h3>
-          <form class="search" action="../../../search.html" method="get">
-            <input type="text" name="q" />
-            <input type="submit" value="Go" />
-            <input type="hidden" name="check_keywords" value="yes" />
-            <input type="hidden" name="area" value="default" />
-          </form>
-          <p class="searchtip" style="font-size: 90%">
-            Enter search terms or a module, class or function name.
-          </p>
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
         </div>
         <div class="clearer"></div>
       </div>
@@ -489,18 +441,22 @@
     <div class="footer-wrapper">
       <div class="footer">
         <div class="left">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
-          <a href="../../../genindex.html" title="General Index"
-             >index</a>
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
         </div>
 
         <div class="right">
           
-    <div class="footer">
+    <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Jul 13, 2015.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.3.
+      Last updated on Sep 05, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>
         <div class="clearer"></div>

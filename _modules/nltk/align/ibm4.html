@@ -1,0 +1,587 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.align.ibm4 &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.align.ibm4</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: IBM Model 4</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Tah Wei Hoon &lt;hoon.tw@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Translation model that reorders output words based on their type and</span>
+<span class="sd">distance from other related words in the output sentence.</span>
+
+<span class="sd">IBM Model 4 improves the distortion model of Model 3, motivated by the</span>
+<span class="sd">observation that certain words tend to be re-ordered in a predictable</span>
+<span class="sd">way relative to one another. For example, &lt;adjective&gt;&lt;noun&gt; in English</span>
+<span class="sd">usually has its order flipped as &lt;noun&gt;&lt;adjective&gt; in French.</span>
+
+<span class="sd">Model 4 requires words in the source and target vocabularies to be</span>
+<span class="sd">categorized into classes. This can be linguistically driven, like parts</span>
+<span class="sd">of speech (adjective, nouns, prepositions, etc). Word classes can also</span>
+<span class="sd">be obtained by statistical methods. The original IBM Model 4 uses an</span>
+<span class="sd">information theoretic approach to group words into 50 classes for each</span>
+<span class="sd">vocabulary.</span>
+
+<span class="sd">Terminology:</span>
+<span class="sd">Cept:</span>
+<span class="sd">    A source word with non-zero fertility i.e. aligned to one or more</span>
+<span class="sd">    target words.</span>
+<span class="sd">Tablet:</span>
+<span class="sd">    The set of target word(s) aligned to a cept.</span>
+<span class="sd">Head of cept:</span>
+<span class="sd">    The first word of the tablet of that cept.</span>
+<span class="sd">Center of cept:</span>
+<span class="sd">    The average position of the words in that cept&#39;s tablet. If the</span>
+<span class="sd">    value is not an integer, the ceiling is taken.</span>
+<span class="sd">    For example, for a tablet with words in positions 2, 5, 6 in the</span>
+<span class="sd">    target sentence, the center of the corresponding cept is</span>
+<span class="sd">    ceil((2 + 5 + 6) / 3) = 5</span>
+<span class="sd">Displacement:</span>
+<span class="sd">    For a head word, defined as (position of head word - position of</span>
+<span class="sd">    previous cept&#39;s center). Can be positive or negative.</span>
+<span class="sd">    For a non-head word, defined as (position of non-head word -</span>
+<span class="sd">    position of previous word in the same tablet). Always positive,</span>
+<span class="sd">    because successive words in a tablet are assumed to appear to the</span>
+<span class="sd">    right of the previous word.</span>
+
+<span class="sd">In contrast to Model 3 which reorders words in a tablet independently of</span>
+<span class="sd">other words, Model 4 distinguishes between three cases.</span>
+<span class="sd">(1) Words generated by NULL are distributed uniformly.</span>
+<span class="sd">(2) For a head word t, its position is modeled by the probability</span>
+<span class="sd">    d_head(displacement | word_class_s(s),word_class_t(t)),</span>
+<span class="sd">    where s is the previous cept, and word_class_s and word_class_t maps</span>
+<span class="sd">    s and t to a source and target language word class respectively.</span>
+<span class="sd">(3) For a non-head word t, its position is modeled by the probability</span>
+<span class="sd">    d_non_head(displacement | word_class_t(t))</span>
+
+<span class="sd">The EM algorithm used in Model 4 is:</span>
+<span class="sd">E step - In the training data, collect counts, weighted by prior</span>
+<span class="sd">         probabilities.</span>
+<span class="sd">         (a) count how many times a source language word is translated</span>
+<span class="sd">             into a target language word</span>
+<span class="sd">         (b) for a particular word class, count how many times a head</span>
+<span class="sd">             word is located at a particular displacement from the</span>
+<span class="sd">             previous cept&#39;s center</span>
+<span class="sd">         (c) for a particular word class, count how many times a</span>
+<span class="sd">             non-head word is located at a particular displacement from</span>
+<span class="sd">             the previous target word</span>
+<span class="sd">         (d) count how many times a source word is aligned to phi number</span>
+<span class="sd">             of target words</span>
+<span class="sd">         (e) count how many times NULL is aligned to a target word</span>
+
+<span class="sd">M step - Estimate new probabilities based on the counts from the E step</span>
+
+<span class="sd">Like Model 3, there are too many possible alignments to consider. Thus,</span>
+<span class="sd">a hill climbing approach is used to sample good candidates.</span>
+
+
+<span class="sd">Notations:</span>
+<span class="sd">i: Position in the source sentence</span>
+<span class="sd">    Valid values are 0 (for NULL), 1, 2, ..., length of source sentence</span>
+<span class="sd">j: Position in the target sentence</span>
+<span class="sd">    Valid values are 1, 2, ..., length of target sentence</span>
+<span class="sd">l: Number of words in the source sentence, excluding NULL</span>
+<span class="sd">m: Number of words in the target sentence</span>
+<span class="sd">s: A word in the source language</span>
+<span class="sd">t: A word in the target language</span>
+<span class="sd">phi: Fertility, the number of target words produced by a source word</span>
+<span class="sd">p1: Probability that a target word produced by a source word is</span>
+<span class="sd">    accompanied by another target word that is aligned to NULL</span>
+<span class="sd">p0: 1 - p1</span>
+<span class="sd">dj: Displacement, Δj</span>
+
+
+<span class="sd">References:</span>
+<span class="sd">Philipp Koehn. 2010. Statistical Machine Translation.</span>
+<span class="sd">Cambridge University Press, New York.</span>
+
+<span class="sd">Peter E Brown, Stephen A. Della Pietra, Vincent J. Della Pietra, and</span>
+<span class="sd">Robert L. Mercer. 1993. The Mathematics of Statistical Machine</span>
+<span class="sd">Translation: Parameter Estimation. Computational Linguistics, 19 (2),</span>
+<span class="sd">263-311.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">factorial</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">AlignedSent</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">Alignment</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel3</span>
+<span class="kn">from</span> <span class="nn">nltk.align.ibm_model</span> <span class="kn">import</span> <span class="n">Counts</span>
+<span class="kn">from</span> <span class="nn">nltk.align.ibm_model</span> <span class="kn">import</span> <span class="n">longest_target_sentence_length</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+
+<div class="viewcode-block" id="IBMModel4"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4">[docs]</a><span class="k">class</span> <span class="nc">IBMModel4</span><span class="p">(</span><span class="n">IBMModel</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Translation model that reorders output words based on their type and</span>
+<span class="sd">    their distance from other related words in the output sentence</span>
+
+<span class="sd">    &gt;&gt;&gt; bitext = []</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;groß&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;big&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;], [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;klein&#39;], [&#39;a&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;], [&#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;buch&#39;], [&#39;a&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ich&#39;, &#39;fasse&#39;, &#39;das&#39;, &#39;buch&#39;, &#39;zusammen&#39;], [&#39;i&#39;, &#39;summarize&#39;, &#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;fasse&#39;, &#39;zusammen&#39;], [&#39;summarize&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; src_classes = {&#39;the&#39;: 0, &#39;a&#39;: 0, &#39;small&#39;: 1, &#39;big&#39;: 1, &#39;house&#39;: 2, &#39;book&#39;: 2, &#39;is&#39;: 3, &#39;i&#39;: 4, &#39;summarize&#39;: 5 }</span>
+<span class="sd">    &gt;&gt;&gt; trg_classes = {&#39;das&#39;: 0, &#39;ein&#39;: 0, &#39;haus&#39;: 1, &#39;buch&#39;: 1, &#39;klein&#39;: 2, &#39;groß&#39;: 2, &#39;ist&#39;: 3, &#39;ja&#39;: 4, &#39;ich&#39;: 5, &#39;fasse&#39;: 6, &#39;zusammen&#39;: 6 }</span>
+
+<span class="sd">    &gt;&gt;&gt; ibm4 = IBMModel4(bitext, 5, src_classes, trg_classes)</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.translation_table[&#39;buch&#39;][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.translation_table[&#39;das&#39;][&#39;book&#39;]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.translation_table[&#39;ja&#39;][None]))</span>
+<span class="sd">    1.000</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.head_distortion_table[1][0][1]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.head_distortion_table[2][0][1]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.non_head_distortion_table[3][6]))</span>
+<span class="sd">    0.500</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.fertility_table[2][&#39;summarize&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.fertility_table[1][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm4.p1))</span>
+<span class="sd">    0.033</span>
+
+<span class="sd">    &gt;&gt;&gt; test_sentence = bitext[2]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.words</span>
+<span class="sd">    [&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.mots</span>
+<span class="sd">    [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.alignment</span>
+<span class="sd">    Alignment([(0, 0), (1, 1), (2, 2), (3, None), (4, 3)])</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">,</span>
+                 <span class="n">source_word_classes</span><span class="p">,</span> <span class="n">target_word_classes</span><span class="p">,</span>
+                 <span class="n">probability_tables</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Train on ``sentence_aligned_corpus`` and create a lexical</span>
+<span class="sd">        translation model, distortion models, a fertility model, and a</span>
+<span class="sd">        model for generating NULL-aligned words.</span>
+
+<span class="sd">        Translation direction is from ``AlignedSent.mots`` to</span>
+<span class="sd">        ``AlignedSent.words``.</span>
+
+<span class="sd">        Runs a few iterations of Model 3 training to initialize</span>
+<span class="sd">        model parameters.</span>
+
+<span class="sd">        :param sentence_aligned_corpus: Sentence-aligned parallel corpus</span>
+<span class="sd">        :type sentence_aligned_corpus: list(AlignedSent)</span>
+
+<span class="sd">        :param iterations: Number of iterations to run training algorithm</span>
+<span class="sd">        :type iterations: int</span>
+
+<span class="sd">        :param source_word_classes: Lookup table that maps a source word</span>
+<span class="sd">            to its word class, the latter represented by an integer id</span>
+<span class="sd">        :type source_word_classes: dict[str]: int</span>
+
+<span class="sd">        :param target_word_classes: Lookup table that maps a target word</span>
+<span class="sd">            to its word class, the latter represented by an integer id</span>
+<span class="sd">        :type target_word_classes: dict[str]: int</span>
+
+<span class="sd">        :param probability_tables: Optional. Use this to pass in custom</span>
+<span class="sd">            probability values. If not specified, probabilities will be</span>
+<span class="sd">            set to a uniform distribution, or some other sensible value.</span>
+<span class="sd">            If specified, all the following entries must be present:</span>
+<span class="sd">            ``translation_table``, ``alignment_table``,</span>
+<span class="sd">            ``fertility_table``, ``p1``, ``head_distortion_table``,</span>
+<span class="sd">            ``non_head_distortion_table``. See ``IBMModel`` and</span>
+<span class="sd">            ``IBMModel4`` for the type and purpose of these tables.</span>
+<span class="sd">        :type probability_tables: dict[str]: object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel4</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">src_classes</span> <span class="o">=</span> <span class="n">source_word_classes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span> <span class="o">=</span> <span class="n">target_word_classes</span>
+
+        <span class="k">if</span> <span class="n">probability_tables</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># Get probabilities from IBM model 3</span>
+            <span class="n">ibm3</span> <span class="o">=</span> <span class="n">IBMModel3</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">ibm3</span><span class="o">.</span><span class="n">translation_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">ibm3</span><span class="o">.</span><span class="n">alignment_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span> <span class="o">=</span> <span class="n">ibm3</span><span class="o">.</span><span class="n">fertility_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p1</span> <span class="o">=</span> <span class="n">ibm3</span><span class="o">.</span><span class="n">p1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">set_uniform_distortion_probabilities</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Set user-defined probabilities</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;translation_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;alignment_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;fertility_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p1</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;p1&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;head_distortion_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;non_head_distortion_table&#39;</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+
+<div class="viewcode-block" id="IBMModel4.reset_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.reset_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">reset_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel4</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)))</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        dict[int][int][int]: float. Probability(displacement of head</span>
+<span class="sd">        word | word class of previous cept,target word class).</span>
+<span class="sd">        Values accessed as ``distortion_table[dj][src_class][trg_class]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">))</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        dict[int][int]: float. Probability(displacement of non-head</span>
+<span class="sd">        word | target word class).</span>
+<span class="sd">        Values accessed as ``distortion_table[dj][trg_class]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+</div>
+<div class="viewcode-block" id="IBMModel4.set_uniform_distortion_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.set_uniform_distortion_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">set_uniform_distortion_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set distortion probabilities uniformly to</span>
+<span class="sd">        1 / cardinality of displacement values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">max_m</span> <span class="o">=</span> <span class="n">longest_target_sentence_length</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+
+        <span class="c"># The maximum displacement is m-1, when a word is in the last</span>
+        <span class="c"># position m of the target sentence and the previously placed</span>
+        <span class="c"># word is in the first position.</span>
+        <span class="c"># Conversely, the minimum displacement is -(m-1).</span>
+        <span class="c"># Thus, the displacement range is (m-1) - (-(m-1)). Note that</span>
+        <span class="c"># displacement cannot be zero and is not included in the range.</span>
+        <span class="k">if</span> <span class="n">max_m</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">initial_prob</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">initial_prob</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_m</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">initial_prob</span> <span class="o">&lt;</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s">&quot;A target sentence is too long (&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">max_m</span><span class="p">)</span> <span class="o">+</span>
+                          <span class="s">&quot; words). Results may be less accurate.&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">dj</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_m</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span><span class="p">[</span><span class="n">dj</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span><span class="p">[</span><span class="o">-</span><span class="n">dj</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span><span class="p">[</span><span class="n">dj</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span><span class="p">[</span><span class="o">-</span><span class="n">dj</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel4.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parallel_corpus</span><span class="p">):</span>
+        <span class="c"># Reset all counts</span>
+        <span class="n">counts</span> <span class="o">=</span> <span class="n">Model4Counts</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+
+            <span class="c"># Sample the alignment space</span>
+            <span class="n">sampled_alignments</span><span class="p">,</span> <span class="n">best_alignment</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="p">)</span>
+            <span class="c"># Record the most probable alignment</span>
+            <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span>
+                <span class="n">best_alignment</span><span class="o">.</span><span class="n">zero_indexed_alignment</span><span class="p">())</span>
+
+            <span class="c"># E step (a): Compute normalization factors to weigh counts</span>
+            <span class="n">total_count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_of_alignments</span><span class="p">(</span><span class="n">sampled_alignments</span><span class="p">)</span>
+
+            <span class="c"># E step (b): Collect counts</span>
+            <span class="k">for</span> <span class="n">alignment_info</span> <span class="ow">in</span> <span class="n">sampled_alignments</span><span class="p">:</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">)</span>
+                <span class="n">normalized_count</span> <span class="o">=</span> <span class="n">count</span> <span class="o">/</span> <span class="n">total_count</span>
+
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">counts</span><span class="o">.</span><span class="n">update_lexical_translation</span><span class="p">(</span>
+                        <span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+                    <span class="n">counts</span><span class="o">.</span><span class="n">update_distortion</span><span class="p">(</span>
+                        <span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">src_classes</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">)</span>
+
+                <span class="n">counts</span><span class="o">.</span><span class="n">update_null_generation</span><span class="p">(</span><span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">)</span>
+                <span class="n">counts</span><span class="o">.</span><span class="n">update_fertility</span><span class="p">(</span><span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">)</span>
+
+        <span class="c"># M step: Update probabilities with maximum likelihood estimates</span>
+        <span class="c"># If any probability is less than MIN_PROB, clamp it to MIN_PROB</span>
+        <span class="n">existing_alignment_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="c"># don&#39;t retrain alignment table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">existing_alignment_table</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_lexical_translation_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_distortion_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_fertility_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_null_generation_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel4.maximize_distortion_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.maximize_distortion_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">maximize_distortion_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">counts</span><span class="p">):</span>
+        <span class="n">head_d_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span>
+        <span class="k">for</span> <span class="n">dj</span><span class="p">,</span> <span class="n">src_classes</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">head_distortion</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">s_cls</span><span class="p">,</span> <span class="n">trg_classes</span> <span class="ow">in</span> <span class="n">src_classes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t_cls</span> <span class="ow">in</span> <span class="n">trg_classes</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">head_distortion</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">s_cls</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">/</span>
+                                <span class="n">counts</span><span class="o">.</span><span class="n">head_distortion_for_any_dj</span><span class="p">[</span><span class="n">s_cls</span><span class="p">][</span><span class="n">t_cls</span><span class="p">])</span>
+                    <span class="n">head_d_table</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">s_cls</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                         <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
+
+        <span class="n">non_head_d_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span>
+        <span class="k">for</span> <span class="n">dj</span><span class="p">,</span> <span class="n">trg_classes</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">non_head_distortion</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">t_cls</span> <span class="ow">in</span> <span class="n">trg_classes</span><span class="p">:</span>
+                <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">non_head_distortion</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">/</span>
+                            <span class="n">counts</span><span class="o">.</span><span class="n">non_head_distortion_for_any_dj</span><span class="p">[</span><span class="n">t_cls</span><span class="p">])</span>
+                <span class="n">non_head_d_table</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel4.prob_t_a_given_s"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.prob_t_a_given_s">[docs]</a>    <span class="k">def</span> <span class="nf">prob_t_a_given_s</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Probability of target sentence and an alignment given the</span>
+<span class="sd">        source sentence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">IBMModel4</span><span class="o">.</span><span class="n">model4_prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+</div>
+    <span class="nd">@staticmethod</span>  <span class="c"># exposed for Model 5 to use</span>
+<div class="viewcode-block" id="IBMModel4.model4_prob_t_a_given_s"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.IBMModel4.model4_prob_t_a_given_s">[docs]</a>    <span class="k">def</span> <span class="nf">model4_prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">,</span> <span class="n">ibm_model</span><span class="p">):</span>
+        <span class="n">probability</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">MIN_PROB</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
+
+        <span class="k">def</span> <span class="nf">null_generation_term</span><span class="p">():</span>
+            <span class="c"># Binomial distribution: B(m - null_fertility, p1)</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">p1</span> <span class="o">=</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">p1</span>
+            <span class="n">p0</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">p1</span>
+            <span class="n">null_fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="nb">pow</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">null_fertility</span><span class="p">)</span> <span class="o">*</span> <span class="nb">pow</span><span class="p">(</span><span class="n">p0</span><span class="p">,</span> <span class="n">m</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">null_fertility</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+            <span class="c"># Combination: (m - null_fertility) choose null_fertility</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">null_fertility</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">null_fertility</span> <span class="o">-</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">i</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">def</span> <span class="nf">fertility_term</span><span class="p">():</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">src_sentence</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src_sentence</span><span class="p">)):</span>
+                <span class="n">fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">fertility</span><span class="p">)</span> <span class="o">*</span>
+                          <span class="n">ibm_model</span><span class="o">.</span><span class="n">fertility_table</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]])</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">MIN_PROB</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">def</span> <span class="nf">lexical_translation_term</span><span class="p">(</span><span class="n">j</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span>
+
+        <span class="k">def</span> <span class="nf">distortion_term</span><span class="p">(</span><span class="n">j</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c"># case 1: t is aligned to NULL</span>
+                <span class="k">return</span> <span class="mf">1.0</span>
+            <span class="k">if</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">is_head_word</span><span class="p">(</span><span class="n">j</span><span class="p">):</span>
+                <span class="c"># case 2: t is the first word of a tablet</span>
+                <span class="n">previous_cept</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_cept</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+                <span class="n">src_class</span> <span class="o">=</span> <span class="bp">None</span>
+                <span class="k">if</span> <span class="n">previous_cept</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">previous_s</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">previous_cept</span><span class="p">]</span>
+                    <span class="n">src_class</span> <span class="o">=</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">src_classes</span><span class="p">[</span><span class="n">previous_s</span><span class="p">]</span>
+                <span class="n">trg_class</span> <span class="o">=</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="n">dj</span> <span class="o">=</span> <span class="n">j</span> <span class="o">-</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">center_of_cept</span><span class="p">(</span><span class="n">previous_cept</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">head_distortion_table</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">src_class</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span>
+
+            <span class="c"># case 3: t is a subsequent word of a tablet</span>
+            <span class="n">previous_position</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_in_tablet</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="n">trg_class</span> <span class="o">=</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+            <span class="n">dj</span> <span class="o">=</span> <span class="n">j</span> <span class="o">-</span> <span class="n">previous_position</span>
+            <span class="k">return</span> <span class="n">ibm_model</span><span class="o">.</span><span class="n">non_head_distortion_table</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span>
+        <span class="c"># end nested functions</span>
+
+        <span class="c"># Abort computation whenever probability falls below MIN_PROB at</span>
+        <span class="c"># any point, since MIN_PROB can be considered as zero</span>
+        <span class="n">probability</span> <span class="o">*=</span> <span class="n">null_generation_term</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="n">probability</span> <span class="o">*=</span> <span class="n">fertility_term</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)):</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="n">lexical_translation_term</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+            <span class="n">probability</span> <span class="o">*=</span> <span class="n">distortion_term</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="k">return</span> <span class="n">probability</span>
+
+</div></div>
+<div class="viewcode-block" id="Model4Counts"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.Model4Counts">[docs]</a><span class="k">class</span> <span class="nc">Model4Counts</span><span class="p">(</span><span class="n">Counts</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Data object to store counts of various parameters during training.</span>
+<span class="sd">    Include counts for distortion.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Model4Counts</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_for_any_dj</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_for_any_dj</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Model4Counts.update_distortion"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm4.Model4Counts.update_distortion">[docs]</a>    <span class="k">def</span> <span class="nf">update_distortion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span>
+                          <span class="n">src_classes</span><span class="p">,</span> <span class="n">trg_classes</span><span class="p">):</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># case 1: t is aligned to NULL</span>
+            <span class="k">pass</span>
+        <span class="k">elif</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">is_head_word</span><span class="p">(</span><span class="n">j</span><span class="p">):</span>
+            <span class="c"># case 2: t is the first word of a tablet</span>
+            <span class="n">previous_cept</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_cept</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">previous_cept</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">previous_src_word</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">previous_cept</span><span class="p">]</span>
+                <span class="n">src_class</span> <span class="o">=</span> <span class="n">src_classes</span><span class="p">[</span><span class="n">previous_src_word</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">src_class</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="n">trg_class</span> <span class="o">=</span> <span class="n">trg_classes</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+            <span class="n">dj</span> <span class="o">=</span> <span class="n">j</span> <span class="o">-</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">center_of_cept</span><span class="p">(</span><span class="n">previous_cept</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">src_class</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_for_any_dj</span><span class="p">[</span><span class="n">src_class</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># case 3: t is a subsequent word of a tablet</span>
+            <span class="n">previous_j</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_in_tablet</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="n">trg_class</span> <span class="o">=</span> <span class="n">trg_classes</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+            <span class="n">dj</span> <span class="o">=</span> <span class="n">j</span> <span class="o">-</span> <span class="n">previous_j</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion</span><span class="p">[</span><span class="n">dj</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_for_any_dj</span><span class="p">[</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Sep 05, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

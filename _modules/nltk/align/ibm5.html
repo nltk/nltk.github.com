@@ -1,0 +1,756 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.align.ibm5 &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.align.ibm5</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: IBM Model 5</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Tah Wei Hoon &lt;hoon.tw@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Translation model that keeps track of vacant positions in the target</span>
+<span class="sd">sentence to decide where to place translated words.</span>
+
+<span class="sd">Translation can be viewed as a process where each word in the source</span>
+<span class="sd">sentence is stepped through sequentially, generating translated words</span>
+<span class="sd">for each source word. The target sentence can be viewed as being made</span>
+<span class="sd">up of ``m`` empty slots initially, which gradually fill up as generated</span>
+<span class="sd">words are placed in them.</span>
+
+<span class="sd">Models 3 and 4 use distortion probabilities to decide how to place</span>
+<span class="sd">translated words. For simplicity, these models ignore the history of</span>
+<span class="sd">which slots have already been occupied with translated words.</span>
+<span class="sd">Consider the placement of the last translated word: there is only one</span>
+<span class="sd">empty slot left in the target sentence, so the distortion probability</span>
+<span class="sd">should be 1.0 for that position and 0.0 everywhere else. However, the</span>
+<span class="sd">distortion probabilities for Models 3 and 4 are set up such that all</span>
+<span class="sd">positions are under consideration.</span>
+
+<span class="sd">IBM Model 5 fixes this deficiency by accounting for occupied slots</span>
+<span class="sd">during translation. It introduces the vacancy function v(j), the number</span>
+<span class="sd">of vacancies up to, and including, position j in the target sentence.</span>
+
+<span class="sd">Terminology:</span>
+<span class="sd">Maximum vacancy:</span>
+<span class="sd">    The number of valid slots that a word can be placed in.</span>
+<span class="sd">    This is not necessarily the same as the number of vacant slots.</span>
+<span class="sd">    For example, if a tablet contains more than one word, the head word</span>
+<span class="sd">    cannot be placed at the last vacant slot because there will be no</span>
+<span class="sd">    space for the other words in the tablet. The number of valid slots</span>
+<span class="sd">    has to take into account the length of the tablet.</span>
+<span class="sd">    Non-head words cannot be placed before the head word, so vacancies</span>
+<span class="sd">    to the left of the head word are ignored.</span>
+<span class="sd">Vacancy difference:</span>
+<span class="sd">    For a head word: (v(j) - v(center of previous cept))</span>
+<span class="sd">    Can be positive or negative.</span>
+<span class="sd">    For a non-head word: (v(j) - v(position of previously placed word))</span>
+<span class="sd">    Always positive, because successive words in a tablet are assumed to</span>
+<span class="sd">    appear to the right of the previous word.</span>
+
+<span class="sd">Positioning of target words fall under three cases:</span>
+<span class="sd">(1) Words generated by NULL are distributed uniformly</span>
+<span class="sd">(2) For a head word t, its position is modeled by the probability</span>
+<span class="sd">    v_head(dv | max_v,word_class_t(t))</span>
+<span class="sd">(3) For a non-head word t, its position is modeled by the probability</span>
+<span class="sd">    v_non_head(dv | max_v,word_class_t(t))</span>
+<span class="sd">dv and max_v are defined differently for head and non-head words.</span>
+
+<span class="sd">The EM algorithm used in Model 5 is:</span>
+<span class="sd">E step - In the training data, collect counts, weighted by prior</span>
+<span class="sd">         probabilities.</span>
+<span class="sd">         (a) count how many times a source language word is translated</span>
+<span class="sd">             into a target language word</span>
+<span class="sd">         (b) for a particular word class and maximum vacancy, count how</span>
+<span class="sd">             many times a head word and the previous cept&#39;s center have</span>
+<span class="sd">             a particular difference in number of vacancies</span>
+<span class="sd">         (b) for a particular word class and maximum vacancy, count how</span>
+<span class="sd">             many times a non-head word and the previous target word</span>
+<span class="sd">             have a particular difference in number of vacancies</span>
+<span class="sd">         (d) count how many times a source word is aligned to phi number</span>
+<span class="sd">             of target words</span>
+<span class="sd">         (e) count how many times NULL is aligned to a target word</span>
+
+<span class="sd">M step - Estimate new probabilities based on the counts from the E step</span>
+
+<span class="sd">Like Model 4, there are too many possible alignments to consider. Thus,</span>
+<span class="sd">a hill climbing approach is used to sample good candidates. In addition,</span>
+<span class="sd">pruning is used to weed out unlikely alignments based on Model 4 scores.</span>
+
+
+<span class="sd">Notations:</span>
+<span class="sd">i: Position in the source sentence</span>
+<span class="sd">    Valid values are 0 (for NULL), 1, 2, ..., length of source sentence</span>
+<span class="sd">j: Position in the target sentence</span>
+<span class="sd">    Valid values are 1, 2, ..., length of target sentence</span>
+<span class="sd">l: Number of words in the source sentence, excluding NULL</span>
+<span class="sd">m: Number of words in the target sentence</span>
+<span class="sd">s: A word in the source language</span>
+<span class="sd">t: A word in the target language</span>
+<span class="sd">phi: Fertility, the number of target words produced by a source word</span>
+<span class="sd">p1: Probability that a target word produced by a source word is</span>
+<span class="sd">    accompanied by another target word that is aligned to NULL</span>
+<span class="sd">p0: 1 - p1</span>
+<span class="sd">max_v: Maximum vacancy</span>
+<span class="sd">dv: Vacancy difference, Δv</span>
+
+<span class="sd">The definition of v_head here differs from GIZA++, section 4.7 of</span>
+<span class="sd">[Brown et al., 1993], and [Koehn, 2010]. In the latter cases, v_head is</span>
+<span class="sd">v_head(v(j) | v(center of previous cept),max_v,word_class(t)).</span>
+
+<span class="sd">Here, we follow appendix B of [Brown et al., 1993] and combine v(j) with</span>
+<span class="sd">v(center of previous cept) to obtain dv:</span>
+<span class="sd">v_head(v(j) - v(center of previous cept) | max_v,word_class(t)).</span>
+
+
+<span class="sd">References:</span>
+<span class="sd">Philipp Koehn. 2010. Statistical Machine Translation.</span>
+<span class="sd">Cambridge University Press, New York.</span>
+
+<span class="sd">Peter E Brown, Stephen A. Della Pietra, Vincent J. Della Pietra, and</span>
+<span class="sd">Robert L. Mercer. 1993. The Mathematics of Statistical Machine</span>
+<span class="sd">Translation: Parameter Estimation. Computational Linguistics, 19 (2),</span>
+<span class="sd">263-311.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">factorial</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">AlignedSent</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">Alignment</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel4</span>
+<span class="kn">from</span> <span class="nn">nltk.align.ibm_model</span> <span class="kn">import</span> <span class="n">Counts</span>
+<span class="kn">from</span> <span class="nn">nltk.align.ibm_model</span> <span class="kn">import</span> <span class="n">longest_target_sentence_length</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+
+<div class="viewcode-block" id="IBMModel5"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5">[docs]</a><span class="k">class</span> <span class="nc">IBMModel5</span><span class="p">(</span><span class="n">IBMModel</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Translation model that keeps track of vacant positions in the target</span>
+<span class="sd">    sentence to decide where to place translated words</span>
+
+<span class="sd">    &gt;&gt;&gt; bitext = []</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;groß&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;big&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;], [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;klein&#39;], [&#39;a&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;], [&#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;buch&#39;], [&#39;a&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ich&#39;, &#39;fasse&#39;, &#39;das&#39;, &#39;buch&#39;, &#39;zusammen&#39;], [&#39;i&#39;, &#39;summarize&#39;, &#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;fasse&#39;, &#39;zusammen&#39;], [&#39;summarize&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; src_classes = {&#39;the&#39;: 0, &#39;a&#39;: 0, &#39;small&#39;: 1, &#39;big&#39;: 1, &#39;house&#39;: 2, &#39;book&#39;: 2, &#39;is&#39;: 3, &#39;i&#39;: 4, &#39;summarize&#39;: 5 }</span>
+<span class="sd">    &gt;&gt;&gt; trg_classes = {&#39;das&#39;: 0, &#39;ein&#39;: 0, &#39;haus&#39;: 1, &#39;buch&#39;: 1, &#39;klein&#39;: 2, &#39;groß&#39;: 2, &#39;ist&#39;: 3, &#39;ja&#39;: 4, &#39;ich&#39;: 5, &#39;fasse&#39;: 6, &#39;zusammen&#39;: 6 }</span>
+
+<span class="sd">    &gt;&gt;&gt; ibm5 = IBMModel5(bitext, 5, src_classes, trg_classes)</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.head_vacancy_table[1][1][1]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.head_vacancy_table[2][1][1]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.non_head_vacancy_table[3][3][6]))</span>
+<span class="sd">    1.000</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.fertility_table[2][&#39;summarize&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.fertility_table[1][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
+
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm5.p1))</span>
+<span class="sd">    0.033</span>
+
+<span class="sd">    &gt;&gt;&gt; test_sentence = bitext[2]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.words</span>
+<span class="sd">    [&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.mots</span>
+<span class="sd">    [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.alignment</span>
+<span class="sd">    Alignment([(0, 0), (1, 1), (2, 2), (3, None), (4, 3)])</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">MIN_SCORE_FACTOR</span> <span class="o">=</span> <span class="mf">0.2</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Alignments with scores below this factor are pruned during sampling</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">,</span>
+                 <span class="n">source_word_classes</span><span class="p">,</span> <span class="n">target_word_classes</span><span class="p">,</span>
+                 <span class="n">probability_tables</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Train on ``sentence_aligned_corpus`` and create a lexical</span>
+<span class="sd">        translation model, vacancy models, a fertility model, and a</span>
+<span class="sd">        model for generating NULL-aligned words.</span>
+
+<span class="sd">        Translation direction is from ``AlignedSent.mots`` to</span>
+<span class="sd">        ``AlignedSent.words``.</span>
+
+<span class="sd">        :param sentence_aligned_corpus: Sentence-aligned parallel corpus</span>
+<span class="sd">        :type sentence_aligned_corpus: list(AlignedSent)</span>
+
+<span class="sd">        :param iterations: Number of iterations to run training algorithm</span>
+<span class="sd">        :type iterations: int</span>
+
+<span class="sd">        :param source_word_classes: Lookup table that maps a source word</span>
+<span class="sd">            to its word class, the latter represented by an integer id</span>
+<span class="sd">        :type source_word_classes: dict[str]: int</span>
+
+<span class="sd">        :param target_word_classes: Lookup table that maps a target word</span>
+<span class="sd">            to its word class, the latter represented by an integer id</span>
+<span class="sd">        :type target_word_classes: dict[str]: int</span>
+
+<span class="sd">        :param probability_tables: Optional. Use this to pass in custom</span>
+<span class="sd">            probability values. If not specified, probabilities will be</span>
+<span class="sd">            set to a uniform distribution, or some other sensible value.</span>
+<span class="sd">            If specified, all the following entries must be present:</span>
+<span class="sd">            ``translation_table``, ``alignment_table``,</span>
+<span class="sd">            ``fertility_table``, ``p1``, ``head_distortion_table``,</span>
+<span class="sd">            ``non_head_distortion_table``, ``head_vacancy_table``,</span>
+<span class="sd">            ``non_head_vacancy_table``. See ``IBMModel``, ``IBMModel4``,</span>
+<span class="sd">            and ``IBMModel5`` for the type and purpose of these tables.</span>
+<span class="sd">        :type probability_tables: dict[str]: object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel5</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">src_classes</span> <span class="o">=</span> <span class="n">source_word_classes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span> <span class="o">=</span> <span class="n">target_word_classes</span>
+
+        <span class="k">if</span> <span class="n">probability_tables</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># Get probabilities from IBM model 4</span>
+            <span class="n">ibm4</span> <span class="o">=</span> <span class="n">IBMModel4</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">,</span>
+                             <span class="n">source_word_classes</span><span class="p">,</span> <span class="n">target_word_classes</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">translation_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">alignment_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">fertility_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p1</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">p1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">head_distortion_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span> <span class="o">=</span> <span class="n">ibm4</span><span class="o">.</span><span class="n">non_head_distortion_table</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">set_uniform_distortion_probabilities</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Set user-defined probabilities</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;translation_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;alignment_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;fertility_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p1</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span><span class="s">&#39;p1&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_distortion_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;head_distortion_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_distortion_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;non_head_distortion_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;head_vacancy_table&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span> <span class="o">=</span> <span class="n">probability_tables</span><span class="p">[</span>
+                <span class="s">&#39;non_head_vacancy_table&#39;</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+
+<div class="viewcode-block" id="IBMModel5.reset_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.reset_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">reset_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel5</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)))</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        dict[int][int][int]: float. Probability(vacancy difference |</span>
+<span class="sd">        number of remaining valid positions,target word class).</span>
+<span class="sd">        Values accessed as ``head_vacancy_table[dv][v_max][trg_class]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)))</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        dict[int][int][int]: float. Probability(vacancy difference |</span>
+<span class="sd">        number of remaining valid positions,target word class).</span>
+<span class="sd">        Values accessed as ``non_head_vacancy_table[dv][v_max][trg_class]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.set_uniform_distortion_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.set_uniform_distortion_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">set_uniform_distortion_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set vacancy probabilities uniformly to</span>
+<span class="sd">        1 / cardinality of vacancy difference values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">max_m</span> <span class="o">=</span> <span class="n">longest_target_sentence_length</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
+
+        <span class="c"># The maximum vacancy difference occurs when a word is placed in</span>
+        <span class="c"># the last available position m of the target sentence and the</span>
+        <span class="c"># previous word position has no vacancies.</span>
+        <span class="c"># The minimum is 1-max_v, when a word is placed in the first</span>
+        <span class="c"># available position and the previous word is placed beyond the</span>
+        <span class="c"># last available position.</span>
+        <span class="c"># Thus, the number of possible vacancy difference values is</span>
+        <span class="c"># (max_v) - (1-max_v) + 1 = 2 * max_v.</span>
+        <span class="k">if</span> <span class="n">max_m</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">max_m</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s">&quot;A target sentence is too long (&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">max_m</span><span class="p">)</span> <span class="o">+</span>
+                          <span class="s">&quot; words). Results may be less accurate.&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">max_v</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">dv</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">initial_prob</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">max_v</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span><span class="p">[</span><span class="o">-</span><span class="p">(</span><span class="n">dv</span><span class="o">-</span><span class="mi">1</span><span class="p">)][</span><span class="n">max_v</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span><span class="p">[</span><span class="o">-</span><span class="p">(</span><span class="n">dv</span><span class="o">-</span><span class="mi">1</span><span class="p">)][</span><span class="n">max_v</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="n">initial_prob</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parallel_corpus</span><span class="p">):</span>
+        <span class="c"># Reset all counts</span>
+        <span class="n">counts</span> <span class="o">=</span> <span class="n">Model5Counts</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+
+            <span class="c"># Sample the alignment space</span>
+            <span class="n">sampled_alignments</span><span class="p">,</span> <span class="n">best_alignment</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="p">)</span>
+            <span class="c"># Record the most probable alignment</span>
+            <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span>
+                <span class="n">best_alignment</span><span class="o">.</span><span class="n">zero_indexed_alignment</span><span class="p">())</span>
+
+            <span class="c"># E step (a): Compute normalization factors to weigh counts</span>
+            <span class="n">total_count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_of_alignments</span><span class="p">(</span><span class="n">sampled_alignments</span><span class="p">)</span>
+
+            <span class="c"># E step (b): Collect counts</span>
+            <span class="k">for</span> <span class="n">alignment_info</span> <span class="ow">in</span> <span class="n">sampled_alignments</span><span class="p">:</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">)</span>
+                <span class="n">normalized_count</span> <span class="o">=</span> <span class="n">count</span> <span class="o">/</span> <span class="n">total_count</span>
+
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">counts</span><span class="o">.</span><span class="n">update_lexical_translation</span><span class="p">(</span>
+                        <span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+
+                <span class="n">slots</span> <span class="o">=</span> <span class="n">Slots</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">counts</span><span class="o">.</span><span class="n">update_vacancy</span><span class="p">(</span>
+                        <span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">,</span> <span class="n">slots</span><span class="p">)</span>
+
+                <span class="n">counts</span><span class="o">.</span><span class="n">update_null_generation</span><span class="p">(</span><span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">)</span>
+                <span class="n">counts</span><span class="o">.</span><span class="n">update_fertility</span><span class="p">(</span><span class="n">normalized_count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">)</span>
+
+        <span class="c"># M step: Update probabilities with maximum likelihood estimates</span>
+        <span class="c"># If any probability is less than MIN_PROB, clamp it to MIN_PROB</span>
+        <span class="n">existing_alignment_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset_probabilities</span><span class="p">()</span>
+        <span class="c"># don&#39;t retrain alignment table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span> <span class="o">=</span> <span class="n">existing_alignment_table</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_lexical_translation_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_vacancy_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_fertility_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maximize_null_generation_probabilities</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.sample"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.sample">[docs]</a>    <span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_pair</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sample the most probable alignments from the entire alignment</span>
+<span class="sd">        space according to Model 4</span>
+
+<span class="sd">        Note that Model 4 scoring is used instead of Model 5 because the</span>
+<span class="sd">        latter is too expensive to compute.</span>
+
+<span class="sd">        First, determine the best alignment according to IBM Model 2.</span>
+<span class="sd">        With this initial alignment, use hill climbing to determine the</span>
+<span class="sd">        best alignment according to a IBM Model 4. Add this</span>
+<span class="sd">        alignment and its neighbors to the sample set. Repeat this</span>
+<span class="sd">        process with other initial alignments obtained by pegging an</span>
+<span class="sd">        alignment point. Finally, prune alignments that have</span>
+<span class="sd">        substantially lower Model 4 scores than the best alignment.</span>
+
+<span class="sd">        :param sentence_pair: Source and target language sentence pair</span>
+<span class="sd">            to generate a sample of alignments from</span>
+<span class="sd">        :type sentence_pair: AlignedSent</span>
+
+<span class="sd">        :return: A set of best alignments represented by their ``AlignmentInfo``</span>
+<span class="sd">            and the best alignment of the set for convenience</span>
+<span class="sd">        :rtype: set(AlignmentInfo), AlignmentInfo</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">sampled_alignments</span><span class="p">,</span> <span class="n">best_alignment</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span>
+            <span class="n">IBMModel5</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">sentence_pair</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">prune</span><span class="p">(</span><span class="n">sampled_alignments</span><span class="p">),</span> <span class="n">best_alignment</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.prune"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.prune">[docs]</a>    <span class="k">def</span> <span class="nf">prune</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_infos</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes alignments from ``alignment_infos`` that have</span>
+<span class="sd">        substantially lower Model 4 scores than the best alignment</span>
+
+<span class="sd">        :return: Pruned alignments</span>
+<span class="sd">        :rtype: set(AlignmentInfo)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">alignments</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">best_score</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">for</span> <span class="n">alignment_info</span> <span class="ow">in</span> <span class="n">alignment_infos</span><span class="p">:</span>
+            <span class="n">score</span> <span class="o">=</span> <span class="n">IBMModel4</span><span class="o">.</span><span class="n">model4_prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment_info</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+            <span class="n">best_score</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="n">best_score</span><span class="p">)</span>
+            <span class="n">alignments</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">alignment_info</span><span class="p">,</span> <span class="n">score</span><span class="p">))</span>
+
+        <span class="n">threshold</span> <span class="o">=</span> <span class="n">IBMModel5</span><span class="o">.</span><span class="n">MIN_SCORE_FACTOR</span> <span class="o">*</span> <span class="n">best_score</span>
+        <span class="n">alignments</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">alignments</span> <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">alignments</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.hillclimb"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.hillclimb">[docs]</a>    <span class="k">def</span> <span class="nf">hillclimb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">j_pegged</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Starting from the alignment in ``alignment_info``, look at</span>
+<span class="sd">        neighboring alignments iteratively for the best one, according</span>
+<span class="sd">        to Model 4</span>
+
+<span class="sd">        Note that Model 4 scoring is used instead of Model 5 because the</span>
+<span class="sd">        latter is too expensive to compute.</span>
+
+<span class="sd">        There is no guarantee that the best alignment in the alignment</span>
+<span class="sd">        space will be found, because the algorithm might be stuck in a</span>
+<span class="sd">        local maximum.</span>
+
+<span class="sd">        :param j_pegged: If specified, the search will be constrained to</span>
+<span class="sd">            alignments where ``j_pegged`` remains unchanged</span>
+<span class="sd">        :type j_pegged: int</span>
+
+<span class="sd">        :return: The best alignment found from hill climbing</span>
+<span class="sd">        :rtype: AlignmentInfo</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">alignment</span> <span class="o">=</span> <span class="n">alignment_info</span>  <span class="c"># alias with shorter name</span>
+        <span class="n">max_probability</span> <span class="o">=</span> <span class="n">IBMModel4</span><span class="o">.</span><span class="n">model4_prob_t_a_given_s</span><span class="p">(</span><span class="n">alignment</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">old_alignment</span> <span class="o">=</span> <span class="n">alignment</span>
+            <span class="k">for</span> <span class="n">neighbor_alignment</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighboring</span><span class="p">(</span><span class="n">alignment</span><span class="p">,</span> <span class="n">j_pegged</span><span class="p">):</span>
+                <span class="n">neighbor_probability</span> <span class="o">=</span> <span class="n">IBMModel4</span><span class="o">.</span><span class="n">model4_prob_t_a_given_s</span><span class="p">(</span>
+                    <span class="n">neighbor_alignment</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">neighbor_probability</span> <span class="o">&gt;</span> <span class="n">max_probability</span><span class="p">:</span>
+                    <span class="n">alignment</span> <span class="o">=</span> <span class="n">neighbor_alignment</span>
+                    <span class="n">max_probability</span> <span class="o">=</span> <span class="n">neighbor_probability</span>
+
+            <span class="k">if</span> <span class="n">alignment</span> <span class="o">==</span> <span class="n">old_alignment</span><span class="p">:</span>
+                <span class="c"># Until there are no better alignments</span>
+                <span class="k">break</span>
+
+        <span class="n">alignment</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="n">max_probability</span>
+        <span class="k">return</span> <span class="n">alignment</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.prob_t_a_given_s"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.prob_t_a_given_s">[docs]</a>    <span class="k">def</span> <span class="nf">prob_t_a_given_s</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Probability of target sentence and an alignment given the</span>
+<span class="sd">        source sentence</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">probability</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">MIN_PROB</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
+        <span class="n">slots</span> <span class="o">=</span> <span class="n">Slots</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">null_generation_term</span><span class="p">():</span>
+            <span class="c"># Binomial distribution: B(m - null_fertility, p1)</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">p1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p1</span>
+            <span class="n">p0</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">p1</span>
+            <span class="n">null_fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="nb">pow</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">null_fertility</span><span class="p">)</span> <span class="o">*</span> <span class="nb">pow</span><span class="p">(</span><span class="n">p0</span><span class="p">,</span> <span class="n">m</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">null_fertility</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+            <span class="c"># Combination: (m - null_fertility) choose null_fertility</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">null_fertility</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">null_fertility</span> <span class="o">-</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">i</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">def</span> <span class="nf">fertility_term</span><span class="p">():</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">src_sentence</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src_sentence</span><span class="p">)):</span>
+                <span class="n">fertility</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">fertility_of_i</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                <span class="n">value</span> <span class="o">*=</span> <span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">fertility</span><span class="p">)</span> <span class="o">*</span>
+                          <span class="bp">self</span><span class="o">.</span><span class="n">fertility_table</span><span class="p">[</span><span class="n">fertility</span><span class="p">][</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]])</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">MIN_PROB</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">def</span> <span class="nf">lexical_translation_term</span><span class="p">(</span><span class="n">j</span><span class="p">):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span>
+
+        <span class="k">def</span> <span class="nf">vacancy_term</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">tablet</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">cepts</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">tablet_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tablet</span><span class="p">)</span>
+            <span class="n">total_vacancies</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">slots</span><span class="p">))</span>
+
+            <span class="c"># case 1: NULL-aligned words</span>
+            <span class="k">if</span> <span class="n">tablet_length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">value</span>
+
+            <span class="c"># case 2: head word</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">previous_cept</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_cept</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="n">previous_center</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">center_of_cept</span><span class="p">(</span><span class="n">previous_cept</span><span class="p">)</span>
+            <span class="n">dv</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">previous_center</span><span class="p">)</span>
+            <span class="n">max_v</span> <span class="o">=</span> <span class="n">total_vacancies</span> <span class="o">-</span> <span class="n">tablet_length</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="n">trg_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">[</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
+            <span class="n">value</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span>
+            <span class="n">slots</span><span class="o">.</span><span class="n">occupy</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>  <span class="c"># mark position as occupied</span>
+            <span class="n">total_vacancies</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+            <span class="c"># case 3: non-head words</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">tablet_length</span><span class="p">):</span>
+                <span class="n">previous_position</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+                <span class="n">previous_vacancies</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">previous_position</span><span class="p">)</span>
+                <span class="n">j</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="n">dv</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">previous_vacancies</span>
+                <span class="n">max_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">total_vacancies</span> <span class="o">-</span> <span class="n">tablet_length</span> <span class="o">+</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span>
+                         <span class="n">previous_vacancies</span><span class="p">)</span>
+                <span class="n">trg_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trg_classes</span><span class="p">[</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
+                <span class="n">value</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span>
+                <span class="n">slots</span><span class="o">.</span><span class="n">occupy</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>  <span class="c"># mark position as occupied</span>
+                <span class="n">total_vacancies</span> <span class="o">-=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="c"># end nested functions</span>
+
+        <span class="c"># Abort computation whenever probability falls below MIN_PROB at</span>
+        <span class="c"># any point, since MIN_PROB can be considered as zero</span>
+        <span class="n">probability</span> <span class="o">*=</span> <span class="n">null_generation_term</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="n">probability</span> <span class="o">*=</span> <span class="n">fertility_term</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)):</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="n">lexical_translation_term</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">)):</span>
+            <span class="n">probability</span> <span class="o">*=</span> <span class="n">vacancy_term</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">probability</span> <span class="o">&lt;</span> <span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">MIN_PROB</span>
+
+        <span class="k">return</span> <span class="n">probability</span>
+</div>
+<div class="viewcode-block" id="IBMModel5.maximize_vacancy_probabilities"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.IBMModel5.maximize_vacancy_probabilities">[docs]</a>    <span class="k">def</span> <span class="nf">maximize_vacancy_probabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">counts</span><span class="p">):</span>
+        <span class="n">MIN_PROB</span> <span class="o">=</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span>
+        <span class="n">head_vacancy_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_table</span>
+        <span class="k">for</span> <span class="n">dv</span><span class="p">,</span> <span class="n">max_vs</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">head_vacancy</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">max_v</span><span class="p">,</span> <span class="n">trg_classes</span> <span class="ow">in</span> <span class="n">max_vs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t_cls</span> <span class="ow">in</span> <span class="n">trg_classes</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">head_vacancy</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">/</span>
+                                <span class="n">counts</span><span class="o">.</span><span class="n">head_vacancy_for_any_dv</span><span class="p">[</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">])</span>
+                    <span class="n">head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                               <span class="n">MIN_PROB</span><span class="p">)</span>
+
+        <span class="n">non_head_vacancy_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_table</span>
+        <span class="k">for</span> <span class="n">dv</span><span class="p">,</span> <span class="n">max_vs</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">non_head_vacancy</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">max_v</span><span class="p">,</span> <span class="n">trg_classes</span> <span class="ow">in</span> <span class="n">max_vs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">t_cls</span> <span class="ow">in</span> <span class="n">trg_classes</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">counts</span><span class="o">.</span><span class="n">non_head_vacancy</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">/</span>
+                        <span class="n">counts</span><span class="o">.</span><span class="n">non_head_vacancy_for_any_dv</span><span class="p">[</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">])</span>
+                    <span class="n">non_head_vacancy_table</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">t_cls</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                                   <span class="n">MIN_PROB</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="Model5Counts"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.Model5Counts">[docs]</a><span class="k">class</span> <span class="nc">Model5Counts</span><span class="p">(</span><span class="n">Counts</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Data object to store counts of various parameters during training.</span>
+<span class="sd">    Include counts for vacancies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Model5Counts</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_for_any_dv</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_for_any_dv</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Model5Counts.update_vacancy"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.Model5Counts.update_vacancy">[docs]</a>    <span class="k">def</span> <span class="nf">update_vacancy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">trg_classes</span><span class="p">,</span> <span class="n">slots</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param count: Value to add to the vacancy counts</span>
+<span class="sd">        :param alignment_info: Alignment under consideration</span>
+<span class="sd">        :param i: Source word position under consideration</span>
+<span class="sd">        :param trg_classes: Target word classes</span>
+<span class="sd">        :param slots: Vacancy states of the slots in the target sentence.</span>
+<span class="sd">            Output parameter that will be modified as new words are placed</span>
+<span class="sd">            in the target sentence.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tablet</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">cepts</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">tablet_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tablet</span><span class="p">)</span>
+        <span class="n">total_vacancies</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">slots</span><span class="p">))</span>
+
+        <span class="c"># case 1: NULL aligned words</span>
+        <span class="k">if</span> <span class="n">tablet_length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>  <span class="c"># ignore zero fertility words</span>
+
+        <span class="c"># case 2: head word</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">previous_cept</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">previous_cept</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+        <span class="n">previous_center</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">center_of_cept</span><span class="p">(</span><span class="n">previous_cept</span><span class="p">)</span>
+        <span class="n">dv</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">previous_center</span><span class="p">)</span>
+        <span class="n">max_v</span> <span class="o">=</span> <span class="n">total_vacancies</span> <span class="o">-</span> <span class="n">tablet_length</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">trg_class</span> <span class="o">=</span> <span class="n">trg_classes</span><span class="p">[</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">head_vacancy_for_any_dv</span><span class="p">[</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+        <span class="n">slots</span><span class="o">.</span><span class="n">occupy</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>  <span class="c"># mark position as occupied</span>
+        <span class="n">total_vacancies</span> <span class="o">-=</span> <span class="mi">1</span>
+
+        <span class="c"># case 3: non-head words</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">tablet_length</span><span class="p">):</span>
+            <span class="n">previous_position</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">previous_vacancies</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">previous_position</span><span class="p">)</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="n">tablet</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">dv</span> <span class="o">=</span> <span class="n">slots</span><span class="o">.</span><span class="n">vacancies_at</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">previous_vacancies</span>
+            <span class="n">max_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">total_vacancies</span> <span class="o">-</span> <span class="n">tablet_length</span> <span class="o">+</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span>
+                     <span class="n">previous_vacancies</span><span class="p">)</span>
+            <span class="n">trg_class</span> <span class="o">=</span> <span class="n">trg_classes</span><span class="p">[</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy</span><span class="p">[</span><span class="n">dv</span><span class="p">][</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">non_head_vacancy_for_any_dv</span><span class="p">[</span><span class="n">max_v</span><span class="p">][</span><span class="n">trg_class</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
+            <span class="n">slots</span><span class="o">.</span><span class="n">occupy</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>  <span class="c"># mark position as occupied</span>
+            <span class="n">total_vacancies</span> <span class="o">-=</span> <span class="mi">1</span>
+
+</div></div>
+<div class="viewcode-block" id="Slots"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.Slots">[docs]</a><span class="k">class</span> <span class="nc">Slots</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Represents positions in a target sentence. Used to keep track of</span>
+<span class="sd">    which slot (position) is occupied.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target_sentence_length</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_slots</span> <span class="o">=</span> <span class="p">[</span><span class="bp">False</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">target_sentence_length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>  <span class="c"># 1-indexed</span>
+
+<div class="viewcode-block" id="Slots.occupy"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.Slots.occupy">[docs]</a>    <span class="k">def</span> <span class="nf">occupy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">position</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: Mark slot at ``position`` as occupied</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_slots</span><span class="p">[</span><span class="n">position</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+</div>
+<div class="viewcode-block" id="Slots.vacancies_at"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm5.Slots.vacancies_at">[docs]</a>    <span class="k">def</span> <span class="nf">vacancies_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">position</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: Number of vacant slots up to, and including, ``position``</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">vacancies</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">position</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_slots</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span>
+                <span class="n">vacancies</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">vacancies</span>
+</div>
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_slots</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c"># exclude dummy zeroeth element</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Sep 05, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

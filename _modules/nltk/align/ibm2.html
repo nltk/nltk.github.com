@@ -26,12 +26,12 @@
     <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
     <link rel="up" title="Module code" href="../../index.html" /> 
   </head>
-  <body>
-    <div class="header-wrapper">
+  <body role="document">
+    <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
           href="../../../index.html">NLTK 3.0 documentation</a></div>
-        <div class="rel">
+        <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
           <a href="../../../genindex.html" title="General Index"
@@ -46,7 +46,7 @@
             
       <div class="documentwrapper">
         <div class="bodywrapper">
-          <div class="body">
+          <div class="body" role="main">
             
   <h1>Source code for nltk.align.ibm2</h1><div class="highlight"><pre>
 <span class="c"># -*- coding: utf-8 -*-</span>
@@ -57,198 +57,255 @@
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
 
-<span class="kn">from</span> <span class="nn">__future__</span>  <span class="kn">import</span> <span class="n">division</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Lexical translation model that considers word order.</span>
+
+<span class="sd">IBM Model 2 improves on Model 1 by accounting for word order.</span>
+<span class="sd">An alignment probability is introduced, a(i | j,l,m), which predicts</span>
+<span class="sd">a source word position, given its aligned target word&#39;s position.</span>
+
+<span class="sd">The EM algorithm used in Model 2 is:</span>
+<span class="sd">E step - In the training data, collect counts, weighted by prior</span>
+<span class="sd">         probabilities.</span>
+<span class="sd">         (a) count how many times a source language word is translated</span>
+<span class="sd">             into a target language word</span>
+<span class="sd">         (b) count how many times a particular position in the source</span>
+<span class="sd">             sentence is aligned to a particular position in the target</span>
+<span class="sd">             sentence</span>
+
+<span class="sd">M step - Estimate new probabilities based on the counts from the E step</span>
+
+
+<span class="sd">Notations:</span>
+<span class="sd">i: Position in the source sentence</span>
+<span class="sd">    Valid values are 0 (for NULL), 1, 2, ..., length of source sentence</span>
+<span class="sd">j: Position in the target sentence</span>
+<span class="sd">    Valid values are 1, 2, ..., length of target sentence</span>
+<span class="sd">l: Number of words in the source sentence, excluding NULL</span>
+<span class="sd">m: Number of words in the target sentence</span>
+<span class="sd">s: A word in the source language</span>
+<span class="sd">t: A word in the target language</span>
+
+
+<span class="sd">References:</span>
+<span class="sd">Philipp Koehn. 2010. Statistical Machine Translation.</span>
+<span class="sd">Cambridge University Press, New York.</span>
+
+<span class="sd">Peter E Brown, Stephen A. Della Pietra, Vincent J. Della Pietra, and</span>
+<span class="sd">Robert L. Mercer. 1993. The Mathematics of Statistical Machine</span>
+<span class="sd">Translation: Parameter Estimation. Computational Linguistics, 19 (2),</span>
+<span class="sd">263-311.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
-<span class="kn">from</span> <span class="nn">nltk.align</span>  <span class="kn">import</span> <span class="n">AlignedSent</span>
-<span class="kn">from</span> <span class="nn">nltk.align.ibm1</span> <span class="kn">import</span> <span class="n">IBMModel1</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">AlignedSent</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">Alignment</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel</span>
+<span class="kn">from</span> <span class="nn">nltk.align</span> <span class="kn">import</span> <span class="n">IBMModel1</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
 
-<div class="viewcode-block" id="IBMModel2"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2">[docs]</a><span class="k">class</span> <span class="nc">IBMModel2</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+<div class="viewcode-block" id="IBMModel2"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2">[docs]</a><span class="k">class</span> <span class="nc">IBMModel2</span><span class="p">(</span><span class="n">IBMModel</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    This class implements the algorithm of Expectation Maximization for </span>
-<span class="sd">    the IBM Model 2. </span>
+<span class="sd">    Lexical translation model that considers word order</span>
 
-<span class="sd">    Step 1 - Run a number of iterations of IBM Model 1 and get the initial</span>
-<span class="sd">             distribution of translation probability. </span>
+<span class="sd">    &gt;&gt;&gt; bitext = []</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;klein&#39;, &#39;ist&#39;, &#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;groß&#39;], [&#39;the&#39;, &#39;house&#39;, &#39;is&#39;, &#39;big&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;], [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;haus&#39;], [&#39;the&#39;, &#39;house&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;das&#39;, &#39;buch&#39;], [&#39;the&#39;, &#39;book&#39;]))</span>
+<span class="sd">    &gt;&gt;&gt; bitext.append(AlignedSent([&#39;ein&#39;, &#39;buch&#39;], [&#39;a&#39;, &#39;book&#39;]))</span>
 
-<span class="sd">    Step 2 - Collect the evidence of an English word being translated by a </span>
-<span class="sd">             foreign language word.</span>
+<span class="sd">    &gt;&gt;&gt; ibm2 = IBMModel2(bitext, 5)</span>
 
-<span class="sd">    Step 3 - Estimate the probability of translation and alignment according </span>
-<span class="sd">             to the evidence from Step 2. </span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.translation_table[&#39;buch&#39;][&#39;book&#39;]))</span>
+<span class="sd">    1.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.translation_table[&#39;das&#39;][&#39;book&#39;]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.translation_table[&#39;buch&#39;][None]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.translation_table[&#39;ja&#39;][None]))</span>
+<span class="sd">    0.000</span>
 
-<span class="sd">    &gt;&gt;&gt; from nltk.corpus import comtrans</span>
-<span class="sd">    &gt;&gt;&gt; bitexts = comtrans.aligned_sents()[:100]</span>
-<span class="sd">    &gt;&gt;&gt; ibm = IBMModel2(bitexts, 5)</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent = ibm.align(bitexts[0])</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.words</span>
-<span class="sd">    [&#39;Wiederaufnahme&#39;, &#39;der&#39;, &#39;Sitzungsperiode&#39;]</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.mots</span>
-<span class="sd">    [&#39;Resumption&#39;, &#39;of&#39;, &#39;the&#39;, &#39;session&#39;]</span>
-<span class="sd">    &gt;&gt;&gt; aligned_sent.alignment</span>
-<span class="sd">    Alignment([(0, 0), (1, 2), (2, 3)])</span>
-<span class="sd">    &gt;&gt;&gt; bitexts[0].precision(aligned_sent)</span>
-<span class="sd">    0.75</span>
-<span class="sd">    &gt;&gt;&gt; bitexts[0].recall(aligned_sent)</span>
-<span class="sd">    1.0</span>
-<span class="sd">    &gt;&gt;&gt; bitexts[0].alignment_error_rate(aligned_sent)</span>
-<span class="sd">    0.1428571428571429</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.alignment_table[1][1][2][2]))</span>
+<span class="sd">    0.939</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.alignment_table[1][2][2][2]))</span>
+<span class="sd">    0.000</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:.3f}&#39;.format(ibm2.alignment_table[2][2][4][5]))</span>
+<span class="sd">    1.000</span>
+
+<span class="sd">    &gt;&gt;&gt; test_sentence = bitext[2]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.words</span>
+<span class="sd">    [&#39;das&#39;, &#39;buch&#39;, &#39;ist&#39;, &#39;ja&#39;, &#39;klein&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.mots</span>
+<span class="sd">    [&#39;the&#39;, &#39;book&#39;, &#39;is&#39;, &#39;small&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; test_sentence.alignment</span>
+<span class="sd">    Alignment([(0, 0), (1, 1), (2, 2), (3, 2), (4, 3)])</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignments</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">)</span>
 
-<div class="viewcode-block" id="IBMModel2.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sents</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Return the translation and alignment probability distributions</span>
-<span class="sd">        trained by the Expectation Maximization algorithm for IBM Model 2. </span>
+<span class="sd">        Train on ``sentence_aligned_corpus`` and create a lexical</span>
+<span class="sd">        translation model and an alignment model.</span>
 
-<span class="sd">        Arguments:</span>
-<span class="sd">        align_sents   -- A list contains some sentence pairs.</span>
-<span class="sd">        num_iter     -- The number of iterations.</span>
+<span class="sd">        Translation direction is from ``AlignedSent.mots`` to</span>
+<span class="sd">        ``AlignedSent.words``.</span>
 
-<span class="sd">        Returns:</span>
-<span class="sd">        t_ef         -- A distribution of translation probabilities.</span>
-<span class="sd">        align        -- A distribution of alignment probabilities.</span>
+<span class="sd">        Runs a few iterations of Model 1 training to initialize</span>
+<span class="sd">        model parameters.</span>
+
+<span class="sd">        :param sentence_aligned_corpus: Sentence-aligned parallel corpus</span>
+<span class="sd">        :type sentence_aligned_corpus: list(AlignedSent)</span>
+
+<span class="sd">        :param iterations: Number of iterations to run training algorithm</span>
+<span class="sd">        :type iterations: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">IBMModel2</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
 
         <span class="c"># Get initial translation probability distribution</span>
         <span class="c"># from a few iterations of Model 1 training.</span>
-        <span class="n">ibm1</span> <span class="o">=</span> <span class="n">IBMModel1</span><span class="p">(</span><span class="n">align_sents</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
-        <span class="n">t_ef</span> <span class="o">=</span> <span class="n">ibm1</span><span class="o">.</span><span class="n">probabilities</span>
-
-        <span class="c"># Vocabulary of each language</span>
-        <span class="n">fr_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-        <span class="n">en_vocab</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
-        <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-            <span class="n">en_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
-            <span class="n">fr_vocab</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
-        <span class="n">fr_vocab</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
-
-        <span class="n">align</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">float</span><span class="p">))))</span>
+        <span class="n">ibm1</span> <span class="o">=</span> <span class="n">IBMModel1</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span> <span class="o">=</span> <span class="n">ibm1</span><span class="o">.</span><span class="n">translation_table</span>
 
         <span class="c"># Initialize the distribution of alignment probability,</span>
-        <span class="c"># a(i|j,l_e, l_f) = 1/(l_f + 1)</span>
-        <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-            <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-            <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-            <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-            <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
-            <span class="n">initial_value</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">l_f</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial_value</span>
+        <span class="c"># a(i | j,l,m) = 1 / (l+1) for all i, j, l, m</span>
+        <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">sentence_aligned_corpus</span><span class="p">:</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+            <span class="n">initial_value</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">initial_value</span> <span class="o">&gt;</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial_value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s">&quot;Source sentence is too long (&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">+</span>
+                              <span class="s">&quot; words). Results may be less accurate.&quot;</span><span class="p">)</span>
 
+        <span class="bp">self</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__align_all</span><span class="p">(</span><span class="n">sentence_aligned_corpus</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_iter</span><span class="p">):</span>
-            <span class="n">count_ef</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">))</span>
-            <span class="n">total_f</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<div class="viewcode-block" id="IBMModel2.train"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parallel_corpus</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">iterations</span><span class="p">):</span>
+            <span class="n">count_t_given_s</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">))</span>
+            <span class="n">count_any_t_given_s</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
 
-            <span class="n">count_align</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>
-            <span class="n">total_align</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
+            <span class="c"># count of i given j, l, m</span>
+            <span class="n">alignment_count</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>
+            <span class="n">alignment_count_for_any_i</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">)))</span>
 
-            <span class="n">total_e</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+                <span class="n">src_sentence</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span>
+                <span class="n">trg_sentence</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;UNUSED&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span>  <span class="c"># 1-indexed</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+                <span class="n">total_count</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
 
-            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-                <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
+                <span class="c"># E step (a): Compute normalization factors to weigh counts</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">t</span> <span class="o">=</span> <span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                    <span class="n">total_count</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="n">s</span> <span class="o">=</span> <span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                        <span class="n">count</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+                        <span class="n">total_count</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">count</span>
 
-                <span class="c"># compute normalization</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">en_word</span> <span class="o">=</span> <span class="n">en_set</span><span class="p">[</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="n">total_e</span><span class="p">[</span><span class="n">en_word</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">total_e</span><span class="p">[</span><span class="n">en_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">t_ef</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_set</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">*</span> <span class="n">align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span>
+                <span class="c"># E step (b): Collect counts</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">t</span> <span class="o">=</span> <span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="n">s</span> <span class="o">=</span> <span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                        <span class="n">count</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+                        <span class="n">normalized_count</span> <span class="o">=</span> <span class="n">count</span> <span class="o">/</span> <span class="n">total_count</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
 
-                <span class="c"># collect counts</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">en_word</span> <span class="o">=</span> <span class="n">en_set</span><span class="p">[</span><span class="n">j</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">fr_word</span> <span class="o">=</span> <span class="n">fr_set</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="n">c</span> <span class="o">=</span> <span class="n">t_ef</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">*</span> <span class="n">align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_e</span><span class="p">[</span><span class="n">en_word</span><span class="p">]</span>
-                        <span class="n">count_ef</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">total_f</span><span class="p">[</span><span class="n">fr_word</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">count_align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
-                        <span class="n">total_align</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+                        <span class="n">count_t_given_s</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">count_any_t_given_s</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">alignment_count</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
+                        <span class="n">alignment_count_for_any_i</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">normalized_count</span>
 
-            <span class="c"># estimate probabilities</span>
-            <span class="n">t_ef</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))</span>
-            <span class="n">align</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">))))</span>
+            <span class="c"># M step: Update probabilities with maximum likelihood estimates</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">src_vocab</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">trg_vocab</span><span class="p">:</span>
+                    <span class="n">estimate</span> <span class="o">=</span> <span class="n">count_t_given_s</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">/</span> <span class="n">count_any_t_given_s</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                       <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
 
-            <span class="c"># Smoothing the counts for alignments</span>
-            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-                <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
-
-                <span class="n">laplace</span> <span class="o">=</span> <span class="mf">1.0</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">value</span> <span class="o">=</span> <span class="n">count_align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span>
-                        <span class="k">if</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">value</span> <span class="o">&lt;</span> <span class="n">laplace</span><span class="p">:</span>
-                            <span class="n">laplace</span> <span class="o">=</span> <span class="n">value</span>
-
-                <span class="n">laplace</span> <span class="o">*=</span> <span class="mf">0.5</span> 
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">count_align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">laplace</span>
-
-                <span class="n">initial_value</span> <span class="o">=</span> <span class="n">laplace</span> <span class="o">*</span> <span class="n">l_e</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="n">total_align</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">+=</span> <span class="n">initial_value</span>
-            
-            <span class="c"># Estimate the new lexical translation probabilities</span>
-            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fr_vocab</span><span class="p">:</span>
-                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">en_vocab</span><span class="p">:</span>
-                    <span class="n">t_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_ef</span><span class="p">[</span><span class="n">e</span><span class="p">][</span><span class="n">f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_f</span><span class="p">[</span><span class="n">f</span><span class="p">]</span>
-
-            <span class="c"># Estimate the new alignment probabilities</span>
-            <span class="k">for</span> <span class="n">alignSent</span> <span class="ow">in</span> <span class="n">align_sents</span><span class="p">:</span>
-                <span class="n">en_set</span> <span class="o">=</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">words</span>
-                <span class="n">fr_set</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">alignSent</span><span class="o">.</span><span class="n">mots</span>
-                <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fr_set</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">en_set</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l_f</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">l_e</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
-                        <span class="n">align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">=</span> <span class="n">count_align</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span> <span class="o">/</span> <span class="n">total_align</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">]</span>
-
-        <span class="k">return</span> <span class="n">t_ef</span><span class="p">,</span> <span class="n">align</span>
+            <span class="k">for</span> <span class="n">aligned_sentence</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">aligned_sentence</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                        <span class="n">estimate</span> <span class="o">=</span> <span class="p">(</span><span class="n">alignment_count</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">/</span>
+                                    <span class="n">alignment_count_for_any_i</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">estimate</span><span class="p">,</span>
+                                                              <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
 </div>
-<div class="viewcode-block" id="IBMModel2.align"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2.align">[docs]</a>    <span class="k">def</span> <span class="nf">align</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">align_sent</span><span class="p">):</span>
+<div class="viewcode-block" id="IBMModel2.prob_t_a_given_s"><a class="viewcode-back" href="../../../api/nltk.align.html#nltk.align.ibm2.IBMModel2.prob_t_a_given_s">[docs]</a>    <span class="k">def</span> <span class="nf">prob_t_a_given_s</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alignment_info</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Returns the alignment result for one sentence pair. </span>
+<span class="sd">        Probability of target sentence and an alignment given the</span>
+<span class="sd">        source sentence</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prob</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
 
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">alignments</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;The model does not train.&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">alignment_info</span><span class="o">.</span><span class="n">alignment</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">j</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">continue</span>  <span class="c"># skip the dummy zeroeth element</span>
+            <span class="n">trg_word</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">trg_sentence</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">src_word</span> <span class="o">=</span> <span class="n">alignment_info</span><span class="o">.</span><span class="n">src_sentence</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">prob</span> <span class="o">*=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">trg_word</span><span class="p">][</span><span class="n">src_word</span><span class="p">]</span> <span class="o">*</span>
+                     <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
 
-        <span class="n">alignment</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">prob</span><span class="p">,</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__align_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parallel_corpus</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">sentence_pair</span> <span class="ow">in</span> <span class="n">parallel_corpus</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">__align</span><span class="p">(</span><span class="n">sentence_pair</span><span class="p">)</span>
 
-        <span class="n">l_e</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
-        <span class="n">l_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">__align</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence_pair</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Determines the best word alignment for one sentence pair from</span>
+<span class="sd">        the corpus that the model was trained on.</span>
 
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">en_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">):</span>
-            
-            <span class="c"># Initialize the maximum probability with Null token</span>
-            <span class="n">max_align_prob</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="bp">None</span><span class="p">]</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">alignments</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">],</span> <span class="bp">None</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fr_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">):</span>
-                <span class="c"># Find out the maximum probability</span>
-                <span class="n">max_align_prob</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_align_prob</span><span class="p">,</span>
-                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="p">[</span><span class="n">en_word</span><span class="p">][</span><span class="n">fr_word</span><span class="p">]</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">alignments</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="n">l_e</span><span class="p">][</span><span class="n">l_f</span><span class="p">],</span> <span class="n">i</span><span class="p">))</span>
+<span class="sd">        The best alignment will be set in ``sentence_pair`` when the</span>
+<span class="sd">        method returns. In contrast with the internal implementation of</span>
+<span class="sd">        IBM models, the word indices in the ``Alignment`` are zero-</span>
+<span class="sd">        indexed, not one-indexed.</span>
 
-            <span class="c"># If the maximum probability is not Null token,</span>
-            <span class="c"># then append it to the alignment. </span>
-            <span class="k">if</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
-                <span class="n">alignment</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">j</span><span class="p">,</span> <span class="n">max_align_prob</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+<span class="sd">        :param sentence_pair: A sentence in the source language and its</span>
+<span class="sd">            counterpart sentence in the target language</span>
+<span class="sd">        :type sentence_pair: AlignedSent</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">best_alignment</span> <span class="o">=</span> <span class="p">[]</span>
 
-        <span class="k">return</span> <span class="n">AlignedSent</span><span class="p">(</span><span class="n">align_sent</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">align_sent</span><span class="o">.</span><span class="n">mots</span><span class="p">,</span> <span class="n">alignment</span><span class="p">)</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sentence_pair</span><span class="o">.</span><span class="n">mots</span><span class="p">)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sentence_pair</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
 
-<span class="c"># run doctests</span></div></div>
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">doctest</span>
-    <span class="n">doctest</span><span class="o">.</span><span class="n">testmod</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">trg_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sentence_pair</span><span class="o">.</span><span class="n">words</span><span class="p">):</span>
+            <span class="c"># Initialize trg_word to align with the NULL token</span>
+            <span class="n">best_prob</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">trg_word</span><span class="p">][</span><span class="bp">None</span><span class="p">]</span> <span class="o">*</span>
+                         <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+            <span class="n">best_prob</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best_prob</span><span class="p">,</span> <span class="n">IBMModel</span><span class="o">.</span><span class="n">MIN_PROB</span><span class="p">)</span>
+            <span class="n">best_alignment_point</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">src_word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sentence_pair</span><span class="o">.</span><span class="n">mots</span><span class="p">):</span>
+                <span class="n">align_prob</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">translation_table</span><span class="p">[</span><span class="n">trg_word</span><span class="p">][</span><span class="n">src_word</span><span class="p">]</span> <span class="o">*</span>
+                              <span class="bp">self</span><span class="o">.</span><span class="n">alignment_table</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">][</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">][</span><span class="n">l</span><span class="p">][</span><span class="n">m</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">align_prob</span> <span class="o">&gt;=</span> <span class="n">best_prob</span><span class="p">:</span>
+                    <span class="n">best_prob</span> <span class="o">=</span> <span class="n">align_prob</span>
+                    <span class="n">best_alignment_point</span> <span class="o">=</span> <span class="n">i</span>
+
+            <span class="n">best_alignment</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">j</span><span class="p">,</span> <span class="n">best_alignment_point</span><span class="p">))</span>
+
+        <span class="n">sentence_pair</span><span class="o">.</span><span class="n">alignment</span> <span class="o">=</span> <span class="n">Alignment</span><span class="p">(</span><span class="n">best_alignment</span><span class="p">)</span></div>
 </pre></div>
 
           </div>
@@ -268,16 +325,18 @@
 <li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
 </ul>
 
-          <h3 style="margin-top: 1.5em;">Search</h3>
-          <form class="search" action="../../../search.html" method="get">
-            <input type="text" name="q" />
-            <input type="submit" value="Go" />
-            <input type="hidden" name="check_keywords" value="yes" />
-            <input type="hidden" name="area" value="default" />
-          </form>
-          <p class="searchtip" style="font-size: 90%">
-            Enter search terms or a module, class or function name.
-          </p>
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
         </div>
         <div class="clearer"></div>
       </div>
@@ -286,18 +345,22 @@
     <div class="footer-wrapper">
       <div class="footer">
         <div class="left">
-          <a href="../../../py-modindex.html" title="Python Module Index"
-             >modules</a> |
-          <a href="../../../genindex.html" title="General Index"
-             >index</a>
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
         </div>
 
         <div class="right">
           
-    <div class="footer">
+    <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Jul 13, 2015.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.3.
+      Last updated on Sep 05, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>
         <div class="clearer"></div>

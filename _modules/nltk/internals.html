@@ -61,6 +61,7 @@
 
 <span class="kn">import</span> <span class="nn">subprocess</span>
 <span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">fnmatch</span>
 <span class="kn">import</span> <span class="nn">re</span><span class="o">,</span> <span class="nn">sre_constants</span><span class="o">,</span> <span class="nn">sre_parse</span><span class="o">,</span> <span class="nn">sre_compile</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">import</span> <span class="nn">textwrap</span>
@@ -462,7 +463,7 @@
 <span class="c">##########################################################################</span>
 
 <span class="k">def</span> <span class="nf">find_file_iter</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
-        <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">finding_dir</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Search for a file to be used by nltk.</span>
 
@@ -506,6 +507,10 @@
     <span class="c"># Check environment variables</span>
     <span class="k">for</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">env_vars</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">env_var</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">finding_dir</span><span class="p">:</span> <span class="c"># This is to file a directory instead of file</span>
+                <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">yield</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">env_var</span><span class="p">]</span>
+        		
             <span class="k">for</span> <span class="n">env_dir</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">env_var</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="p">):</span>
                 <span class="c"># Check if the environment variable contains a direct path to the bin</span>
                 <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">env_dir</span><span class="p">):</span>
@@ -522,7 +527,11 @@
                         <span class="n">yielded</span> <span class="o">=</span> <span class="bp">True</span>
                         <span class="k">yield</span> <span class="n">path_to_file</span>
                     <span class="c"># Check if the alternative is inside a &#39;file&#39; directory</span>
-                    <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">env_dir</span><span class="p">,</span> <span class="s">&#39;file&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+                    <span class="c"># path_to_file = os.path.join(env_dir, &#39;file&#39;, alternative)</span>
+
+                    <span class="c"># Check if the alternative is inside a &#39;bin&#39; directory</span>
+                    <span class="n">path_to_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">env_dir</span><span class="p">,</span> <span class="s">&#39;bin&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span>
+
                     <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path_to_file</span><span class="p">):</span>
                         <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
                             <span class="k">print</span><span class="p">(</span><span class="s">&#39;[Found </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path_to_file</span><span class="p">))</span>
@@ -569,10 +578,18 @@
         <span class="n">div</span> <span class="o">=</span> <span class="s">&#39;=&#39;</span><span class="o">*</span><span class="mi">75</span>
         <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">div</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="n">div</span><span class="p">))</span>
 
+
 <span class="k">def</span> <span class="nf">find_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
         <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
     <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_file_iter</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span> <span class="n">searchpath</span><span class="p">,</span>
                                <span class="n">file_names</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">find_dir</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
+        <span class="n">file_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_file_iter</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span> <span class="n">searchpath</span><span class="p">,</span>
+                               <span class="n">file_names</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">finding_dir</span><span class="o">=</span><span class="bp">True</span><span class="p">))</span>
+
 
 <span class="k">def</span> <span class="nf">find_binary_iter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">path_to_bin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">env_vars</span><span class="o">=</span><span class="p">(),</span> <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span>
                 <span class="n">binary_names</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
@@ -712,6 +729,12 @@
         <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
     <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">find_jar_iter</span><span class="p">(</span><span class="n">name_pattern</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">,</span>
                          <span class="n">searchpath</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">is_regex</span><span class="p">))</span>
+
+                
+<span class="k">def</span> <span class="nf">find_jars_within_path</span><span class="p">(</span><span class="n">path_to_jars</span><span class="p">):</span>
+	<span class="k">return</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> 
+			<span class="k">for</span> <span class="n">root</span><span class="p">,</span> <span class="n">dirnames</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">path_to_jars</span><span class="p">)</span> 
+			<span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filenames</span><span class="p">,</span> <span class="s">&#39;*.jar&#39;</span><span class="p">)]</span>
 
 <span class="k">def</span> <span class="nf">_decode_stdoutdata</span><span class="p">(</span><span class="n">stdoutdata</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot; Convert data read from stdout/stderr to unicode &quot;&quot;&quot;</span>
@@ -1020,7 +1043,7 @@
           
     <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Jun 17, 2015.
+      Last updated on Sep 05, 2015.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>
