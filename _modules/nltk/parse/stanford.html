@@ -63,33 +63,229 @@
 <span class="kn">import</span> <span class="nn">tempfile</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">PIPE</span>
+<span class="kn">from</span> <span class="nn">io</span> <span class="kn">import</span> <span class="n">StringIO</span>
 
 <span class="kn">from</span> <span class="nn">nltk</span> <span class="kn">import</span> <span class="n">compat</span>
 <span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">find_jar</span><span class="p">,</span> <span class="n">find_jar_iter</span><span class="p">,</span> <span class="n">config_java</span><span class="p">,</span> <span class="n">java</span><span class="p">,</span> <span class="n">_java_options</span>
 
 <span class="kn">from</span> <span class="nn">nltk.parse.api</span> <span class="kn">import</span> <span class="n">ParserI</span>
+<span class="kn">from</span> <span class="nn">nltk.parse.dependencygraph</span> <span class="kn">import</span> <span class="n">DependencyGraph</span>
 <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
 
 <span class="n">_stanford_url</span> <span class="o">=</span> <span class="s">&#39;http://nlp.stanford.edu/software/lex-parser.shtml&#39;</span>
 
-<div class="viewcode-block" id="StanfordParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser">[docs]</a><span class="k">class</span> <span class="nc">StanfordParser</span><span class="p">(</span><span class="n">ParserI</span><span class="p">):</span>
-    <span class="sd">r&quot;&quot;&quot;</span>
-<span class="sd">    Interface to the Stanford Parser</span>
+<div class="viewcode-block" id="GenericStanfordParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser">[docs]</a><span class="k">class</span> <span class="nc">GenericStanfordParser</span><span class="p">(</span><span class="n">ParserI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Interface to the Stanford Parser&quot;&quot;&quot;</span>
 
+    <span class="n">_MODEL_JAR_PATTERN</span> <span class="o">=</span> <span class="s">r&#39;stanford-parser-(\d+)(\.(\d+))+-models\.jar&#39;</span>
+    <span class="n">_JAR</span> <span class="o">=</span> <span class="s">r&#39;stanford-parser\.jar&#39;</span>
+    <span class="n">_MAIN_CLASS</span> <span class="o">=</span> <span class="s">&#39;edu.stanford.nlp.parser.lexparser.LexicalizedParser&#39;</span>
+
+    <span class="n">_USE_STDIN</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="n">_DOUBLE_SPACED_OUTPUT</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">path_to_models_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">model_path</span><span class="o">=</span><span class="s">&#39;edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz&#39;</span><span class="p">,</span>
+                 <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">java_options</span><span class="o">=</span><span class="s">&#39;-mx1000m&#39;</span><span class="p">,</span> <span class="n">corenlp_options</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">):</span>
+
+        <span class="c"># find the most recent code and model jar</span>
+        <span class="n">stanford_jar</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="n">find_jar_iter</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_JAR</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">,</span>
+                <span class="n">env_vars</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;STANFORD_PARSER&#39;</span><span class="p">,</span> <span class="s">&#39;STANFORD_CORENLP&#39;</span><span class="p">),</span>
+                <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="n">_stanford_url</span><span class="p">,</span>
+                <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">True</span>
+            <span class="p">),</span>
+            <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">model_name</span><span class="p">:</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_JAR</span><span class="p">,</span> <span class="n">model_name</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">model_jar</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span>
+            <span class="n">find_jar_iter</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_MODEL_JAR_PATTERN</span><span class="p">,</span> <span class="n">path_to_models_jar</span><span class="p">,</span>
+                <span class="n">env_vars</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;STANFORD_MODELS&#39;</span><span class="p">,</span> <span class="s">&#39;STANFORD_CORENLP&#39;</span><span class="p">),</span>
+                <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="n">_stanford_url</span><span class="p">,</span>
+                <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">True</span>
+            <span class="p">),</span>
+            <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">model_name</span><span class="p">:</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_MODEL_JAR_PATTERN</span><span class="p">,</span> <span class="n">model_name</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_classpath</span> <span class="o">=</span> <span class="p">(</span><span class="n">stanford_jar</span><span class="p">,</span> <span class="n">model_jar</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span> <span class="o">=</span> <span class="n">model_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">encoding</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">corenlp_options</span> <span class="o">=</span> <span class="n">corenlp_options</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">java_options</span> <span class="o">=</span> <span class="n">java_options</span>
+
+    <span class="k">def</span> <span class="nf">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">cur_lines</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">cur_trees</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">blank</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output_</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="bp">False</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">blank</span><span class="p">:</span>
+                    <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">cur_trees</span><span class="p">))</span>
+                    <span class="n">cur_trees</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="n">blank</span> <span class="o">=</span> <span class="bp">False</span>
+                <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_DOUBLE_SPACED_OUTPUT</span><span class="p">:</span>
+                    <span class="n">cur_trees</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_make_tree</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cur_lines</span><span class="p">)))</span>
+                    <span class="n">cur_lines</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="n">blank</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">iter</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_make_tree</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cur_lines</span><span class="p">))]))</span>
+                    <span class="n">cur_lines</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cur_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                <span class="n">blank</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GenericStanfordParser.parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser.parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a</span>
+<span class="sd">        list where each sentence is a list of words.</span>
+<span class="sd">        Each sentence will be automatically tagged with this StanfordParser instance&#39;s</span>
+<span class="sd">        tagger.</span>
+<span class="sd">        If whitespaces exists inside a token, then the token will be treated as</span>
+<span class="sd">        separate tokens.</span>
+
+<span class="sd">        :param sentences: Input sentences to parse</span>
+<span class="sd">        :type sentences: list(list(str))</span>
+<span class="sd">        :rtype: iter(iter(Tree))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_MAIN_CLASS</span><span class="p">,</span>
+            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
+            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_OUTPUT_FORMAT</span><span class="p">,</span>
+            <span class="s">&#39;-tokenized&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-escaper&#39;</span><span class="p">,</span> <span class="s">&#39;edu.stanford.nlp.process.PTBEscapingProcessor&#39;</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
+            <span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="GenericStanfordParser.raw_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser.raw_parse">[docs]</a>    <span class="k">def</span> <span class="nf">raw_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use StanfordParser to parse a sentence. Takes a sentence as a string;</span>
+<span class="sd">        before parsing, it will be automatically tokenized and tagged by</span>
+<span class="sd">        the Stanford Parser.</span>
+
+<span class="sd">        :param sentence: Input sentence to parse</span>
+<span class="sd">        :type sentence: str</span>
+<span class="sd">        :rtype: iter(Tree)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raw_parse_sents</span><span class="p">([</span><span class="n">sentence</span><span class="p">],</span> <span class="n">verbose</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="GenericStanfordParser.raw_parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser.raw_parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">raw_parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a</span>
+<span class="sd">        list of strings.</span>
+<span class="sd">        Each sentence will be automatically tokenized and tagged by the Stanford Parser.</span>
+
+<span class="sd">        :param sentences: Input sentences to parse</span>
+<span class="sd">        :type sentences: list(str)</span>
+<span class="sd">        :rtype: iter(iter(Tree))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_MAIN_CLASS</span><span class="p">,</span>
+            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
+            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_OUTPUT_FORMAT</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="GenericStanfordParser.tagged_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser.tagged_parse">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use StanfordParser to parse a sentence. Takes a sentence as a list of</span>
+<span class="sd">        (word, tag) tuples; the sentence must have already been tokenized and</span>
+<span class="sd">        tagged.</span>
+
+<span class="sd">        :param sentence: Input sentence to parse</span>
+<span class="sd">        :type sentence: list(tuple(str, str))</span>
+<span class="sd">        :rtype: iter(Tree)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tagged_parse_sents</span><span class="p">([</span><span class="n">sentence</span><span class="p">],</span> <span class="n">verbose</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="GenericStanfordParser.tagged_parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.GenericStanfordParser.tagged_parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences</span>
+<span class="sd">        where each sentence is a list of (word, tag) tuples.</span>
+<span class="sd">        The sentences must have already been tokenized and tagged.</span>
+
+<span class="sd">        :param sentences: Input sentences to parse</span>
+<span class="sd">        :type sentences: list(list(tuple(str, str)))</span>
+<span class="sd">        :rtype: iter(iter(Tree))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tag_separator</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_MAIN_CLASS</span><span class="p">,</span>
+            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
+            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_OUTPUT_FORMAT</span><span class="p">,</span>
+            <span class="s">&#39;-tokenized&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-tagSeparator&#39;</span><span class="p">,</span> <span class="n">tag_separator</span><span class="p">,</span>
+            <span class="s">&#39;-tokenizerFactory&#39;</span><span class="p">,</span> <span class="s">&#39;edu.stanford.nlp.process.WhitespaceTokenizer&#39;</span><span class="p">,</span>
+            <span class="s">&#39;-tokenizerMethod&#39;</span><span class="p">,</span> <span class="s">&#39;newCoreLabelTokenizerFactory&#39;</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="c"># We don&#39;t need to escape slashes as &quot;splitting is done on the last instance of the character in the token&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
+            <span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tag_separator</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tagged</span><span class="p">)</span> <span class="k">for</span> <span class="n">tagged</span> <span class="ow">in</span> <span class="n">sentence</span><span class="p">)</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
+</div>
+    <span class="k">def</span> <span class="nf">_execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">,</span> <span class="n">input_</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s">&#39;-encoding&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="p">])</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">corenlp_options</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">corenlp_options</span><span class="p">)</span>
+
+        <span class="n">default_options</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_java_options</span><span class="p">)</span>
+
+        <span class="c"># Configure java.</span>
+        <span class="n">config_java</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">java_options</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+
+        <span class="c"># Windows is incompatible with NamedTemporaryFile() without passing in delete=False.</span>
+        <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;wb&#39;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">input_file</span><span class="p">:</span>
+            <span class="c"># Write the actual sentences to the temporary input file</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">text_type</span><span class="p">)</span> <span class="ow">and</span> <span class="n">encoding</span><span class="p">:</span>
+                <span class="n">input_</span> <span class="o">=</span> <span class="n">input_</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+            <span class="n">input_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">input_</span><span class="p">)</span>
+            <span class="n">input_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+            <span class="c"># Run the tagger and get the output.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_USE_STDIN</span><span class="p">:</span>
+                <span class="n">input_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">java</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">classpath</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_classpath</span><span class="p">,</span>
+                                      <span class="n">stdin</span><span class="o">=</span><span class="n">input_file</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">input_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">java</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">classpath</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_classpath</span><span class="p">,</span>
+                                      <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">)</span>
+
+            <span class="n">stdout</span> <span class="o">=</span> <span class="n">stdout</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">input_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+        <span class="c"># Return java configurations to their default values.</span>
+        <span class="n">config_java</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="n">default_options</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">stdout</span>
+</div>
+<div class="viewcode-block" id="StanfordParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser">[docs]</a><span class="k">class</span> <span class="nc">StanfordParser</span><span class="p">(</span><span class="n">GenericStanfordParser</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    &gt;&gt;&gt; parser=StanfordParser(</span>
 <span class="sd">    ...     model_path=&quot;edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz&quot;</span>
 <span class="sd">    ... )</span>
 
-<span class="sd">    &gt;&gt;&gt; list(parser.raw_parse(&quot;the quick brown fox jumps over the lazy dog&quot;))</span>
-<span class="sd">    [Tree(&#39;ROOT&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;quick&#39;]), Tree(&#39;JJ&#39;, [&#39;brown&#39;]), </span>
-<span class="sd">    Tree(&#39;NN&#39;, [&#39;fox&#39;])]), Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NNS&#39;, [&#39;jumps&#39;])]), Tree(&#39;PP&#39;, [Tree(&#39;IN&#39;, [&#39;over&#39;]), </span>
+<span class="sd">    &gt;&gt;&gt; list(parser.raw_parse(&quot;the quick brown fox jumps over the lazy dog&quot;)) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;ROOT&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;quick&#39;]), Tree(&#39;JJ&#39;, [&#39;brown&#39;]),</span>
+<span class="sd">    Tree(&#39;NN&#39;, [&#39;fox&#39;])]), Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NNS&#39;, [&#39;jumps&#39;])]), Tree(&#39;PP&#39;, [Tree(&#39;IN&#39;, [&#39;over&#39;]),</span>
 <span class="sd">    Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;lazy&#39;]), Tree(&#39;NN&#39;, [&#39;dog&#39;])])])])])])]</span>
 
 <span class="sd">    &gt;&gt;&gt; sum([list(dep_graphs) for dep_graphs in parser.raw_parse_sents((</span>
 <span class="sd">    ...     &quot;the quick brown fox jumps over the lazy dog&quot;,</span>
 <span class="sd">    ...     &quot;the quick grey wolf jumps over the lazy fox&quot;</span>
-<span class="sd">    ... ))], [])</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
 <span class="sd">    [Tree(&#39;ROOT&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;quick&#39;]), Tree(&#39;JJ&#39;, [&#39;brown&#39;]),</span>
 <span class="sd">    Tree(&#39;NN&#39;, [&#39;fox&#39;])]), Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NNS&#39;, [&#39;jumps&#39;])]), Tree(&#39;PP&#39;, [Tree(&#39;IN&#39;, [&#39;over&#39;]),</span>
 <span class="sd">    Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;lazy&#39;]), Tree(&#39;NN&#39;, [&#39;dog&#39;])])])])])]), Tree(&#39;ROOT&#39;, [Tree(&#39;NP&#39;,</span>
@@ -100,7 +296,7 @@
 <span class="sd">    &gt;&gt;&gt; sum([list(dep_graphs) for dep_graphs in parser.parse_sents((</span>
 <span class="sd">    ...     &quot;I &#39;m a dog&quot;.split(),</span>
 <span class="sd">    ...     &quot;This is my friends &#39; cat ( the tabby )&quot;.split(),</span>
-<span class="sd">    ... ))], [])</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
 <span class="sd">    [Tree(&#39;ROOT&#39;, [Tree(&#39;S&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;PRP&#39;, [&#39;I&#39;])]), Tree(&#39;VP&#39;, [Tree(&#39;VBP&#39;, [&quot;&#39;m&quot;]),</span>
 <span class="sd">    Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;a&#39;]), Tree(&#39;NN&#39;, [&#39;dog&#39;])])])])]), Tree(&#39;ROOT&#39;, [Tree(&#39;S&#39;, [Tree(&#39;NP&#39;,</span>
 <span class="sd">    [Tree(&#39;DT&#39;, [&#39;This&#39;])]), Tree(&#39;VP&#39;, [Tree(&#39;VBZ&#39;, [&#39;is&#39;]), Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;PRP$&#39;, [&#39;my&#39;]),</span>
@@ -120,173 +316,127 @@
 <span class="sd">    ...         (&quot;dog&quot;, &quot;NN&quot;),</span>
 <span class="sd">    ...         (&quot;.&quot;, &quot;.&quot;),</span>
 <span class="sd">    ...     ),</span>
-<span class="sd">    ... ))],[])</span>
+<span class="sd">    ... ))],[]) # doctest: +NORMALIZE_WHITESPACE</span>
 <span class="sd">    [Tree(&#39;ROOT&#39;, [Tree(&#39;S&#39;, [Tree(&#39;NP&#39;, [Tree(&#39;DT&#39;, [&#39;The&#39;]), Tree(&#39;JJ&#39;, [&#39;quick&#39;]), Tree(&#39;JJ&#39;, [&#39;brown&#39;]),</span>
 <span class="sd">    Tree(&#39;NN&#39;, [&#39;fox&#39;])]), Tree(&#39;VP&#39;, [Tree(&#39;VBD&#39;, [&#39;jumped&#39;]), Tree(&#39;PP&#39;, [Tree(&#39;IN&#39;, [&#39;over&#39;]), Tree(&#39;NP&#39;,</span>
 <span class="sd">    [Tree(&#39;DT&#39;, [&#39;the&#39;]), Tree(&#39;JJ&#39;, [&#39;lazy&#39;]), Tree(&#39;NN&#39;, [&#39;dog&#39;])])])]), Tree(&#39;.&#39;, [&#39;.&#39;])])])]</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">_MODEL_JAR_PATTERN</span> <span class="o">=</span> <span class="s">r&#39;stanford-parser-(\d+)(\.(\d+))+-models\.jar&#39;</span>
-    <span class="n">_JAR</span> <span class="o">=</span> <span class="s">&#39;stanford-parser.jar&#39;</span>
 
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">path_to_models_jar</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
-                 <span class="n">model_path</span><span class="o">=</span><span class="s">&#39;edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz&#39;</span><span class="p">,</span>
-                 <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">java_options</span><span class="o">=</span><span class="s">&#39;-mx1000m&#39;</span><span class="p">):</span>
+    <span class="n">_OUTPUT_FORMAT</span> <span class="o">=</span> <span class="s">&#39;penn&#39;</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">_stanford_jar</span> <span class="o">=</span> <span class="n">find_jar</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_JAR</span><span class="p">,</span> <span class="n">path_to_jar</span><span class="p">,</span>
-            <span class="n">env_vars</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;STANFORD_PARSER&#39;</span><span class="p">,),</span>
-            <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="n">_stanford_url</span><span class="p">,</span>
-            <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span>
+    <span class="k">def</span> <span class="nf">_make_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Tree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="StanfordDependencyParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordDependencyParser">[docs]</a><span class="k">class</span> <span class="nc">StanfordDependencyParser</span><span class="p">(</span><span class="n">GenericStanfordParser</span><span class="p">):</span>
+
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    &gt;&gt;&gt; dep_parser=StanfordDependencyParser(</span>
+<span class="sd">    ...     model_path=&quot;edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz&quot;</span>
+<span class="sd">    ... )</span>
+
+<span class="sd">    &gt;&gt;&gt; [parse.tree() for parse in dep_parser.raw_parse(&quot;The quick brown fox jumps over the lazy dog.&quot;)] # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;jumps&#39;, [Tree(&#39;fox&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;brown&#39;]), Tree(&#39;dog&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])])]</span>
+
+<span class="sd">    &gt;&gt;&gt; [list(parse.triples()) for parse in dep_parser.raw_parse(&quot;The quick brown fox jumps over the lazy dog.&quot;)] # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [[((u&#39;jumps&#39;, u&#39;VBZ&#39;), u&#39;nsubj&#39;, (u&#39;fox&#39;, u&#39;NN&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;The&#39;, u&#39;DT&#39;)),</span>
+<span class="sd">    ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;quick&#39;, u&#39;JJ&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;brown&#39;, u&#39;JJ&#39;)),</span>
+<span class="sd">    ((u&#39;jumps&#39;, u&#39;VBZ&#39;), u&#39;nmod&#39;, (u&#39;dog&#39;, u&#39;NN&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;case&#39;, (u&#39;over&#39;, u&#39;IN&#39;)),</span>
+<span class="sd">    ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;the&#39;, u&#39;DT&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;lazy&#39;, u&#39;JJ&#39;))]]</span>
+
+<span class="sd">    &gt;&gt;&gt; sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.raw_parse_sents((</span>
+<span class="sd">    ...     &quot;The quick brown fox jumps over the lazy dog.&quot;,</span>
+<span class="sd">    ...     &quot;The quick grey wolf jumps over the lazy fox.&quot;</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;jumps&#39;, [Tree(&#39;fox&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;brown&#39;]), Tree(&#39;dog&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])]),</span>
+<span class="sd">    Tree(&#39;jumps&#39;, [Tree(&#39;wolf&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;grey&#39;]), Tree(&#39;fox&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])])]</span>
+
+<span class="sd">    &gt;&gt;&gt; sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.parse_sents((</span>
+<span class="sd">    ...     &quot;I &#39;m a dog&quot;.split(),</span>
+<span class="sd">    ...     &quot;This is my friends &#39; cat ( the tabby )&quot;.split(),</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;dog&#39;, [&#39;I&#39;, &quot;&#39;m&quot;, &#39;a&#39;]), Tree(&#39;cat&#39;, [&#39;This&#39;, &#39;is&#39;, Tree(&#39;friends&#39;, [&#39;my&#39;, &quot;&#39;&quot;]), Tree(&#39;tabby&#39;, [&#39;the&#39;])])]</span>
+
+<span class="sd">    &gt;&gt;&gt; sum([[list(parse.triples()) for parse in dep_graphs] for dep_graphs in dep_parser.tagged_parse_sents((</span>
+<span class="sd">    ...     (</span>
+<span class="sd">    ...         (&quot;The&quot;, &quot;DT&quot;),</span>
+<span class="sd">    ...         (&quot;quick&quot;, &quot;JJ&quot;),</span>
+<span class="sd">    ...         (&quot;brown&quot;, &quot;JJ&quot;),</span>
+<span class="sd">    ...         (&quot;fox&quot;, &quot;NN&quot;),</span>
+<span class="sd">    ...         (&quot;jumped&quot;, &quot;VBD&quot;),</span>
+<span class="sd">    ...         (&quot;over&quot;, &quot;IN&quot;),</span>
+<span class="sd">    ...         (&quot;the&quot;, &quot;DT&quot;),</span>
+<span class="sd">    ...         (&quot;lazy&quot;, &quot;JJ&quot;),</span>
+<span class="sd">    ...         (&quot;dog&quot;, &quot;NN&quot;),</span>
+<span class="sd">    ...         (&quot;.&quot;, &quot;.&quot;),</span>
+<span class="sd">    ...     ),</span>
+<span class="sd">    ... ))],[]) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [[((u&#39;jumped&#39;, u&#39;VBD&#39;), u&#39;nsubj&#39;, (u&#39;fox&#39;, u&#39;NN&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;The&#39;, u&#39;DT&#39;)),</span>
+<span class="sd">    ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;quick&#39;, u&#39;JJ&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;brown&#39;, u&#39;JJ&#39;)),</span>
+<span class="sd">    ((u&#39;jumped&#39;, u&#39;VBD&#39;), u&#39;nmod&#39;, (u&#39;dog&#39;, u&#39;NN&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;case&#39;, (u&#39;over&#39;, u&#39;IN&#39;)),</span>
+<span class="sd">    ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;the&#39;, u&#39;DT&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;lazy&#39;, u&#39;JJ&#39;))]]</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_OUTPUT_FORMAT</span> <span class="o">=</span> <span class="s">&#39;conll2007&#39;</span>
+
+    <span class="k">def</span> <span class="nf">_make_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">top_relation_label</span><span class="o">=</span><span class="s">&#39;root&#39;</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="StanfordNeuralDependencyParser"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordNeuralDependencyParser">[docs]</a><span class="k">class</span> <span class="nc">StanfordNeuralDependencyParser</span><span class="p">(</span><span class="n">GenericStanfordParser</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    &gt;&gt;&gt; from nltk.parse.stanford import StanfordNeuralDependencyParser</span>
+<span class="sd">    &gt;&gt;&gt; dep_parser=StanfordNeuralDependencyParser()</span>
+
+<span class="sd">    &gt;&gt;&gt; [parse.tree() for parse in dep_parser.raw_parse(&quot;The quick brown fox jumps over the lazy dog.&quot;)] # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;jumps&#39;, [Tree(&#39;fox&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;brown&#39;]), Tree(&#39;dog&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])])]</span>
+
+<span class="sd">    &gt;&gt;&gt; [list(parse.triples()) for parse in dep_parser.raw_parse(&quot;The quick brown fox jumps over the lazy dog.&quot;)] # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [[((u&#39;jumps&#39;, u&#39;VBZ&#39;), u&#39;nsubj&#39;, (u&#39;fox&#39;, u&#39;NN&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;The&#39;, u&#39;DT&#39;)),</span>
+<span class="sd">    ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;quick&#39;, u&#39;JJ&#39;)), ((u&#39;fox&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;brown&#39;, u&#39;JJ&#39;)),</span>
+<span class="sd">    ((u&#39;jumps&#39;, u&#39;VBZ&#39;), u&#39;nmod&#39;, (u&#39;dog&#39;, u&#39;NN&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;case&#39;, (u&#39;over&#39;, u&#39;IN&#39;)),</span>
+<span class="sd">    ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;det&#39;, (u&#39;the&#39;, u&#39;DT&#39;)), ((u&#39;dog&#39;, u&#39;NN&#39;), u&#39;amod&#39;, (u&#39;lazy&#39;, u&#39;JJ&#39;))]]</span>
+
+<span class="sd">    &gt;&gt;&gt; sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.raw_parse_sents((</span>
+<span class="sd">    ...     &quot;The quick brown fox jumps over the lazy dog.&quot;,</span>
+<span class="sd">    ...     &quot;The quick grey wolf jumps over the lazy fox.&quot;</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;jumps&#39;, [Tree(&#39;fox&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;brown&#39;]), Tree(&#39;dog&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])]),</span>
+<span class="sd">    Tree(&#39;jumps&#39;, [Tree(&#39;wolf&#39;, [&#39;The&#39;, &#39;quick&#39;, &#39;grey&#39;]), Tree(&#39;fox&#39;, [&#39;over&#39;, &#39;the&#39;, &#39;lazy&#39;])])]</span>
+
+<span class="sd">    &gt;&gt;&gt; sum([[parse.tree() for parse in dep_graphs] for dep_graphs in dep_parser.parse_sents((</span>
+<span class="sd">    ...     &quot;I &#39;m a dog&quot;.split(),</span>
+<span class="sd">    ...     &quot;This is my friends &#39; cat ( the tabby )&quot;.split(),</span>
+<span class="sd">    ... ))], []) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">    [Tree(&#39;dog&#39;, [&#39;I&#39;, &quot;&#39;m&quot;, &#39;a&#39;]), Tree(&#39;cat&#39;, [&#39;This&#39;, &#39;is&#39;, Tree(&#39;friends&#39;, [&#39;my&#39;, &quot;&#39;&quot;]), Tree(&#39;tabby&#39;, [&#39;the&#39;])])]</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">_OUTPUT_FORMAT</span> <span class="o">=</span> <span class="s">&#39;conll&#39;</span>
+    <span class="n">_MAIN_CLASS</span> <span class="o">=</span> <span class="s">&#39;edu.stanford.nlp.pipeline.StanfordCoreNLP&#39;</span>
+    <span class="n">_JAR</span> <span class="o">=</span> <span class="s">r&#39;stanford-corenlp-(\d+)(\.(\d+))+\.jar&#39;</span>
+    <span class="n">_MODEL_JAR_PATTERN</span> <span class="o">=</span> <span class="s">r&#39;stanford-corenlp-(\d+)(\.(\d+))+-models\.jar&#39;</span>
+    <span class="n">_USE_STDIN</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">_DOUBLE_SPACED_OUTPUT</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">StanfordNeuralDependencyParser</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">corenlp_options</span> <span class="o">+=</span> <span class="s">&#39;-annotators tokenize,ssplit,pos,depparse&#39;</span>
+
+<div class="viewcode-block" id="StanfordNeuralDependencyParser.tagged_parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordNeuralDependencyParser.tagged_parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Currently unimplemented because the neural dependency parser (and</span>
+<span class="sd">        the StanfordCoreNLP pipeline class) doesn&#39;t support passing in pre-</span>
+<span class="sd">        tagged tokens.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s">&#39;tagged_parse[_sents] is not supported by &#39;</span>
+            <span class="s">&#39;StanfordNeuralDependencyParser; use &#39;</span>
+            <span class="s">&#39;parse[_sents] or raw_parse[_sents] instead.&#39;</span>
         <span class="p">)</span>
-
-        <span class="c"># find the most recent model</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_model_jar</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span>
-            <span class="n">find_jar_iter</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_MODEL_JAR_PATTERN</span><span class="p">,</span> <span class="n">path_to_models_jar</span><span class="p">,</span>
-                <span class="n">env_vars</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;STANFORD_MODELS&#39;</span><span class="p">,),</span>
-                <span class="n">searchpath</span><span class="o">=</span><span class="p">(),</span> <span class="n">url</span><span class="o">=</span><span class="n">_stanford_url</span><span class="p">,</span>
-                <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">is_regex</span><span class="o">=</span><span class="bp">True</span>
-            <span class="p">),</span>
-            <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">model_name</span><span class="p">:</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_MODEL_JAR_PATTERN</span><span class="p">,</span> <span class="n">model_name</span><span class="p">)</span>
-        <span class="p">)</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span> <span class="o">=</span> <span class="n">model_path</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">encoding</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">java_options</span> <span class="o">=</span> <span class="n">java_options</span>
-
-    <span class="nd">@staticmethod</span>
-    <span class="k">def</span> <span class="nf">_parse_trees_output</span><span class="p">(</span><span class="n">output_</span><span class="p">):</span>
-        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">cur_lines</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output_</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="bp">False</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
-                <span class="n">res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">iter</span><span class="p">([</span><span class="n">Tree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cur_lines</span><span class="p">))]))</span>
-                <span class="n">cur_lines</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">cur_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
-        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
-
-<div class="viewcode-block" id="StanfordParser.parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser.parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a</span>
-<span class="sd">        list where each sentence is a list of words.</span>
-<span class="sd">        Each sentence will be automatically tagged with this StanfordParser instance&#39;s</span>
-<span class="sd">        tagger.</span>
-<span class="sd">        If whitespaces exists inside a token, then the token will be treated as</span>
-<span class="sd">        separate tokens.</span>
-
-<span class="sd">        :param sentences: Input sentences to parse</span>
-<span class="sd">        :type sentences: list(list(str))</span>
-<span class="sd">        :rtype: iter(iter(Tree))</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="s">&#39;edu.stanford.nlp.parser.lexparser.LexicalizedParser&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
-            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="s">&#39;penn&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-tokenized&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-escaper&#39;</span><span class="p">,</span> <span class="s">&#39;edu.stanford.nlp.process.PTBEscapingProcessor&#39;</span><span class="p">,</span>
-        <span class="p">]</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
-            <span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
 </div>
-<div class="viewcode-block" id="StanfordParser.raw_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser.raw_parse">[docs]</a>    <span class="k">def</span> <span class="nf">raw_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use StanfordParser to parse a sentence. Takes a sentence as a string;</span>
-<span class="sd">        before parsing, it will be automatically tokenized and tagged by</span>
-<span class="sd">        the Stanford Parser.</span>
-
-<span class="sd">        :param sentence: Input sentence to parse</span>
-<span class="sd">        :type sentence: str</span>
-<span class="sd">        :rtype: iter(Tree)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raw_parse_sents</span><span class="p">([</span><span class="n">sentence</span><span class="p">],</span> <span class="n">verbose</span><span class="p">))</span>
-</div>
-<div class="viewcode-block" id="StanfordParser.raw_parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser.raw_parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">raw_parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences as a</span>
-<span class="sd">        list of strings.</span>
-<span class="sd">        Each sentence will be automatically tokenized and tagged by the Stanford Parser.</span>
-
-<span class="sd">        :param sentences: Input sentences to parse</span>
-<span class="sd">        :type sentences: list(str)</span>
-<span class="sd">        :rtype: iter(iter(Tree))</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="s">&#39;edu.stanford.nlp.parser.lexparser.LexicalizedParser&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
-            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="s">&#39;penn&#39;</span><span class="p">,</span>
-        <span class="p">]</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
-</div>
-<div class="viewcode-block" id="StanfordParser.tagged_parse"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser.tagged_parse">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use StanfordParser to parse a sentence. Takes a sentence as a list of</span>
-<span class="sd">        (word, tag) tuples; the sentence must have already been tokenized and</span>
-<span class="sd">        tagged.</span>
-
-<span class="sd">        :param sentence: Input sentence to parse</span>
-<span class="sd">        :type sentence: list(tuple(str, str))</span>
-<span class="sd">        :rtype: iter(Tree)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tagged_parse_sents</span><span class="p">([</span><span class="n">sentence</span><span class="p">],</span> <span class="n">verbose</span><span class="p">))</span>
-</div>
-<div class="viewcode-block" id="StanfordParser.tagged_parse_sents"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.StanfordParser.tagged_parse_sents">[docs]</a>    <span class="k">def</span> <span class="nf">tagged_parse_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Use StanfordParser to parse multiple sentences. Takes multiple sentences</span>
-<span class="sd">        where each sentence is a list of (word, tag) tuples.</span>
-<span class="sd">        The sentences must have already been tokenized and tagged.</span>
-
-<span class="sd">        :param sentences: Input sentences to parse</span>
-<span class="sd">        :type sentences: list(list(tuple(str, str)))</span>
-<span class="sd">        :rtype: iter(iter(Tree))</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">tag_separator</span> <span class="o">=</span> <span class="s">&#39;/&#39;</span>
-        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="s">&#39;edu.stanford.nlp.parser.lexparser.LexicalizedParser&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-model&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_path</span><span class="p">,</span>
-            <span class="s">&#39;-sentences&#39;</span><span class="p">,</span> <span class="s">&#39;newline&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-outputFormat&#39;</span><span class="p">,</span> <span class="s">&#39;penn&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-tokenized&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-tagSeparator&#39;</span><span class="p">,</span> <span class="n">tag_separator</span><span class="p">,</span>
-            <span class="s">&#39;-tokenizerFactory&#39;</span><span class="p">,</span> <span class="s">&#39;edu.stanford.nlp.process.WhitespaceTokenizer&#39;</span><span class="p">,</span>
-            <span class="s">&#39;-tokenizerMethod&#39;</span><span class="p">,</span> <span class="s">&#39;newCoreLabelTokenizerFactory&#39;</span><span class="p">,</span>
-        <span class="p">]</span>
-        <span class="c"># We don&#39;t need to escape slashes as &quot;splitting is done on the last instance of the character in the token&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_trees_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
-            <span class="n">cmd</span><span class="p">,</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tag_separator</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tagged</span><span class="p">)</span> <span class="k">for</span> <span class="n">tagged</span> <span class="ow">in</span> <span class="n">sentence</span><span class="p">)</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">),</span> <span class="n">verbose</span><span class="p">))</span>
-</div>
-    <span class="k">def</span> <span class="nf">_execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">,</span> <span class="n">input_</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
-        <span class="n">encoding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span>
-        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s">&#39;-encoding&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="p">])</span>
-
-        <span class="n">default_options</span> <span class="o">=</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_java_options</span><span class="p">)</span>
-
-        <span class="c"># Configure java.</span>
-        <span class="n">config_java</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">java_options</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
-
-        <span class="c"># Windows is incompatible with NamedTemporaryFile() without passing in delete=False.</span>
-        <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;wb&#39;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">input_file</span><span class="p">:</span>
-            <span class="c"># Write the actual sentences to the temporary input file</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_</span><span class="p">,</span> <span class="n">compat</span><span class="o">.</span><span class="n">text_type</span><span class="p">)</span> <span class="ow">and</span> <span class="n">encoding</span><span class="p">:</span>
-                <span class="n">input_</span> <span class="o">=</span> <span class="n">input_</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
-            <span class="n">input_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">input_</span><span class="p">)</span>
-            <span class="n">input_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
-
-            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">input_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-
-            <span class="c"># Run the tagger and get the output.</span>
-            <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">java</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">classpath</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_stanford_jar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_jar</span><span class="p">),</span>
-                                  <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">)</span>
-            <span class="n">stdout</span> <span class="o">=</span> <span class="n">stdout</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
-
-        <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">input_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-
-        <span class="c"># Return java configurations to their default values.</span>
-        <span class="n">config_java</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="n">default_options</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">stdout</span>
+    <span class="k">def</span> <span class="nf">_make_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">DependencyGraph</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">top_relation_label</span><span class="o">=</span><span class="s">&#39;ROOT&#39;</span><span class="p">)</span>
 
 </div>
 <div class="viewcode-block" id="setup_module"><a class="viewcode-back" href="../../../api/nltk.parse.html#nltk.parse.stanford.setup_module">[docs]</a><span class="k">def</span> <span class="nf">setup_module</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
@@ -296,9 +446,9 @@
         <span class="n">StanfordParser</span><span class="p">(</span>
             <span class="n">model_path</span><span class="o">=</span><span class="s">&#39;edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz&#39;</span>
         <span class="p">)</span>
+        <span class="n">StanfordNeuralDependencyParser</span><span class="p">()</span>
     <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">SkipTest</span><span class="p">(</span><span class="s">&#39;doctests from nltk.parse.stanford are skipped because the stanford parser jar doesn</span><span class="se">\&#39;</span><span class="s">t exist&#39;</span><span class="p">)</span>
-    </div>
+        <span class="k">raise</span> <span class="n">SkipTest</span><span class="p">(</span><span class="s">&#39;doctests from nltk.parse.stanford are skipped because one of the stanford parser or CoreNLP jars doesn</span><span class="se">\&#39;</span><span class="s">t exist&#39;</span><span class="p">)</span></div>
 </pre></div>
 
           </div>
@@ -352,7 +502,7 @@
           
     <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Sep 05, 2015.
+      Last updated on Oct 15, 2015.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>

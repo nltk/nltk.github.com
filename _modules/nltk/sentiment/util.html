@@ -1,0 +1,866 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.sentiment.util &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.sentiment.util</h1><div class="highlight"><pre>
+<span class="c"># coding: utf-8</span>
+<span class="c">#</span>
+<span class="c"># Natural Language Toolkit: Sentiment Analyzer</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Pierpaolo Pantone &lt;24alsecondo@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Utility methods for Sentiment Analysis.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">import</span> <span class="nn">codecs</span>
+<span class="kn">import</span> <span class="nn">csv</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="kn">import</span> <span class="nn">nltk</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">CategorizedPlaintextCorpusReader</span>
+<span class="kn">from</span> <span class="nn">nltk.data</span> <span class="kn">import</span> <span class="n">load</span>
+<span class="kn">from</span> <span class="nn">nltk.tokenize.casual</span> <span class="kn">import</span> <span class="n">EMOTICON_RE</span>
+<span class="kn">from</span> <span class="nn">nltk.twitter.common</span> <span class="kn">import</span> <span class="n">outf_writer_compat</span><span class="p">,</span> <span class="n">extract_fields</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c">#{ Regular expressions</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+
+<span class="c"># Regular expression for negation by Christopher Potts</span>
+<span class="n">NEGATION</span> <span class="o">=</span> <span class="s">r&quot;&quot;&quot;</span>
+<span class="s">    (?:</span>
+<span class="s">        ^(?:never|no|nothing|nowhere|noone|none|not|</span>
+<span class="s">            havent|hasnt|hadnt|cant|couldnt|shouldnt|</span>
+<span class="s">            wont|wouldnt|dont|doesnt|didnt|isnt|arent|aint</span>
+<span class="s">        )$</span>
+<span class="s">    )</span>
+<span class="s">    |</span>
+<span class="s">    n&#39;t&quot;&quot;&quot;</span>
+
+<span class="n">NEGATION_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">NEGATION</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">VERBOSE</span><span class="p">)</span>
+
+<span class="n">CLAUSE_PUNCT</span> <span class="o">=</span> <span class="s">r&#39;^[.:;!?]$&#39;</span>
+<span class="n">CLAUSE_PUNCT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">CLAUSE_PUNCT</span><span class="p">)</span>
+
+<span class="c"># Happy and sad emoticons</span>
+
+<span class="n">HAPPY</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span>
+    <span class="s">&#39;:-)&#39;</span><span class="p">,</span> <span class="s">&#39;:)&#39;</span><span class="p">,</span> <span class="s">&#39;;)&#39;</span><span class="p">,</span> <span class="s">&#39;:o)&#39;</span><span class="p">,</span> <span class="s">&#39;:]&#39;</span><span class="p">,</span> <span class="s">&#39;:3&#39;</span><span class="p">,</span> <span class="s">&#39;:c)&#39;</span><span class="p">,</span> <span class="s">&#39;:&gt;&#39;</span><span class="p">,</span> <span class="s">&#39;=]&#39;</span><span class="p">,</span> <span class="s">&#39;8)&#39;</span><span class="p">,</span> <span class="s">&#39;=)&#39;</span><span class="p">,</span> <span class="s">&#39;:}&#39;</span><span class="p">,</span>
+    <span class="s">&#39;:^)&#39;</span><span class="p">,</span> <span class="s">&#39;:-D&#39;</span><span class="p">,</span> <span class="s">&#39;:D&#39;</span><span class="p">,</span> <span class="s">&#39;8-D&#39;</span><span class="p">,</span> <span class="s">&#39;8D&#39;</span><span class="p">,</span> <span class="s">&#39;x-D&#39;</span><span class="p">,</span> <span class="s">&#39;xD&#39;</span><span class="p">,</span> <span class="s">&#39;X-D&#39;</span><span class="p">,</span> <span class="s">&#39;XD&#39;</span><span class="p">,</span> <span class="s">&#39;=-D&#39;</span><span class="p">,</span> <span class="s">&#39;=D&#39;</span><span class="p">,</span>
+    <span class="s">&#39;=-3&#39;</span><span class="p">,</span> <span class="s">&#39;=3&#39;</span><span class="p">,</span> <span class="s">&#39;:-))&#39;</span><span class="p">,</span> <span class="s">&quot;:&#39;-)&quot;</span><span class="p">,</span> <span class="s">&quot;:&#39;)&quot;</span><span class="p">,</span> <span class="s">&#39;:*&#39;</span><span class="p">,</span> <span class="s">&#39;:^*&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:P&#39;</span><span class="p">,</span> <span class="s">&#39;:-P&#39;</span><span class="p">,</span> <span class="s">&#39;:P&#39;</span><span class="p">,</span> <span class="s">&#39;X-P&#39;</span><span class="p">,</span>
+    <span class="s">&#39;x-p&#39;</span><span class="p">,</span> <span class="s">&#39;xp&#39;</span><span class="p">,</span> <span class="s">&#39;XP&#39;</span><span class="p">,</span> <span class="s">&#39;:-p&#39;</span><span class="p">,</span> <span class="s">&#39;:p&#39;</span><span class="p">,</span> <span class="s">&#39;=p&#39;</span><span class="p">,</span> <span class="s">&#39;:-b&#39;</span><span class="p">,</span> <span class="s">&#39;:b&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:)&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;;)&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:-)&#39;</span><span class="p">,</span>
+    <span class="s">&#39;&lt;3&#39;</span>
+    <span class="p">])</span>
+
+<span class="n">SAD</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span>
+    <span class="s">&#39;:L&#39;</span><span class="p">,</span> <span class="s">&#39;:-/&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:/&#39;</span><span class="p">,</span> <span class="s">&#39;:S&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:[&#39;</span><span class="p">,</span> <span class="s">&#39;:@&#39;</span><span class="p">,</span> <span class="s">&#39;:-(&#39;</span><span class="p">,</span> <span class="s">&#39;:[&#39;</span><span class="p">,</span> <span class="s">&#39;:-||&#39;</span><span class="p">,</span> <span class="s">&#39;=L&#39;</span><span class="p">,</span> <span class="s">&#39;:&lt;&#39;</span><span class="p">,</span>
+    <span class="s">&#39;:-[&#39;</span><span class="p">,</span> <span class="s">&#39;:-&lt;&#39;</span><span class="p">,</span> <span class="s">&#39;=</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">,</span> <span class="s">&#39;=/&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:(&#39;</span><span class="p">,</span> <span class="s">&#39;:(&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;.&lt;&#39;</span><span class="p">,</span> <span class="s">&quot;:&#39;-(&quot;</span><span class="p">,</span> <span class="s">&quot;:&#39;(&quot;</span><span class="p">,</span> <span class="s">&#39;:</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">,</span> <span class="s">&#39;:-c&#39;</span><span class="p">,</span>
+    <span class="s">&#39;:c&#39;</span><span class="p">,</span> <span class="s">&#39;:{&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;:</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">,</span> <span class="s">&#39;;(&#39;</span>
+    <span class="p">])</span>
+
+<div class="viewcode-block" id="timer"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.timer">[docs]</a><span class="k">def</span> <span class="nf">timer</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A timer decorator to measure execution performance of methods.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">timed</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">tot_time</span> <span class="o">=</span> <span class="n">end</span> <span class="o">-</span> <span class="n">start</span>
+        <span class="n">hours</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">tot_time</span> <span class="o">/</span> <span class="mi">3600</span><span class="p">)</span>
+        <span class="n">mins</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">tot_time</span> <span class="o">/</span> <span class="mi">60</span><span class="p">)</span> <span class="o">%</span> <span class="mi">60</span><span class="p">)</span>
+        <span class="c"># in Python 2.x round() will return a float, so we convert it to int</span>
+        <span class="n">secs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">tot_time</span> <span class="o">%</span> <span class="mi">60</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">hours</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">mins</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">secs</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;[TIMER] {0}(): {:.3f} seconds&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">method</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">tot_time</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;[TIMER] {0}(): {1}h {2}m {3}s&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">method</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">hours</span><span class="p">,</span> <span class="n">mins</span><span class="p">,</span> <span class="n">secs</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">timed</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c">#{ Feature extractor functions</span>
+<span class="c">#////////////////////////////////////////////////////////////</span></div>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Feature extractor functions are declared outside the SentimentAnalyzer class.</span>
+<span class="sd">Users should have the possibility to create their own feature extractors</span>
+<span class="sd">without modifying SentimentAnalyzer.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="extract_unigram_feats"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.extract_unigram_feats">[docs]</a><span class="k">def</span> <span class="nf">extract_unigram_feats</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">unigrams</span><span class="p">,</span> <span class="n">handle_negation</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Populate a dictionary of unigram features, reflecting the presence/absence in</span>
+<span class="sd">    the document of each of the tokens in `unigrams`.</span>
+
+<span class="sd">    :param document: a list of words/tokens.</span>
+<span class="sd">    :param unigrams: a list of words/tokens whose presence/absence has to be</span>
+<span class="sd">        checked in `document`.</span>
+<span class="sd">    :param handle_negation: if `handle_negation == True` apply `mark_negation`</span>
+<span class="sd">        method to `document` before checking for unigram presence/absence.</span>
+<span class="sd">    :return: a dictionary of unigram features {unigram : boolean}.</span>
+
+<span class="sd">    &gt;&gt;&gt; words = [&#39;ice&#39;, &#39;police&#39;, &#39;riot&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; document = &#39;ice is melting due to global warming&#39;.split()</span>
+<span class="sd">    &gt;&gt;&gt; sorted(extract_unigram_feats(document, words).items())</span>
+<span class="sd">    [(&#39;contains(ice)&#39;, True), (&#39;contains(police)&#39;, False), (&#39;contains(riot)&#39;, False)]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">handle_negation</span><span class="p">:</span>
+        <span class="n">document</span> <span class="o">=</span> <span class="n">mark_negation</span><span class="p">(</span><span class="n">document</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">unigrams</span><span class="p">:</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;contains({0})&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">word</span><span class="p">)]</span> <span class="o">=</span> <span class="n">word</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">document</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">features</span>
+</div>
+<div class="viewcode-block" id="extract_bigram_feats"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.extract_bigram_feats">[docs]</a><span class="k">def</span> <span class="nf">extract_bigram_feats</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">bigrams</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Populate a dictionary of bigram features, reflecting the presence/absence in</span>
+<span class="sd">    the document of each of the tokens in `bigrams`. This extractor function only</span>
+<span class="sd">    considers contiguous bigrams obtained by `nltk.bigrams`.</span>
+
+<span class="sd">    :param document: a list of words/tokens.</span>
+<span class="sd">    :param unigrams: a list of bigrams whose presence/absence has to be</span>
+<span class="sd">        checked in `document`.</span>
+<span class="sd">    :return: a dictionary of bigram features {bigram : boolean}.</span>
+
+<span class="sd">    &gt;&gt;&gt; bigrams = [(&#39;global&#39;, &#39;warming&#39;), (&#39;police&#39;, &#39;prevented&#39;), (&#39;love&#39;, &#39;you&#39;)]</span>
+<span class="sd">    &gt;&gt;&gt; document = &#39;ice is melting due to global warming&#39;.split()</span>
+<span class="sd">    &gt;&gt;&gt; sorted(extract_bigram_feats(document, bigrams).items())</span>
+<span class="sd">    [(&#39;contains(global - warming)&#39;, True), (&#39;contains(love - you)&#39;, False),</span>
+<span class="sd">    (&#39;contains(police - prevented)&#39;, False)]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">bigr</span> <span class="ow">in</span> <span class="n">bigrams</span><span class="p">:</span>
+        <span class="n">features</span><span class="p">[</span><span class="s">&#39;contains({0} - {1})&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">bigr</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">bigr</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span> <span class="o">=</span> <span class="n">bigr</span> <span class="ow">in</span> <span class="n">nltk</span><span class="o">.</span><span class="n">bigrams</span><span class="p">(</span><span class="n">document</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">features</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c">#{ Helper Functions</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="mark_negation"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.mark_negation">[docs]</a><span class="k">def</span> <span class="nf">mark_negation</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">double_neg_flip</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">shallow</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Append _NEG suffix to words that appear in the scope between a negation</span>
+<span class="sd">    and a punctuation mark.</span>
+
+<span class="sd">    :param document: a list of words/tokens, or a tuple (words, label).</span>
+<span class="sd">    :param shallow: if True, the method will modify the original document in place.</span>
+<span class="sd">    :param double_neg_flip: if True, double negation is considered affirmation</span>
+<span class="sd">        (we activate/deactivate negation scope everytime we find a negation).</span>
+<span class="sd">    :return: if `shallow == True` the method will modify the original document</span>
+<span class="sd">        and return it. If `shallow == False` the method will return a modified</span>
+<span class="sd">        document, leaving the original unmodified.</span>
+
+<span class="sd">    &gt;&gt;&gt; sent = &quot;I didn&#39;t like this movie . It was bad .&quot;.split()</span>
+<span class="sd">    &gt;&gt;&gt; mark_negation(sent)</span>
+<span class="sd">    [&#39;I&#39;, &quot;didn&#39;t&quot;, &#39;like_NEG&#39;, &#39;this_NEG&#39;, &#39;movie_NEG&#39;, &#39;.&#39;, &#39;It&#39;, &#39;was&#39;, &#39;bad&#39;, &#39;.&#39;]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shallow</span><span class="p">:</span>
+        <span class="n">document</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">document</span><span class="p">)</span>
+    <span class="c"># check if the document is labeled. If so, do not consider the label.</span>
+    <span class="n">labeled</span> <span class="o">=</span> <span class="n">document</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">document</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">labeled</span><span class="p">:</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">document</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">document</span>
+    <span class="n">neg_scope</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">word</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">doc</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">NEGATION_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">word</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">neg_scope</span> <span class="ow">or</span> <span class="p">(</span><span class="n">neg_scope</span> <span class="ow">and</span> <span class="n">double_neg_flip</span><span class="p">):</span>
+                <span class="n">neg_scope</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">neg_scope</span>
+                <span class="k">continue</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="s">&#39;_NEG&#39;</span>
+        <span class="k">elif</span> <span class="n">neg_scope</span> <span class="ow">and</span> <span class="n">CLAUSE_PUNCT_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">word</span><span class="p">):</span>
+            <span class="n">neg_scope</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">neg_scope</span>
+        <span class="k">elif</span> <span class="n">neg_scope</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">CLAUSE_PUNCT_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">word</span><span class="p">):</span>
+            <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="s">&#39;_NEG&#39;</span>
+
+    <span class="k">return</span> <span class="n">document</span>
+</div>
+<div class="viewcode-block" id="output_markdown"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.output_markdown">[docs]</a><span class="k">def</span> <span class="nf">output_markdown</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write the output of an analysis to a file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;at&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">outfile</span><span class="p">:</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">*** </span><span class="se">\n\n</span><span class="s">&#39;</span>
+        <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;{0} </span><span class="se">\n\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s">/%m/%Y, %H:%M&quot;</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">dictionary</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;  - **{0}:**</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">dictionary</span><span class="p">):</span>
+                    <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;    - {0}: {1} </span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">dictionary</span><span class="p">[</span><span class="n">entry</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;  - **{0}:**</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span>
+                    <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;    - {0}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">text</span> <span class="o">+=</span> <span class="s">&#39;  - **{0}:** {1} </span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+        <span class="n">outfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="save_file"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.save_file">[docs]</a><span class="k">def</span> <span class="nf">save_file</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Store `content` in `filename`. Can be used to store a SentimentAnalyzer.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Saving&quot;</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">storage_file</span><span class="p">:</span>
+        <span class="c"># The protocol=2 parameter is for python2 compatibility</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="n">storage_file</span><span class="p">,</span> <span class="n">protocol</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="split_train_test"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.split_train_test">[docs]</a><span class="k">def</span> <span class="nf">split_train_test</span><span class="p">(</span><span class="n">all_instances</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Randomly split `n` instances of the dataset into train and test sets.</span>
+
+<span class="sd">    :param all_instances: a list of instances (e.g. documents) that will be split.</span>
+<span class="sd">    :param n: the number of instances to consider (in case we want to use only a</span>
+<span class="sd">        subset).</span>
+<span class="sd">    :return: two lists of instances. Train set is 8/10 of the total and test set</span>
+<span class="sd">        is 2/10 of the total.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">12345</span><span class="p">)</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">all_instances</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">n</span> <span class="ow">or</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_instances</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_instances</span><span class="p">)</span>
+    <span class="n">train_set</span> <span class="o">=</span> <span class="n">all_instances</span><span class="p">[:</span><span class="nb">int</span><span class="p">(</span><span class="o">.</span><span class="mi">8</span><span class="o">*</span><span class="n">n</span><span class="p">)]</span>
+    <span class="n">test_set</span> <span class="o">=</span> <span class="n">all_instances</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="o">.</span><span class="mi">8</span><span class="o">*</span><span class="n">n</span><span class="p">):</span><span class="n">n</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">train_set</span><span class="p">,</span> <span class="n">test_set</span>
+</div>
+<span class="k">def</span> <span class="nf">_show_plot</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span><span class="p">,</span> <span class="n">x_labels</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">y_labels</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s">&#39;The plot function requires matplotlib to be installed.&#39;</span>
+                         <span class="s">&#39;See http://matplotlib.org/&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">locator_params</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s">&#39;y&#39;</span><span class="p">,</span> <span class="n">nbins</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">axes</span><span class="p">()</span>
+    <span class="n">axes</span><span class="o">.</span><span class="n">yaxis</span><span class="o">.</span><span class="n">grid</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span><span class="p">,</span> <span class="s">&#39;ro&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;red&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="n">ymin</span><span class="o">=-</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">ymax</span><span class="o">=</span><span class="mf">1.2</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">(</span><span class="n">pad</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">x_labels</span><span class="p">:</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_labels</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="s">&#39;vertical&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">y_labels</span><span class="p">:</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">yticks</span><span class="p">([</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">y_labels</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="s">&#39;horizontal&#39;</span><span class="p">)</span>
+    <span class="c"># Pad margins so that markers are not clipped by the axes</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">margins</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c">#{ Parsing and conversion functions</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+
+<div class="viewcode-block" id="json2csv_preprocess"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.json2csv_preprocess">[docs]</a><span class="k">def</span> <span class="nf">json2csv_preprocess</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="n">outfile</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&#39;utf8&#39;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s">&#39;replace&#39;</span><span class="p">,</span>
+            <span class="n">gzip_compress</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">skip_retweets</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">skip_tongue_tweets</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+            <span class="n">skip_ambiguous_tweets</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">strip_off_emoticons</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">remove_duplicates</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+            <span class="n">limit</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert json file to csv file, preprocessing each row to obtain a suitable</span>
+<span class="sd">    dataset for tweets Semantic Analysis.</span>
+
+<span class="sd">    :param json_file: the original json file containing tweets.</span>
+<span class="sd">    :param outfile: the output csv filename.</span>
+<span class="sd">    :param fields: a list of fields that will be extracted from the json file and</span>
+<span class="sd">        kept in the output csv file.</span>
+<span class="sd">    :param encoding: the encoding of the files.</span>
+<span class="sd">    :param errors: the error handling strategy for the output writer.</span>
+<span class="sd">    :param gzip_compress: if True, create a compressed GZIP file.</span>
+
+<span class="sd">    :param skip_retweets: if True, remove retweets.</span>
+<span class="sd">    :param skip_tongue_tweets: if True, remove tweets containing &quot;:P&quot; and &quot;:-P&quot;</span>
+<span class="sd">        emoticons.</span>
+<span class="sd">    :param skip_ambiguous_tweets: if True, remove tweets containing both happy</span>
+<span class="sd">        and sad emoticons.</span>
+<span class="sd">    :param strip_off_emoticons: if True, strip off emoticons from all tweets.</span>
+<span class="sd">    :param remove_duplicates: if True, remove tweets appearing more than once.</span>
+<span class="sd">    :param limit: an integer to set the number of tweets to convert. After the</span>
+<span class="sd">        limit is reached the conversion will stop. It can be useful to create</span>
+<span class="sd">        subsets of the original tweets json data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+        <span class="p">(</span><span class="n">writer</span><span class="p">,</span> <span class="n">outf</span><span class="p">)</span> <span class="o">=</span> <span class="n">outf_writer_compat</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="n">errors</span><span class="p">,</span> <span class="n">gzip_compress</span><span class="p">)</span>
+        <span class="c"># write the list of fields as header</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">remove_duplicates</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">tweets_cache</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">fp</span><span class="p">:</span>
+            <span class="n">tweet</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">extract_fields</span><span class="p">(</span><span class="n">tweet</span><span class="p">,</span> <span class="n">fields</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="n">fields</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;text&#39;</span><span class="p">)]</span>
+                <span class="c"># Remove retweets</span>
+                <span class="k">if</span> <span class="n">skip_retweets</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&#39;\bRT\b&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+                        <span class="k">continue</span>
+                <span class="c"># Remove tweets containing &quot;:P&quot; and &quot;:-P&quot; emoticons</span>
+                <span class="k">if</span> <span class="n">skip_tongue_tweets</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">r&#39;\:\-?P\b&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+                        <span class="k">continue</span>
+                <span class="c"># Remove tweets containing both happy and sad emoticons</span>
+                <span class="k">if</span> <span class="n">skip_ambiguous_tweets</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="n">all_emoticons</span> <span class="o">=</span> <span class="n">EMOTICON_RE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">all_emoticons</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">all_emoticons</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">HAPPY</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">all_emoticons</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">SAD</span><span class="p">):</span>
+                            <span class="k">continue</span>
+                <span class="c"># Strip off emoticons from all tweets</span>
+                <span class="k">if</span> <span class="n">strip_off_emoticons</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="n">row</span><span class="p">[</span><span class="n">fields</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;text&#39;</span><span class="p">)]</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r&#39;(?!\n)\s+&#39;</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="p">,</span> <span class="n">EMOTICON_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">))</span>
+                <span class="c"># Remove duplicate tweets</span>
+                <span class="k">if</span> <span class="n">remove_duplicates</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="n">fields</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;text&#39;</span><span class="p">)]</span> <span class="ow">in</span> <span class="n">tweets_cache</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">tweets_cache</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">fields</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;text&#39;</span><span class="p">)])</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">limit</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="n">outf</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="parse_tweets_set"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.parse_tweets_set">[docs]</a><span class="k">def</span> <span class="nf">parse_tweets_set</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">word_tokenizer</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">sent_tokenizer</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                     <span class="n">skip_header</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse csv file containing tweets and output data a list of (text, label) tuples.</span>
+
+<span class="sd">    :param filename: the input csv filename.</span>
+<span class="sd">    :param label: the label to be appended to each tweet contained in the csv file.</span>
+<span class="sd">    :param word_tokenizer: the tokenizer instance that will be used to tokenize</span>
+<span class="sd">        each sentence into tokens (e.g. WordPunctTokenizer() or BlanklineTokenizer()).</span>
+<span class="sd">        If no word_tokenizer is specified, tweets will not be tokenized.</span>
+<span class="sd">    :param sent_tokenizer: the tokenizer that will be used to split each tweet into</span>
+<span class="sd">        sentences.</span>
+<span class="sd">    :param skip_header: if True, skip the first line of the csv file (which usually</span>
+<span class="sd">        contains headers).</span>
+
+<span class="sd">    :return: a list of (text, label) tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tweets</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sent_tokenizer</span><span class="p">:</span>
+        <span class="n">sent_tokenizer</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="s">&#39;tokenizers/punkt/english.pickle&#39;</span><span class="p">)</span>
+
+    <span class="c"># If we use Python3.x we can proceed using the &#39;rt&#39; flag</span>
+    <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">csvfile</span><span class="p">:</span>
+            <span class="n">reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">reader</span><span class="p">(</span><span class="n">csvfile</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">skip_header</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">reader</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="c"># skip the header</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">tweet_id</span><span class="p">,</span> <span class="n">text</span> <span class="ow">in</span> <span class="n">reader</span><span class="p">:</span>
+                <span class="c"># text = text[1]</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Loaded {0} tweets</span><span class="se">\r</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+                <span class="c"># Apply sentence and word tokenizer to text</span>
+                <span class="k">if</span> <span class="n">word_tokenizer</span><span class="p">:</span>
+                    <span class="n">tweet</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">sent_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                                       <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">word_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sent</span><span class="p">)]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">tweet</span> <span class="o">=</span> <span class="n">text</span>
+                <span class="n">tweets</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">tweet</span><span class="p">,</span> <span class="n">label</span><span class="p">))</span>
+    <span class="c"># If we use Python2.x we need to handle encoding problems</span>
+    <span class="k">elif</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="k">as</span> <span class="n">csvfile</span><span class="p">:</span>
+            <span class="n">reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">reader</span><span class="p">(</span><span class="n">csvfile</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">skip_header</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">reader</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="c"># skip the header</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">reader</span><span class="p">:</span>
+                <span class="n">unicode_row</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">row</span><span class="p">]</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">unicode_row</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Loaded {0} tweets</span><span class="se">\r</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+                <span class="c"># Apply sentence and word tokenizer to text</span>
+                <span class="k">if</span> <span class="n">word_tokenizer</span><span class="p">:</span>
+                    <span class="n">tweet</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf8&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">sent_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                                       <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">word_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sent</span><span class="p">)]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">tweet</span> <span class="o">=</span> <span class="n">text</span>
+                <span class="n">tweets</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">tweet</span><span class="p">,</span> <span class="n">label</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Loaded {0} tweets&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">tweets</span>
+
+<span class="c">#////////////////////////////////////////////////////////////</span>
+<span class="c">#{ Demos</span>
+<span class="c">#////////////////////////////////////////////////////////////</span>
+</div>
+<div class="viewcode-block" id="demo_tweets"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_tweets">[docs]</a><span class="k">def</span> <span class="nf">demo_tweets</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">n_instances</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train and test Naive Bayes classifier on 10000 tweets, tokenized using</span>
+<span class="sd">    TweetTokenizer.</span>
+<span class="sd">    Features are composed of:</span>
+<span class="sd">        - 1000 most frequent unigrams</span>
+<span class="sd">        - 100 top bigrams (using BigramAssocMeasures.pmi)</span>
+
+<span class="sd">    :param trainer: `train` method of a classifier.</span>
+<span class="sd">    :param n_instances: the number of total tweets that have to be used for</span>
+<span class="sd">        training and testing. Tweets will be equally split between positive and</span>
+<span class="sd">        negative.</span>
+<span class="sd">    :param output: the output file where results have to be reported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">TweetTokenizer</span>
+    <span class="kn">from</span> <span class="nn">sentiment_analyzer</span> <span class="kn">import</span> <span class="n">SentimentAnalyzer</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">twitter_samples</span><span class="p">,</span> <span class="n">stopwords</span>
+
+    <span class="c"># Different customizations for the TweetTokenizer</span>
+    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">TweetTokenizer</span><span class="p">(</span><span class="n">preserve_case</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="c"># tokenizer = TweetTokenizer(preserve_case=True, strip_handles=True)</span>
+    <span class="c"># tokenizer = TweetTokenizer(reduce_len=True, strip_handles=True)</span>
+
+    <span class="k">if</span> <span class="n">n_instances</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">n_instances</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_instances</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;id&#39;</span><span class="p">,</span> <span class="s">&#39;text&#39;</span><span class="p">]</span>
+    <span class="n">positive_json</span> <span class="o">=</span> <span class="n">twitter_samples</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="s">&quot;positive_tweets.json&quot;</span><span class="p">)</span>
+    <span class="n">positive_csv</span> <span class="o">=</span> <span class="s">&#39;positive_tweets.csv&#39;</span>
+    <span class="n">json2csv_preprocess</span><span class="p">(</span><span class="n">positive_json</span><span class="p">,</span> <span class="n">positive_csv</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+
+    <span class="n">negative_json</span> <span class="o">=</span> <span class="n">twitter_samples</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="s">&quot;negative_tweets.json&quot;</span><span class="p">)</span>
+    <span class="n">negative_csv</span> <span class="o">=</span> <span class="s">&#39;negative_tweets.csv&#39;</span>
+    <span class="n">json2csv_preprocess</span><span class="p">(</span><span class="n">negative_json</span><span class="p">,</span> <span class="n">negative_csv</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+
+    <span class="n">neg_docs</span> <span class="o">=</span> <span class="n">parse_tweets_set</span><span class="p">(</span><span class="n">negative_csv</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;neg&#39;</span><span class="p">,</span> <span class="n">word_tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">)</span>
+    <span class="n">pos_docs</span> <span class="o">=</span> <span class="n">parse_tweets_set</span><span class="p">(</span><span class="n">positive_csv</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;pos&#39;</span><span class="p">,</span> <span class="n">word_tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">)</span>
+
+    <span class="c"># We separately split subjective and objective instances to keep a balanced</span>
+    <span class="c"># uniform class distribution in both train and test sets.</span>
+    <span class="n">train_pos_docs</span><span class="p">,</span> <span class="n">test_pos_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">pos_docs</span><span class="p">)</span>
+    <span class="n">train_neg_docs</span><span class="p">,</span> <span class="n">test_neg_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">neg_docs</span><span class="p">)</span>
+
+    <span class="n">training_tweets</span> <span class="o">=</span> <span class="n">train_pos_docs</span><span class="o">+</span><span class="n">train_neg_docs</span>
+    <span class="n">testing_tweets</span> <span class="o">=</span> <span class="n">test_pos_docs</span><span class="o">+</span><span class="n">test_neg_docs</span>
+
+    <span class="n">sentim_analyzer</span> <span class="o">=</span> <span class="n">SentimentAnalyzer</span><span class="p">()</span>
+    <span class="c"># stopwords = stopwords.words(&#39;english&#39;)</span>
+    <span class="c"># all_words = [word for word in sentim_analyzer.all_words(training_tweets) if word.lower() not in stopwords]</span>
+    <span class="n">all_words</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">all_words</span><span class="p">(</span><span class="n">training_tweets</span><span class="p">)]</span>
+
+    <span class="c"># Add simple unigram word features</span>
+    <span class="n">unigram_feats</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">unigram_word_feats</span><span class="p">(</span><span class="n">all_words</span><span class="p">,</span> <span class="n">top_n</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+    <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">add_feat_extractor</span><span class="p">(</span><span class="n">extract_unigram_feats</span><span class="p">,</span> <span class="n">unigrams</span><span class="o">=</span><span class="n">unigram_feats</span><span class="p">)</span>
+
+    <span class="c"># Add bigram collocation features</span>
+    <span class="n">bigram_collocs_feats</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">bigram_collocation_feats</span><span class="p">([</span><span class="n">tweet</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">tweet</span> <span class="ow">in</span> <span class="n">training_tweets</span><span class="p">],</span>
+        <span class="n">top_n</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">min_freq</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+    <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">add_feat_extractor</span><span class="p">(</span><span class="n">extract_bigram_feats</span><span class="p">,</span> <span class="n">bigrams</span><span class="o">=</span><span class="n">bigram_collocs_feats</span><span class="p">)</span>
+
+    <span class="n">training_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">training_tweets</span><span class="p">)</span>
+    <span class="n">test_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">testing_tweets</span><span class="p">)</span>
+
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">training_set</span><span class="p">)</span>
+    <span class="c"># classifier = sentim_analyzer.train(trainer, training_set, max_iter=4)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">classifier</span><span class="o">.</span><span class="n">show_most_informative_features</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Your classifier does not provide a show_most_informative_features() method.&#39;</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">test_set</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output</span><span class="p">:</span>
+        <span class="n">extr</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">__name__</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">feat_extractors</span><span class="p">]</span>
+        <span class="n">output_markdown</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">Dataset</span><span class="o">=</span><span class="s">&#39;labeled_tweets&#39;</span><span class="p">,</span> <span class="n">Classifier</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">classifier</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                        <span class="n">Tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">Feats</span><span class="o">=</span><span class="n">extr</span><span class="p">,</span>
+                        <span class="n">Results</span><span class="o">=</span><span class="n">results</span><span class="p">,</span> <span class="n">Instances</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="demo_movie_reviews"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_movie_reviews">[docs]</a><span class="k">def</span> <span class="nf">demo_movie_reviews</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">n_instances</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train classifier on all instances of the Movie Reviews dataset.</span>
+<span class="sd">    The corpus has been preprocessed using the default sentence tokenizer and</span>
+<span class="sd">    WordPunctTokenizer.</span>
+<span class="sd">    Features are composed of:</span>
+<span class="sd">        - most frequent unigrams</span>
+
+<span class="sd">    :param trainer: `train` method of a classifier.</span>
+<span class="sd">    :param n_instances: the number of total reviews that have to be used for</span>
+<span class="sd">        training and testing. Reviews will be equally split between positive and</span>
+<span class="sd">        negative.</span>
+<span class="sd">    :param output: the output file where results have to be reported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">movie_reviews</span>
+    <span class="kn">from</span> <span class="nn">sentiment_analyzer</span> <span class="kn">import</span> <span class="n">SentimentAnalyzer</span>
+
+    <span class="k">if</span> <span class="n">n_instances</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">n_instances</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_instances</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">pos_docs</span> <span class="o">=</span> <span class="p">[(</span><span class="nb">list</span><span class="p">(</span><span class="n">movie_reviews</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">pos_id</span><span class="p">)),</span> <span class="s">&#39;pos&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">pos_id</span> <span class="ow">in</span> <span class="n">movie_reviews</span><span class="o">.</span><span class="n">fileids</span><span class="p">(</span><span class="s">&#39;pos&#39;</span><span class="p">)[:</span><span class="n">n_instances</span><span class="p">]]</span>
+    <span class="n">neg_docs</span> <span class="o">=</span> <span class="p">[(</span><span class="nb">list</span><span class="p">(</span><span class="n">movie_reviews</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">neg_id</span><span class="p">)),</span> <span class="s">&#39;neg&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">neg_id</span> <span class="ow">in</span> <span class="n">movie_reviews</span><span class="o">.</span><span class="n">fileids</span><span class="p">(</span><span class="s">&#39;neg&#39;</span><span class="p">)[:</span><span class="n">n_instances</span><span class="p">]]</span>
+    <span class="c"># We separately split positive and negative instances to keep a balanced</span>
+    <span class="c"># uniform class distribution in both train and test sets.</span>
+    <span class="n">train_pos_docs</span><span class="p">,</span> <span class="n">test_pos_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">pos_docs</span><span class="p">)</span>
+    <span class="n">train_neg_docs</span><span class="p">,</span> <span class="n">test_neg_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">neg_docs</span><span class="p">)</span>
+
+    <span class="n">training_docs</span> <span class="o">=</span> <span class="n">train_pos_docs</span><span class="o">+</span><span class="n">train_neg_docs</span>
+    <span class="n">testing_docs</span> <span class="o">=</span> <span class="n">test_pos_docs</span><span class="o">+</span><span class="n">test_neg_docs</span>
+
+    <span class="n">sentim_analyzer</span> <span class="o">=</span> <span class="n">SentimentAnalyzer</span><span class="p">()</span>
+    <span class="n">all_words</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">all_words</span><span class="p">(</span><span class="n">training_docs</span><span class="p">)</span>
+
+    <span class="c"># Add simple unigram word features</span>
+    <span class="n">unigram_feats</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">unigram_word_feats</span><span class="p">(</span><span class="n">all_words</span><span class="p">,</span> <span class="n">min_freq</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">add_feat_extractor</span><span class="p">(</span><span class="n">extract_unigram_feats</span><span class="p">,</span> <span class="n">unigrams</span><span class="o">=</span><span class="n">unigram_feats</span><span class="p">)</span>
+    <span class="c"># Apply features to obtain a feature-value representation of our datasets</span>
+    <span class="n">training_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">training_docs</span><span class="p">)</span>
+    <span class="n">test_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">testing_docs</span><span class="p">)</span>
+
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">training_set</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">classifier</span><span class="o">.</span><span class="n">show_most_informative_features</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Your classifier does not provide a show_most_informative_features() method.&#39;</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">test_set</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output</span><span class="p">:</span>
+        <span class="n">extr</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">__name__</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">feat_extractors</span><span class="p">]</span>
+        <span class="n">output_markdown</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">Dataset</span><span class="o">=</span><span class="s">&#39;Movie_reviews&#39;</span><span class="p">,</span> <span class="n">Classifier</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">classifier</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                        <span class="n">Tokenizer</span><span class="o">=</span><span class="s">&#39;WordPunctTokenizer&#39;</span><span class="p">,</span> <span class="n">Feats</span><span class="o">=</span><span class="n">extr</span><span class="p">,</span> <span class="n">Results</span><span class="o">=</span><span class="n">results</span><span class="p">,</span>
+                        <span class="n">Instances</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="demo_subjectivity"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_subjectivity">[docs]</a><span class="k">def</span> <span class="nf">demo_subjectivity</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">save_analyzer</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">n_instances</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train and test a classifier on instances of the Subjective Dataset by Pang and</span>
+<span class="sd">    Lee. The dataset is made of 5000 subjective and 5000 objective sentences.</span>
+<span class="sd">    All tokens (words and punctuation marks) are separated by a whitespace, so</span>
+<span class="sd">    we use the basic WhitespaceTokenizer to parse the data.</span>
+
+<span class="sd">    :param trainer: `train` method of a classifier.</span>
+<span class="sd">    :param save_analyzer: if `True`, store the SentimentAnalyzer in a pickle file.</span>
+<span class="sd">    :param n_instances: the number of total sentences that have to be used for</span>
+<span class="sd">        training and testing. Sentences will be equally split between positive</span>
+<span class="sd">        and negative.</span>
+<span class="sd">    :param output: the output file where results have to be reported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">sentiment_analyzer</span> <span class="kn">import</span> <span class="n">SentimentAnalyzer</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">subjectivity</span>
+
+    <span class="k">if</span> <span class="n">n_instances</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">n_instances</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_instances</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">subj_docs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">sent</span><span class="p">,</span> <span class="s">&#39;subj&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">subjectivity</span><span class="o">.</span><span class="n">sents</span><span class="p">(</span><span class="n">categories</span><span class="o">=</span><span class="s">&#39;subj&#39;</span><span class="p">)[:</span><span class="n">n_instances</span><span class="p">]]</span>
+    <span class="n">obj_docs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">sent</span><span class="p">,</span> <span class="s">&#39;obj&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">subjectivity</span><span class="o">.</span><span class="n">sents</span><span class="p">(</span><span class="n">categories</span><span class="o">=</span><span class="s">&#39;obj&#39;</span><span class="p">)[:</span><span class="n">n_instances</span><span class="p">]]</span>
+
+    <span class="c"># We separately split subjective and objective instances to keep a balanced</span>
+    <span class="c"># uniform class distribution in both train and test sets.</span>
+    <span class="n">train_subj_docs</span><span class="p">,</span> <span class="n">test_subj_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">subj_docs</span><span class="p">)</span>
+    <span class="n">train_obj_docs</span><span class="p">,</span> <span class="n">test_obj_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">obj_docs</span><span class="p">)</span>
+
+    <span class="n">training_docs</span> <span class="o">=</span> <span class="n">train_subj_docs</span><span class="o">+</span><span class="n">train_obj_docs</span>
+    <span class="n">testing_docs</span> <span class="o">=</span> <span class="n">test_subj_docs</span><span class="o">+</span><span class="n">test_obj_docs</span>
+
+    <span class="n">sentim_analyzer</span> <span class="o">=</span> <span class="n">SentimentAnalyzer</span><span class="p">()</span>
+    <span class="n">all_words_neg</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">all_words</span><span class="p">([</span><span class="n">mark_negation</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span> <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">training_docs</span><span class="p">])</span>
+
+    <span class="c"># Add simple unigram word features handling negation</span>
+    <span class="n">unigram_feats</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">unigram_word_feats</span><span class="p">(</span><span class="n">all_words_neg</span><span class="p">,</span> <span class="n">min_freq</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">add_feat_extractor</span><span class="p">(</span><span class="n">extract_unigram_feats</span><span class="p">,</span> <span class="n">unigrams</span><span class="o">=</span><span class="n">unigram_feats</span><span class="p">)</span>
+
+    <span class="c"># Apply features to obtain a feature-value representation of our datasets</span>
+    <span class="n">training_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">training_docs</span><span class="p">)</span>
+    <span class="n">test_set</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">apply_features</span><span class="p">(</span><span class="n">testing_docs</span><span class="p">)</span>
+
+    <span class="n">classifier</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">training_set</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">classifier</span><span class="o">.</span><span class="n">show_most_informative_features</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Your classifier does not provide a show_most_informative_features() method.&#39;</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">test_set</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">save_analyzer</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">save_file</span><span class="p">(</span><span class="n">sentim_analyzer</span><span class="p">,</span> <span class="s">&#39;sa_subjectivity.pickle&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output</span><span class="p">:</span>
+        <span class="n">extr</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">__name__</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">feat_extractors</span><span class="p">]</span>
+        <span class="n">output_markdown</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">Dataset</span><span class="o">=</span><span class="s">&#39;subjectivity&#39;</span><span class="p">,</span> <span class="n">Classifier</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">classifier</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                        <span class="n">Tokenizer</span><span class="o">=</span><span class="s">&#39;WhitespaceTokenizer&#39;</span><span class="p">,</span> <span class="n">Feats</span><span class="o">=</span><span class="n">extr</span><span class="p">,</span>
+                        <span class="n">Instances</span><span class="o">=</span><span class="n">n_instances</span><span class="p">,</span> <span class="n">Results</span><span class="o">=</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sentim_analyzer</span>
+</div>
+<div class="viewcode-block" id="demo_sent_subjectivity"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_sent_subjectivity">[docs]</a><span class="k">def</span> <span class="nf">demo_sent_subjectivity</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Classify a single sentence as subjective or objective using a stored</span>
+<span class="sd">    SentimentAnalyzer.</span>
+
+<span class="sd">    :param text: a sentence whose subjectivity has to be classified.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">NaiveBayesClassifier</span>
+    <span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">regexp</span>
+    <span class="n">word_tokenizer</span> <span class="o">=</span> <span class="n">regexp</span><span class="o">.</span><span class="n">WhitespaceTokenizer</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">sentim_analyzer</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="s">&#39;sa_subjectivity.pickle&#39;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Cannot find the sentiment analyzer you want to load.&#39;</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Training a new one using NaiveBayesClassifier.&#39;</span><span class="p">)</span>
+        <span class="n">sentim_analyzer</span> <span class="o">=</span> <span class="n">demo_subjectivity</span><span class="p">(</span><span class="n">NaiveBayesClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+
+    <span class="c"># Tokenize and convert to lower case</span>
+    <span class="n">tokenized_text</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">word_tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)]</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sentim_analyzer</span><span class="o">.</span><span class="n">classify</span><span class="p">(</span><span class="n">tokenized_text</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="demo_liu_hu_lexicon"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_liu_hu_lexicon">[docs]</a><span class="k">def</span> <span class="nf">demo_liu_hu_lexicon</span><span class="p">(</span><span class="n">sentence</span><span class="p">,</span> <span class="n">plot</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Basic example of sentiment classification using Liu and Hu opinion lexicon.</span>
+<span class="sd">    This function simply counts the number of positive, negative and neutral words</span>
+<span class="sd">    in the sentence and classifies it depending on which polarity is more represented.</span>
+<span class="sd">    Words that do not appear in the lexicon are considered as neutral.</span>
+
+<span class="sd">    :param sentence: a sentence whose polarity has to be classified.</span>
+<span class="sd">    :param plot: if True, plot a visual representation of the sentence polarity.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">opinion_lexicon</span>
+    <span class="kn">from</span> <span class="nn">nltk.tokenize</span> <span class="kn">import</span> <span class="n">treebank</span>
+
+    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">treebank</span><span class="o">.</span><span class="n">TreebankWordTokenizer</span><span class="p">()</span>
+    <span class="n">pos_words</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">neg_words</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tokenized_sent</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sentence</span><span class="p">)]</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">tokenized_sent</span><span class="p">)))</span> <span class="c"># x axis for the plot</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">tokenized_sent</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">opinion_lexicon</span><span class="o">.</span><span class="n">positive</span><span class="p">():</span>
+            <span class="n">pos_words</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">y</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="c"># positive</span>
+        <span class="k">elif</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">opinion_lexicon</span><span class="o">.</span><span class="n">negative</span><span class="p">():</span>
+            <span class="n">neg_words</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">y</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c"># negative</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">y</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c"># neutral</span>
+
+    <span class="k">if</span> <span class="n">pos_words</span> <span class="o">&gt;</span> <span class="n">neg_words</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Positive&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">pos_words</span> <span class="o">&lt;</span> <span class="n">neg_words</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Negative&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">pos_words</span> <span class="o">==</span> <span class="n">neg_words</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Neutral&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">plot</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">_show_plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x_labels</span><span class="o">=</span><span class="n">tokenized_sent</span><span class="p">,</span> <span class="n">y_labels</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;Negative&#39;</span><span class="p">,</span> <span class="s">&#39;Neutral&#39;</span><span class="p">,</span> <span class="s">&#39;Positive&#39;</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="demo_vader_instance"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_vader_instance">[docs]</a><span class="k">def</span> <span class="nf">demo_vader_instance</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Output polarity scores for a text using Vader approach.</span>
+
+<span class="sd">    :param text: a text whose polarity has to be evaluated.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">vader</span> <span class="kn">import</span> <span class="n">SentimentIntensityAnalyzer</span>
+    <span class="n">vader_analyzer</span> <span class="o">=</span> <span class="n">SentimentIntensityAnalyzer</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">vader_analyzer</span><span class="o">.</span><span class="n">polarity_scores</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="demo_vader_tweets"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.util.demo_vader_tweets">[docs]</a><span class="k">def</span> <span class="nf">demo_vader_tweets</span><span class="p">(</span><span class="n">n_instances</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Classify 10000 positive and negative tweets using Vader approach.</span>
+
+<span class="sd">    :param n_instances: the number of total tweets that have to be classified.</span>
+<span class="sd">    :param output: the output file where results have to be reported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">twitter_samples</span>
+    <span class="kn">from</span> <span class="nn">vader</span> <span class="kn">import</span> <span class="n">SentimentIntensityAnalyzer</span>
+    <span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="p">(</span><span class="n">accuracy</span> <span class="k">as</span> <span class="n">eval_accuracy</span><span class="p">,</span> <span class="n">precision</span> <span class="k">as</span> <span class="n">eval_precision</span><span class="p">,</span>
+        <span class="n">recall</span> <span class="k">as</span> <span class="n">eval_recall</span><span class="p">,</span> <span class="n">f_measure</span> <span class="k">as</span> <span class="n">eval_f_measure</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">n_instances</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">n_instances</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_instances</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;id&#39;</span><span class="p">,</span> <span class="s">&#39;text&#39;</span><span class="p">]</span>
+    <span class="n">positive_json</span> <span class="o">=</span> <span class="n">twitter_samples</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="s">&quot;positive_tweets.json&quot;</span><span class="p">)</span>
+    <span class="n">positive_csv</span> <span class="o">=</span> <span class="s">&#39;positive_tweets.csv&#39;</span>
+    <span class="n">json2csv_preprocess</span><span class="p">(</span><span class="n">positive_json</span><span class="p">,</span> <span class="n">positive_csv</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">strip_off_emoticons</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                        <span class="n">limit</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+
+    <span class="n">negative_json</span> <span class="o">=</span> <span class="n">twitter_samples</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="s">&quot;negative_tweets.json&quot;</span><span class="p">)</span>
+    <span class="n">negative_csv</span> <span class="o">=</span> <span class="s">&#39;negative_tweets.csv&#39;</span>
+    <span class="n">json2csv_preprocess</span><span class="p">(</span><span class="n">negative_json</span><span class="p">,</span> <span class="n">negative_csv</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">strip_off_emoticons</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                        <span class="n">limit</span><span class="o">=</span><span class="n">n_instances</span><span class="p">)</span>
+
+    <span class="n">pos_docs</span> <span class="o">=</span> <span class="n">parse_tweets_set</span><span class="p">(</span><span class="n">positive_csv</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;pos&#39;</span><span class="p">)</span>
+    <span class="n">neg_docs</span> <span class="o">=</span> <span class="n">parse_tweets_set</span><span class="p">(</span><span class="n">negative_csv</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;neg&#39;</span><span class="p">)</span>
+
+    <span class="c"># We separately split subjective and objective instances to keep a balanced</span>
+    <span class="c"># uniform class distribution in both train and test sets.</span>
+    <span class="n">train_pos_docs</span><span class="p">,</span> <span class="n">test_pos_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">pos_docs</span><span class="p">)</span>
+    <span class="n">train_neg_docs</span><span class="p">,</span> <span class="n">test_neg_docs</span> <span class="o">=</span> <span class="n">split_train_test</span><span class="p">(</span><span class="n">neg_docs</span><span class="p">)</span>
+
+    <span class="n">training_tweets</span> <span class="o">=</span> <span class="n">train_pos_docs</span><span class="o">+</span><span class="n">train_neg_docs</span>
+    <span class="n">testing_tweets</span> <span class="o">=</span> <span class="n">test_pos_docs</span><span class="o">+</span><span class="n">test_neg_docs</span>
+
+    <span class="n">vader_analyzer</span> <span class="o">=</span> <span class="n">SentimentIntensityAnalyzer</span><span class="p">()</span>
+
+    <span class="n">gold_results</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+    <span class="n">test_results</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+    <span class="n">acc_gold_results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">acc_test_results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="n">num</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">testing_tweets</span><span class="p">):</span>
+        <span class="n">labels</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+        <span class="n">gold_results</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">acc_gold_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+        <span class="n">score</span> <span class="o">=</span> <span class="n">vader_analyzer</span><span class="o">.</span><span class="n">polarity_scores</span><span class="p">(</span><span class="n">text</span><span class="p">)[</span><span class="s">&#39;compound&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">observed</span> <span class="o">=</span> <span class="s">&#39;pos&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">observed</span> <span class="o">=</span> <span class="s">&#39;neg&#39;</span>
+        <span class="n">num</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">acc_test_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">observed</span><span class="p">)</span>
+        <span class="n">test_results</span><span class="p">[</span><span class="n">observed</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="n">metrics_results</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">:</span>
+        <span class="n">accuracy_score</span> <span class="o">=</span> <span class="n">eval_accuracy</span><span class="p">(</span><span class="n">acc_gold_results</span><span class="p">,</span>
+            <span class="n">acc_test_results</span><span class="p">)</span>
+        <span class="n">metrics_results</span><span class="p">[</span><span class="s">&#39;Accuracy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">accuracy_score</span>
+        <span class="n">precision_score</span> <span class="o">=</span> <span class="n">eval_precision</span><span class="p">(</span><span class="n">gold_results</span><span class="p">[</span><span class="n">label</span><span class="p">],</span>
+            <span class="n">test_results</span><span class="p">[</span><span class="n">label</span><span class="p">])</span>
+        <span class="n">metrics_results</span><span class="p">[</span><span class="s">&#39;Precision [{0}]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">)]</span> <span class="o">=</span> <span class="n">precision_score</span>
+        <span class="n">recall_score</span> <span class="o">=</span> <span class="n">eval_recall</span><span class="p">(</span><span class="n">gold_results</span><span class="p">[</span><span class="n">label</span><span class="p">],</span>
+            <span class="n">test_results</span><span class="p">[</span><span class="n">label</span><span class="p">])</span>
+        <span class="n">metrics_results</span><span class="p">[</span><span class="s">&#39;Recall [{0}]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">)]</span> <span class="o">=</span> <span class="n">recall_score</span>
+        <span class="n">f_measure_score</span> <span class="o">=</span> <span class="n">eval_f_measure</span><span class="p">(</span><span class="n">gold_results</span><span class="p">[</span><span class="n">label</span><span class="p">],</span>
+            <span class="n">test_results</span><span class="p">[</span><span class="n">label</span><span class="p">])</span>
+        <span class="n">metrics_results</span><span class="p">[</span><span class="s">&#39;F-measure [{0}]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">)]</span> <span class="o">=</span> <span class="n">f_measure_score</span>
+
+    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">metrics_results</span><span class="p">):</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;{0}: {1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">metrics_results</span><span class="p">[</span><span class="n">result</span><span class="p">]))</span>
+
+    <span class="k">if</span> <span class="n">output</span><span class="p">:</span>
+        <span class="n">output_markdown</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">Approach</span><span class="o">=</span><span class="s">&#39;Vader&#39;</span><span class="p">,</span> <span class="n">Dataset</span><span class="o">=</span><span class="s">&#39;labeled_tweets&#39;</span><span class="p">,</span>
+            <span class="n">Instances</span><span class="o">=</span><span class="n">n_instances</span><span class="p">,</span> <span class="n">Results</span><span class="o">=</span><span class="n">metrics_results</span><span class="p">)</span>
+</div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nltk.classify</span> <span class="kn">import</span> <span class="n">NaiveBayesClassifier</span><span class="p">,</span> <span class="n">MaxentClassifier</span>
+    <span class="kn">from</span> <span class="nn">nltk.classify.scikitlearn</span> <span class="kn">import</span> <span class="n">SklearnClassifier</span>
+    <span class="kn">from</span> <span class="nn">sklearn.svm</span> <span class="kn">import</span> <span class="n">LinearSVC</span>
+
+    <span class="n">naive_bayes</span> <span class="o">=</span> <span class="n">NaiveBayesClassifier</span><span class="o">.</span><span class="n">train</span>
+    <span class="n">svm</span> <span class="o">=</span> <span class="n">SklearnClassifier</span><span class="p">(</span><span class="n">LinearSVC</span><span class="p">())</span><span class="o">.</span><span class="n">train</span>
+    <span class="n">maxent</span> <span class="o">=</span> <span class="n">MaxentClassifier</span><span class="o">.</span><span class="n">train</span>
+
+    <span class="n">demo_tweets</span><span class="p">(</span><span class="n">naive_bayes</span><span class="p">)</span>
+    <span class="c"># demo_movie_reviews(svm)</span>
+    <span class="c"># demo_subjectivity(svm)</span>
+    <span class="c"># demo_sent_subjectivity(&quot;she&#39;s an artist , but hasn&#39;t picked up a brush in a year . &quot;)</span>
+    <span class="c"># demo_liu_hu_lexicon(&quot;This movie was actually neither that funny, nor super witty.&quot;, plot=True)</span>
+    <span class="c"># demo_vader_instance(&quot;This movie was actually neither that funny, nor super witty.&quot;)</span>
+    <span class="c"># demo_vader_tweets()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Oct 15, 2015.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

@@ -55,6 +55,10 @@
 <span class="c"># Author: Graeme Gange &lt;ggange@csse.unimelb.edu.au&gt;</span>
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">CCG Lexicons</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">unicode_literals</span>
 
 <span class="kn">import</span> <span class="nn">re</span>
@@ -62,79 +66,92 @@
 
 <span class="kn">from</span> <span class="nn">nltk.ccg.api</span> <span class="kn">import</span> <span class="n">PrimitiveCategory</span><span class="p">,</span> <span class="n">Direction</span><span class="p">,</span> <span class="n">CCGVar</span><span class="p">,</span> <span class="n">FunctionalCategory</span>
 <span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">python_2_unicode_compatible</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">deprecated</span>
 
 <span class="c">#------------</span>
 <span class="c"># Regular expressions used for parsing components of the lexicon</span>
 <span class="c">#------------</span>
 
 <span class="c"># Parses a primitive category and subscripts</span>
-<span class="n">rePrim</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([A-Za-z]+)(\[[A-Za-z,]+\])?&#39;&#39;&#39;</span><span class="p">)</span>
+<span class="n">PRIM_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([A-Za-z]+)(\[[A-Za-z,]+\])?&#39;&#39;&#39;</span><span class="p">)</span>
 
 <span class="c"># Separates the next primitive category from the remainder of the</span>
 <span class="c"># string</span>
-<span class="n">reNextPrim</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([A-Za-z]+(?:\[[A-Za-z,]+\])?)(.*)&#39;&#39;&#39;</span><span class="p">)</span>
+<span class="n">NEXTPRIM_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([A-Za-z]+(?:\[[A-Za-z,]+\])?)(.*)&#39;&#39;&#39;</span><span class="p">)</span>
 
 <span class="c"># Separates the next application operator from the remainder</span>
-<span class="n">reApp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([\\/])([.,]?)([.,]?)(.*)&#39;&#39;&#39;</span><span class="p">)</span>
+<span class="n">APP_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([\\/])([.,]?)([.,]?)(.*)&#39;&#39;&#39;</span><span class="p">)</span>
 
 <span class="c"># Parses the definition of the category of either a word or a family</span>
-<span class="n">reLex</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([\w_]+)\s*(::|[-=]+&gt;)\s*(.+)&#39;&#39;&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">UNICODE</span><span class="p">)</span>
+<span class="n">LEX_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">r&#39;&#39;&#39;([\w_]+)\s*(::|[-=]+&gt;)\s*(.+)&#39;&#39;&#39;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">UNICODE</span><span class="p">)</span>
 
 <span class="c"># Strips comments from a line</span>
-<span class="n">reComm</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;&#39;&#39;([^#]*)(?:#.*)?&#39;&#39;&#39;</span><span class="p">)</span>
+<span class="n">COMMENTS_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;&#39;&#39;([^#]*)(?:#.*)?&#39;&#39;&#39;</span><span class="p">)</span>
 
 <span class="c">#----------</span>
 <span class="c"># Lexicons</span>
 <span class="c">#----------</span>
+
 <span class="nd">@python_2_unicode_compatible</span>
 <div class="viewcode-block" id="CCGLexicon"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.CCGLexicon">[docs]</a><span class="k">class</span> <span class="nc">CCGLexicon</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
-    <span class="sd">&#39;&#39;&#39;</span>
+    <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Class representing a lexicon for CCG grammars.</span>
-<span class="sd">    primitives - The list of primitive categories for the lexicon</span>
-<span class="sd">    families - Families of categories</span>
-<span class="sd">    entries - A mapping of words to possible categories</span>
-<span class="sd">    &#39;&#39;&#39;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">start</span><span class="p">,</span><span class="n">primitives</span><span class="p">,</span><span class="n">families</span><span class="p">,</span><span class="n">entries</span><span class="p">):</span>
+
+<span class="sd">    * `primitives`: The list of primitive categories for the lexicon</span>
+<span class="sd">    * `families`: Families of categories</span>
+<span class="sd">    * `entries`: A mapping of words to possible categories</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">entries</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_start</span> <span class="o">=</span> <span class="n">PrimitiveCategory</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_primitives</span> <span class="o">=</span> <span class="n">primitives</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_families</span> <span class="o">=</span> <span class="n">families</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_entries</span> <span class="o">=</span> <span class="n">entries</span>
 
-    <span class="c"># Returns all the possible categories for a word</span>
+
 <div class="viewcode-block" id="CCGLexicon.categories"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.CCGLexicon.categories">[docs]</a>    <span class="k">def</span> <span class="nf">categories</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns all the possible categories for a word</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entries</span><span class="p">[</span><span class="n">word</span><span class="p">]</span>
 
-    <span class="c"># Returns the target category for the parser</span></div>
+</div>
 <div class="viewcode-block" id="CCGLexicon.start"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.CCGLexicon.start">[docs]</a>    <span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the target category for the parser</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start</span>
-
-    <span class="c"># String representation of the lexicon</span>
-    <span class="c"># Used for debugging</span></div>
+</div>
     <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">st</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        String representation of the lexicon. Used for debugging.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
         <span class="n">first</span> <span class="o">=</span> <span class="bp">True</span>
         <span class="k">for</span> <span class="n">ident</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entries</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">first</span><span class="p">:</span>
-                <span class="n">st</span> <span class="o">=</span> <span class="n">st</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
-            <span class="n">st</span> <span class="o">=</span> <span class="n">st</span> <span class="o">+</span> <span class="n">ident</span> <span class="o">+</span> <span class="s">&quot; =&gt; &quot;</span>
+                <span class="n">string</span> <span class="o">=</span> <span class="n">string</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
+            <span class="n">string</span> <span class="o">=</span> <span class="n">string</span> <span class="o">+</span> <span class="n">ident</span> <span class="o">+</span> <span class="s">&quot; =&gt; &quot;</span>
 
             <span class="n">first</span> <span class="o">=</span> <span class="bp">True</span>
             <span class="k">for</span> <span class="n">cat</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_entries</span><span class="p">[</span><span class="n">ident</span><span class="p">]:</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="n">first</span><span class="p">:</span>
-                    <span class="n">st</span> <span class="o">=</span> <span class="n">st</span> <span class="o">+</span> <span class="s">&quot; | &quot;</span>
+                    <span class="n">string</span> <span class="o">=</span> <span class="n">string</span> <span class="o">+</span> <span class="s">&quot; | &quot;</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">first</span> <span class="o">=</span> <span class="bp">False</span>
-                <span class="n">st</span> <span class="o">=</span> <span class="n">st</span> <span class="o">+</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">cat</span>
-        <span class="k">return</span> <span class="n">st</span>
+                <span class="n">string</span> <span class="o">=</span> <span class="n">string</span> <span class="o">+</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">cat</span>
+        <span class="k">return</span> <span class="n">string</span>
 
 
 <span class="c">#-----------</span>
 <span class="c"># Parsing lexicons</span>
 <span class="c">#-----------</span>
 
-<span class="c"># Separates the contents matching the first set of brackets</span>
-<span class="c"># from the rest of the input.</span></div>
+</div>
 <div class="viewcode-block" id="matchBrackets"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.matchBrackets">[docs]</a><span class="k">def</span> <span class="nf">matchBrackets</span><span class="p">(</span><span class="n">string</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Separate the contents matching the first set of brackets from the rest of</span>
+<span class="sd">    the input.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">rest</span> <span class="o">=</span> <span class="n">string</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
     <span class="n">inside</span> <span class="o">=</span> <span class="s">&quot;(&quot;</span>
 
@@ -149,27 +166,39 @@
         <span class="k">return</span> <span class="p">(</span><span class="n">inside</span> <span class="o">+</span> <span class="s">&#39;)&#39;</span><span class="p">,</span> <span class="n">rest</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
     <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;Unmatched bracket in string </span><span class="se">\&#39;</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">string</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\&#39;</span><span class="s">&#39;</span><span class="p">)</span>
 
-<span class="c"># Separates the string for the next portion of the category</span>
-<span class="c"># from the rest of the string</span></div>
+</div>
 <div class="viewcode-block" id="nextCategory"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.nextCategory">[docs]</a><span class="k">def</span> <span class="nf">nextCategory</span><span class="p">(</span><span class="n">string</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Separate the string for the next portion of the category from the rest</span>
+<span class="sd">    of the string</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">string</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">matchBrackets</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">reNextPrim</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">string</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
-
-<span class="c"># Parses an application operator</span></div>
+    <span class="k">return</span> <span class="n">NEXTPRIM_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">string</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+</div>
 <div class="viewcode-block" id="parseApplication"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.parseApplication">[docs]</a><span class="k">def</span> <span class="nf">parseApplication</span><span class="p">(</span><span class="n">app</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse an application operator</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">Direction</span><span class="p">(</span><span class="n">app</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">app</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
 
-<span class="c"># Parses the subscripts for a primitive category</span></div>
+</div>
 <div class="viewcode-block" id="parseSubscripts"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.parseSubscripts">[docs]</a><span class="k">def</span> <span class="nf">parseSubscripts</span><span class="p">(</span><span class="n">subscr</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse the subscripts for a primitive category</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">subscr</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">subscr</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">[]</span>
 
-<span class="c"># Parse a primitive category</span></div>
+</div>
 <div class="viewcode-block" id="parsePrimitiveCategory"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.parsePrimitiveCategory">[docs]</a><span class="k">def</span> <span class="nf">parsePrimitiveCategory</span><span class="p">(</span><span class="n">chunks</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">):</span>
-    <span class="c"># If the primitive is the special category &#39;var&#39;,</span>
-    <span class="c"># replace it with the correct CCGVar</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse a primitive category</span>
+
+<span class="sd">    If the primitive is the special category &#39;var&#39;, replace it with the</span>
+<span class="sd">    correct `CCGVar`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">chunks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;var&quot;</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">chunks</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">var</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
@@ -190,45 +219,57 @@
         <span class="k">return</span> <span class="p">(</span><span class="n">PrimitiveCategory</span><span class="p">(</span><span class="n">catstr</span><span class="p">,</span> <span class="n">subscrs</span><span class="p">),</span> <span class="n">var</span><span class="p">)</span>
     <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s">&#39;String </span><span class="se">\&#39;</span><span class="s">&#39;</span> <span class="o">+</span> <span class="n">catstr</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\&#39;</span><span class="s"> is neither a family nor primitive category.&#39;</span><span class="p">)</span>
 
-<span class="c"># parseCategory drops the &#39;var&#39; from the tuple</span></div>
+</div>
 <div class="viewcode-block" id="parseCategory"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.parseCategory">[docs]</a><span class="k">def</span> <span class="nf">parseCategory</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Drop the &#39;var&#39; from the tuple</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 
-<span class="c"># Parses a string representing a category, and returns</span>
-<span class="c"># a tuple with (possibly) the CCG variable for the category</span></div>
+</div>
 <div class="viewcode-block" id="augParseCategory"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.augParseCategory">[docs]</a><span class="k">def</span> <span class="nf">augParseCategory</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
-    <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">rest</span><span class="p">)</span> <span class="o">=</span> <span class="n">nextCategory</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse a string representing a category, and returns a tuple with</span>
+<span class="sd">    (possibly) the CCG variable for the category</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="p">(</span><span class="n">cat_string</span><span class="p">,</span> <span class="n">rest</span><span class="p">)</span> <span class="o">=</span> <span class="n">nextCategory</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="nb">str</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">):</span>
-        <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="nb">str</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cat_string</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">):</span>
+        <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="n">cat_string</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
 
     <span class="k">else</span><span class="p">:</span>
 <span class="c">#        print rePrim.match(str).groups()</span>
-        <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">parsePrimitiveCategory</span><span class="p">(</span><span class="n">rePrim</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">(),</span>
-	                                    <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span>\
+            <span class="n">parsePrimitiveCategory</span><span class="p">(</span><span class="n">PRIM_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">cat_string</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">(),</span> <span class="n">primitives</span><span class="p">,</span>
+                                   <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
 
     <span class="k">while</span> <span class="n">rest</span> <span class="o">!=</span> <span class="s">&quot;&quot;</span><span class="p">:</span>
-        <span class="n">app</span> <span class="o">=</span> <span class="n">reApp</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
-        <span class="nb">dir</span> <span class="o">=</span> <span class="n">parseApplication</span><span class="p">(</span><span class="n">app</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
+        <span class="n">app</span> <span class="o">=</span> <span class="n">APP_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+        <span class="n">direction</span> <span class="o">=</span> <span class="n">parseApplication</span><span class="p">(</span><span class="n">app</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
         <span class="n">rest</span> <span class="o">=</span> <span class="n">app</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
 
-        <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">rest</span><span class="p">)</span> <span class="o">=</span> <span class="n">nextCategory</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">str</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">):</span>
-            <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="nb">str</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">cat_string</span><span class="p">,</span> <span class="n">rest</span><span class="p">)</span> <span class="o">=</span> <span class="n">nextCategory</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cat_string</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;(&#39;</span><span class="p">):</span>
+            <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="n">cat_string</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">parsePrimitiveCategory</span><span class="p">(</span><span class="n">rePrim</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">(),</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
-        <span class="n">res</span> <span class="o">=</span> <span class="n">FunctionalCategory</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">arg</span><span class="p">,</span> <span class="nb">dir</span><span class="p">)</span>
+            <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span>\
+                <span class="n">parsePrimitiveCategory</span><span class="p">(</span><span class="n">PRIM_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">cat_string</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">(),</span>
+                                       <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">FunctionalCategory</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">arg</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
 
-<span class="c"># Takes an input string, and converts it into a lexicon for CCGs.</span></div>
-<div class="viewcode-block" id="parseLexicon"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.parseLexicon">[docs]</a><span class="k">def</span> <span class="nf">parseLexicon</span><span class="p">(</span><span class="n">lex_str</span><span class="p">):</span>
+</div>
+<div class="viewcode-block" id="fromstring"><a class="viewcode-back" href="../../../api/nltk.ccg.html#nltk.ccg.lexicon.fromstring">[docs]</a><span class="k">def</span> <span class="nf">fromstring</span><span class="p">(</span><span class="n">lex_str</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert string representation into a lexicon for CCGs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">primitives</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="n">families</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="n">entries</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lex_str</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
         <span class="c"># Strip comments and leading/trailing whitespace.</span>
-        <span class="n">line</span> <span class="o">=</span> <span class="n">reComm</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">COMMENTS_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="s">&quot;&quot;</span><span class="p">:</span>
             <span class="k">continue</span>
 
@@ -236,10 +277,10 @@
             <span class="c"># A line of primitive categories.</span>
             <span class="c"># The first one is the target category</span>
             <span class="c"># ie, :- S, N, NP, VP</span>
-            <span class="n">primitives</span> <span class="o">=</span> <span class="n">primitives</span> <span class="o">+</span> <span class="p">[</span> <span class="n">prim</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">prim</span> <span class="ow">in</span> <span class="n">line</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span> <span class="p">]</span>
+            <span class="n">primitives</span> <span class="o">=</span> <span class="n">primitives</span> <span class="o">+</span> <span class="p">[</span><span class="n">prim</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">prim</span> <span class="ow">in</span> <span class="n">line</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c"># Either a family definition, or a word definition</span>
-            <span class="p">(</span><span class="n">ident</span><span class="p">,</span> <span class="n">sep</span><span class="p">,</span> <span class="n">catstr</span><span class="p">)</span> <span class="o">=</span> <span class="n">reLex</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+            <span class="p">(</span><span class="n">ident</span><span class="p">,</span> <span class="n">sep</span><span class="p">,</span> <span class="n">catstr</span><span class="p">)</span> <span class="o">=</span> <span class="n">LEX_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
             <span class="p">(</span><span class="n">cat</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="o">=</span> <span class="n">augParseCategory</span><span class="p">(</span><span class="n">catstr</span><span class="p">,</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">sep</span> <span class="o">==</span> <span class="s">&#39;::&#39;</span><span class="p">:</span>
                 <span class="c"># Family definition</span>
@@ -252,7 +293,11 @@
     <span class="k">return</span> <span class="n">CCGLexicon</span><span class="p">(</span><span class="n">primitives</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">primitives</span><span class="p">,</span> <span class="n">families</span><span class="p">,</span> <span class="n">entries</span><span class="p">)</span>
 
 </div>
-<span class="n">openccg_tinytiny</span> <span class="o">=</span> <span class="n">parseLexicon</span><span class="p">(</span><span class="s">&#39;&#39;&#39;</span>
+<span class="nd">@deprecated</span><span class="p">(</span><span class="s">&#39;Use fromstring() instead.&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">parseLexicon</span><span class="p">(</span><span class="n">lex_str</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">fromstring</span><span class="p">(</span><span class="n">lex_str</span><span class="p">)</span>
+
+<span class="n">openccg_tinytiny</span> <span class="o">=</span> <span class="n">fromstring</span><span class="p">(</span><span class="s">&quot;&quot;&quot;</span>
 <span class="s">    # Rather minimal lexicon based on the openccg `tinytiny&#39; grammar.</span>
 <span class="s">    # Only incorporates a subset of the morphological subcategories, however.</span>
 <span class="s">    :- S,NP,N                    # Primitive categories</span>
@@ -293,7 +338,7 @@
 
 <span class="s">    see =&gt; TransVpl</span>
 <span class="s">    sees =&gt; TransVsg</span>
-<span class="s">    &#39;&#39;&#39;</span><span class="p">)</span>
+<span class="s">    &quot;&quot;&quot;</span><span class="p">)</span>
 </pre></div>
 
           </div>
@@ -347,7 +392,7 @@
           
     <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Sep 05, 2015.
+      Last updated on Oct 15, 2015.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>
