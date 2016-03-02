@@ -1,0 +1,644 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.twitter.twitterclient &mdash; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.twitter.twitterclient</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="c"># Natural Language Toolkit: Twitter client</span>
+<span class="c">#</span>
+<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Author: Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
+<span class="c">#         Lorenzo Rubio &lt;lrnzcig@gmail.com&gt;</span>
+<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c"># For license information, see LICENSE.TXT</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">NLTK Twitter client</span>
+
+<span class="sd">This module offers methods for collecting and processing Tweets. Most of the</span>
+<span class="sd">functionality depends on access to the Twitter APIs, and this is handled via</span>
+<span class="sd">the third party Twython library.</span>
+
+<span class="sd">If one of the methods below returns an integer, it is probably a `Twitter</span>
+<span class="sd">error code &lt;https://dev.twitter.com/overview/api/response-codes&gt;`_. For</span>
+<span class="sd">example, the response of &#39;420&#39; means that you have reached the limit of the</span>
+<span class="sd">requests you can currently make to the Twitter API. Currently, `rate limits</span>
+<span class="sd">for the search API &lt;https://dev.twitter.com/rest/public/rate-limiting&gt;`_ are</span>
+<span class="sd">divided into 15 minute windows.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">itertools</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">gzip</span>
+
+
+<span class="kn">from</span> <span class="nn">twython</span> <span class="kn">import</span> <span class="n">Twython</span><span class="p">,</span> <span class="n">TwythonStreamer</span>
+<span class="kn">from</span> <span class="nn">twython.exceptions</span> <span class="kn">import</span> <span class="n">TwythonRateLimitError</span><span class="p">,</span> <span class="n">TwythonError</span>
+
+<span class="kn">from</span> <span class="nn">nltk.twitter.util</span> <span class="kn">import</span> <span class="n">credsfromfile</span><span class="p">,</span> <span class="n">guess_path</span>
+<span class="kn">from</span> <span class="nn">nltk.twitter.api</span> <span class="kn">import</span> <span class="n">TweetHandlerI</span><span class="p">,</span> <span class="n">BasicTweetHandler</span>
+
+
+
+<div class="viewcode-block" id="Streamer"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer">[docs]</a><span class="k">class</span> <span class="nc">Streamer</span><span class="p">(</span><span class="n">TwythonStreamer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieve data from the Twitter Streaming API.</span>
+
+<span class="sd">    The streaming API requires</span>
+<span class="sd">    `OAuth 1.0 &lt;http://en.wikipedia.org/wiki/OAuth&gt;`_ authentication.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_key</span><span class="p">,</span> <span class="n">app_secret</span><span class="p">,</span> <span class="n">oauth_token</span><span class="p">,</span> <span class="n">oauth_token_secret</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">TwythonStreamer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_key</span><span class="p">,</span> <span class="n">app_secret</span><span class="p">,</span> <span class="n">oauth_token</span><span class="p">,</span>
+                                 <span class="n">oauth_token_secret</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Streamer.register"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer.register">[docs]</a>    <span class="k">def</span> <span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handler</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Register a method for handling Tweets.</span>
+
+<span class="sd">        :param TweetHandlerI handler: method for viewing</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="n">handler</span>
+</div>
+<div class="viewcode-block" id="Streamer.on_success"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer.on_success">[docs]</a>    <span class="k">def</span> <span class="nf">on_success</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param data: response from Twitter API</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="s">&#39;text&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">do_continue</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;No data handler has been registered.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">on_finish</span><span class="p">()</span>
+
+</div>
+<div class="viewcode-block" id="Streamer.on_error"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer.on_error">[docs]</a>    <span class="k">def</span> <span class="nf">on_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">status_code</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param status_code: The status code returned by the Twitter API</span>
+<span class="sd">        :param data: The response from Twitter API</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">status_code</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Streamer.sample"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer.sample">[docs]</a>    <span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Wrapper for &#39;statuses / sample&#39; API call</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span><span class="p">:</span>
+
+            <span class="c"># Stream in an endless loop until limit is reached. See twython</span>
+            <span class="c"># issue 288: https://github.com/ryanmcgrath/twython/issues/288</span>
+            <span class="c"># colditzjb commented on 9 Dec 2014</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">statuses</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">ChunkedEncodingError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">e</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Error (stream will continue): {0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                <span class="k">continue</span>
+</div>
+<div class="viewcode-block" id="Streamer.filter"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Streamer.filter">[docs]</a>    <span class="k">def</span> <span class="nf">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">track</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">follow</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s">&#39;en&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Wrapper for &#39;statuses / filter&#39; API call</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span><span class="p">:</span>
+            <span class="c">#Stream in an endless loop until limit is reached</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">track</span> <span class="o">==</span> <span class="s">&#39;&#39;</span> <span class="ow">and</span> <span class="n">follow</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;Please supply a value for &#39;track&#39;, &#39;follow&#39;&quot;</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">statuses</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">track</span><span class="o">=</span><span class="n">track</span><span class="p">,</span> <span class="n">follow</span><span class="o">=</span><span class="n">follow</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">ChunkedEncodingError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">e</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Error (stream will continue): {0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                <span class="k">continue</span>
+
+</div></div>
+<div class="viewcode-block" id="Query"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query">[docs]</a><span class="k">class</span> <span class="nc">Query</span><span class="p">(</span><span class="n">Twython</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieve data from the Twitter REST API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_key</span><span class="p">,</span> <span class="n">app_secret</span><span class="p">,</span> <span class="n">oauth_token</span><span class="p">,</span>
+                 <span class="n">oauth_token_secret</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">do_continue</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">Twython</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_key</span><span class="p">,</span> <span class="n">app_secret</span><span class="p">,</span> <span class="n">oauth_token</span><span class="p">,</span> <span class="n">oauth_token_secret</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Query.register"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query.register">[docs]</a>    <span class="k">def</span> <span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handler</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Register a method for handling Tweets.</span>
+
+<span class="sd">        :param TweetHandlerI handler: method for viewing or writing Tweets to a file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="n">handler</span>
+</div>
+<div class="viewcode-block" id="Query.expand_tweetids"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query.expand_tweetids">[docs]</a>    <span class="k">def</span> <span class="nf">expand_tweetids</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ids_f</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a file object containing a list of Tweet IDs, fetch the</span>
+<span class="sd">        corresponding full Tweets from the Twitter API.</span>
+
+<span class="sd">        The API call `statuses/lookup` will fail to retrieve a Tweet if the</span>
+<span class="sd">        user has deleted it.</span>
+
+<span class="sd">        This call to the Twitter API is rate-limited. See</span>
+<span class="sd">        &lt;https://dev.twitter.com/rest/reference/get/statuses/lookup&gt; for details.</span>
+
+<span class="sd">        :param ids_f: input file object consisting of Tweet IDs, one to a line</span>
+<span class="sd">        :return: iterable of Tweet objects in JSON format</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">ids_f</span> <span class="k">if</span> <span class="n">line</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;Counted {0} Tweet IDs in {1}.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">),</span> <span class="n">ids_f</span><span class="p">))</span>
+
+        <span class="c"># The Twitter endpoint takes lists of up to 100 ids, so we chunk the</span>
+        <span class="c"># ids.</span>
+        <span class="n">id_chunks</span> <span class="o">=</span> <span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="mi">100</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">),</span> <span class="mi">100</span><span class="p">)]</span>
+
+        <span class="n">chunked_tweets</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_status</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="n">chunk</span><span class="p">)</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span>
+                          <span class="n">id_chunks</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">itertools</span><span class="o">.</span><span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">chunked_tweets</span><span class="p">)</span>
+
+
+</div>
+    <span class="k">def</span> <span class="nf">_search_tweets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s">&#39;en&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Assumes that the handler has been informed. Fetches Tweets from</span>
+<span class="sd">        search_tweets generator output and passses them to handler</span>
+
+<span class="sd">        :param str keywords: A list of query terms to search for, written as\</span>
+<span class="sd">        a comma-separated string.</span>
+<span class="sd">        :param int limit: Number of Tweets to process</span>
+<span class="sd">        :param str lang: language</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">tweets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">search_tweets</span><span class="p">(</span><span class="n">keywords</span><span class="o">=</span><span class="n">keywords</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">,</span>
+                                        <span class="n">max_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">max_id</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">tweet</span> <span class="ow">in</span> <span class="n">tweets</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">tweet</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">do_continue</span><span class="p">()</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">repeat</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">on_finish</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Query.search_tweets"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query.search_tweets">[docs]</a>    <span class="k">def</span> <span class="nf">search_tweets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s">&#39;en&#39;</span><span class="p">,</span> <span class="n">max_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                      <span class="n">retries_after_twython_exception</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Call the REST API ``&#39;search/tweets&#39;`` endpoint with some plausible</span>
+<span class="sd">        defaults. See `the Twitter search documentation</span>
+<span class="sd">        &lt;https://dev.twitter.com/rest/public/search&gt;`_ for more information</span>
+<span class="sd">        about admissable search parameters.</span>
+
+<span class="sd">        :param str keywords: A list of query terms to search for, written as\</span>
+<span class="sd">        a comma-separated string</span>
+<span class="sd">        :param int limit: Number of Tweets to process</span>
+<span class="sd">        :param str lang: language</span>
+<span class="sd">        :param int max_id: id of the last tweet fetched</span>
+<span class="sd">        :param int retries_after_twython_exception: number of retries when\</span>
+<span class="sd">        searching Tweets before raising an exception</span>
+<span class="sd">        :rtype: python generator</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="p">:</span>
+            <span class="c"># if no handler is provided, `BasicTweetHandler` provides minimum</span>
+            <span class="c"># functionality for limiting the number of Tweets retrieved</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span> <span class="o">=</span> <span class="n">BasicTweetHandler</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+
+        <span class="n">count_from_query</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">max_id</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">max_id</span> <span class="o">=</span> <span class="n">max_id</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">q</span><span class="o">=</span><span class="n">keywords</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">limit</span><span class="p">),</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">,</span>
+                                  <span class="n">result_type</span><span class="o">=</span><span class="s">&#39;recent&#39;</span><span class="p">)</span>
+            <span class="n">count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;No Tweets available through REST API for those keywords&quot;</span><span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">count_from_query</span> <span class="o">=</span> <span class="n">count</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">max_id</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">][</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][</span><span class="s">&#39;id&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+
+            <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">]:</span>
+                <span class="k">yield</span> <span class="n">result</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">do_continue</span><span class="p">()</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+                    <span class="k">return</span>
+
+
+        <span class="c"># Pagination loop: keep fetching Tweets until the desired count is</span>
+        <span class="c"># reached while dealing with Twitter rate limits.</span>
+        <span class="n">retries</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">count_from_query</span> <span class="o">&lt;</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">mcount</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">limit</span><span class="o">-</span><span class="n">count_from_query</span><span class="p">)</span>
+                <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">q</span><span class="o">=</span><span class="n">keywords</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="n">mcount</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">,</span>
+                                      <span class="n">max_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">max_id</span><span class="p">,</span> <span class="n">result_type</span><span class="o">=</span><span class="s">&#39;recent&#39;</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">TwythonRateLimitError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;Waiting for 15 minutes -{0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">15</span><span class="o">*</span><span class="mi">60</span><span class="p">)</span> <span class="c"># wait 15 minutes</span>
+                <span class="k">continue</span>
+            <span class="k">except</span> <span class="n">TwythonError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;Fatal error in Twython request -{0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">retries_after_twython_exception</span> <span class="o">==</span> <span class="n">retries</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">e</span>
+                <span class="n">retries</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="n">count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;No more Tweets available through rest api&quot;</span><span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">count_from_query</span> <span class="o">+=</span> <span class="n">count</span>
+            <span class="c"># the max_id is also present in the Tweet metadata</span>
+            <span class="c"># results[&#39;search_metadata&#39;][&#39;next_results&#39;], but as part of a</span>
+            <span class="c"># query and difficult to fetch. This is doing the equivalent</span>
+            <span class="c"># (last tweet id minus one)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">max_id</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">][</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][</span><span class="s">&#39;id&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+
+            <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s">&#39;statuses&#39;</span><span class="p">]:</span>
+                <span class="k">yield</span> <span class="n">result</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">do_continue</span><span class="p">()</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+                    <span class="k">return</span>
+</div>
+<div class="viewcode-block" id="Query.user_info_from_id"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query.user_info_from_id">[docs]</a>    <span class="k">def</span> <span class="nf">user_info_from_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">userids</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert a list of userIDs into a variety of information about the users.</span>
+
+<span class="sd">        See &lt;https://dev.twitter.com/rest/reference/get/users/show&gt;.</span>
+
+<span class="sd">        :param list userids: A list of integer strings corresponding to Twitter userIDs</span>
+<span class="sd">        :rtype: list(json)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">show_user</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">userid</span><span class="p">)</span> <span class="k">for</span> <span class="n">userid</span> <span class="ow">in</span> <span class="n">userids</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="Query.user_tweets"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Query.user_tweets">[docs]</a>    <span class="k">def</span> <span class="nf">user_tweets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">screen_name</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">include_rts</span><span class="o">=</span><span class="s">&#39;false&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a collection of the most recent Tweets posted by the user</span>
+
+<span class="sd">        :param str user: The user&#39;s screen name; the initial &#39;@&#39; symbol\</span>
+<span class="sd">        should be omitted</span>
+<span class="sd">        :param int limit: The number of Tweets to recover; 200 is the maximum allowed</span>
+<span class="sd">        :param str include_rts: Whether to include statuses which have been\</span>
+<span class="sd">        retweeted by the user; possible values are &#39;true&#39; and &#39;false&#39;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_user_timeline</span><span class="p">(</span><span class="n">screen_name</span><span class="o">=</span><span class="n">screen_name</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+                                      <span class="n">include_rts</span><span class="o">=</span><span class="n">include_rts</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handler</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+
+
+</div></div>
+<div class="viewcode-block" id="Twitter"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Twitter">[docs]</a><span class="k">class</span> <span class="nc">Twitter</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wrapper class with restricted functionality and fewer options.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_oauth</span> <span class="o">=</span> <span class="n">credsfromfile</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">streamer</span> <span class="o">=</span> <span class="n">Streamer</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_oauth</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">query</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_oauth</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Twitter.tweets"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.Twitter.tweets">[docs]</a>    <span class="k">def</span> <span class="nf">tweets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keywords</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">follow</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">to_screen</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+               <span class="n">limit</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">date_limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s">&#39;en&#39;</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+               <span class="n">gzip_compress</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Process some Tweets in a simple manner.</span>
+
+<span class="sd">        :param str keywords: Keywords to use for searching or filtering</span>
+<span class="sd">        :param list follow: UserIDs to use for filtering Tweets from the public stream</span>
+<span class="sd">        :param bool to_screen: If `True`, display the tweet texts on the screen,\</span>
+<span class="sd">        otherwise print to a file</span>
+
+<span class="sd">        :param bool stream: If `True`, use the live public stream,\</span>
+<span class="sd">        otherwise search past public Tweets</span>
+
+<span class="sd">        :param int limit: The number of data items to process in the current\</span>
+<span class="sd">        round of processing.</span>
+
+<span class="sd">        :param tuple date_limit: The date at which to stop collecting\</span>
+<span class="sd">        new data. This should be entered as a tuple which can serve as the\</span>
+<span class="sd">        argument to `datetime.datetime`.\</span>
+<span class="sd">        E.g. `date_limit=(2015, 4, 1, 12, 40)` for 12:30 pm on April 1 2015.</span>
+<span class="sd">        Note that, in the case of streaming, this is the maximum date, i.e.\</span>
+<span class="sd">        a date in the future; if not, it is the minimum date, i.e. a date\</span>
+<span class="sd">        in the past</span>
+
+<span class="sd">        :param str lang: language</span>
+
+<span class="sd">        :param bool repeat: A flag to determine whether multiple files should\</span>
+<span class="sd">        be written. If `True`, the length of each file will be set by the\</span>
+<span class="sd">        value of `limit`. Use only if `to_screen` is `False`. See also</span>
+<span class="sd">        :py:func:`handle`.</span>
+
+<span class="sd">        :param gzip_compress: if `True`, output files are compressed with gzip.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+            <span class="n">upper_date_limit</span> <span class="o">=</span> <span class="n">date_limit</span>
+            <span class="n">lower_date_limit</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">upper_date_limit</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="n">lower_date_limit</span> <span class="o">=</span> <span class="n">date_limit</span>
+
+        <span class="k">if</span> <span class="n">to_screen</span><span class="p">:</span>
+            <span class="n">handler</span> <span class="o">=</span> <span class="n">TweetViewer</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+                                  <span class="n">upper_date_limit</span><span class="o">=</span><span class="n">upper_date_limit</span><span class="p">,</span>
+                                  <span class="n">lower_date_limit</span><span class="o">=</span><span class="n">lower_date_limit</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">handler</span> <span class="o">=</span> <span class="n">TweetWriter</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+                                  <span class="n">upper_date_limit</span><span class="o">=</span><span class="n">upper_date_limit</span><span class="p">,</span>
+                                  <span class="n">lower_date_limit</span><span class="o">=</span><span class="n">lower_date_limit</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="n">repeat</span><span class="p">,</span>
+                                  <span class="n">gzip_compress</span><span class="o">=</span><span class="n">gzip_compress</span><span class="p">)</span>
+
+
+
+        <span class="k">if</span> <span class="n">to_screen</span><span class="p">:</span>
+            <span class="n">handler</span> <span class="o">=</span> <span class="n">TweetViewer</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+                <span class="n">upper_date_limit</span> <span class="o">=</span> <span class="n">date_limit</span>
+                <span class="n">lower_date_limit</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">upper_date_limit</span> <span class="o">=</span> <span class="bp">None</span>
+                <span class="n">lower_date_limit</span> <span class="o">=</span> <span class="n">date_limit</span>
+
+            <span class="n">handler</span> <span class="o">=</span> <span class="n">TweetWriter</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">upper_date_limit</span><span class="o">=</span><span class="n">upper_date_limit</span><span class="p">,</span>
+                                  <span class="n">lower_date_limit</span><span class="o">=</span><span class="n">lower_date_limit</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="n">repeat</span><span class="p">,</span>
+                                  <span class="n">gzip_compress</span><span class="o">=</span><span class="n">gzip_compress</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">streamer</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">keywords</span> <span class="o">==</span> <span class="s">&#39;&#39;</span> <span class="ow">and</span> <span class="n">follow</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">streamer</span><span class="o">.</span><span class="n">sample</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">streamer</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">track</span><span class="o">=</span><span class="n">keywords</span><span class="p">,</span> <span class="n">follow</span><span class="o">=</span><span class="n">follow</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">keywords</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Please supply at least one keyword to search for.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">_search_tweets</span><span class="p">(</span><span class="n">keywords</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span>
+
+
+</div></div>
+<div class="viewcode-block" id="TweetViewer"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetViewer">[docs]</a><span class="k">class</span> <span class="nc">TweetViewer</span><span class="p">(</span><span class="n">TweetHandlerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Handle data by sending it to the terminal.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="TweetViewer.handle"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetViewer.handle">[docs]</a>    <span class="k">def</span> <span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Direct data to `sys.stdout`</span>
+
+<span class="sd">        :return: return ``False`` if processing should cease, otherwise return ``True``.</span>
+<span class="sd">        :rtype: bool</span>
+<span class="sd">        :param data: Tweet object returned by Twitter API</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;text&#39;</span><span class="p">]</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_date_limit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_stop</span><span class="p">:</span>
+            <span class="k">return</span>
+</div>
+<div class="viewcode-block" id="TweetViewer.on_finish"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetViewer.on_finish">[docs]</a>    <span class="k">def</span> <span class="nf">on_finish</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Written {0} Tweets&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">counter</span><span class="p">))</span>
+
+</div></div>
+<div class="viewcode-block" id="TweetWriter"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetWriter">[docs]</a><span class="k">class</span> <span class="nc">TweetWriter</span><span class="p">(</span><span class="n">TweetHandlerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Handle data by writing it to a file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">upper_date_limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">lower_date_limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">fprefix</span><span class="o">=</span><span class="s">&#39;tweets&#39;</span><span class="p">,</span> <span class="n">subdir</span><span class="o">=</span><span class="s">&#39;twitter-files&#39;</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">gzip_compress</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The difference between the upper and lower date limits depends on</span>
+<span class="sd">        whether Tweets are coming in an ascending date order (i.e. when</span>
+<span class="sd">        streaming) or descending date order (i.e. when searching past Tweets).</span>
+
+<span class="sd">        :param int limit: number of data items to process in the current\</span>
+<span class="sd">        round of processing.</span>
+
+<span class="sd">        :param tuple upper_date_limit: The date at which to stop collecting new\</span>
+<span class="sd">        data. This should be entered as a tuple which can serve as the\</span>
+<span class="sd">        argument to `datetime.datetime`. E.g. `upper_date_limit=(2015, 4, 1, 12,\</span>
+<span class="sd">        40)` for 12:30 pm on April 1 2015.</span>
+
+<span class="sd">        :param tuple lower_date_limit: The date at which to stop collecting new\</span>
+<span class="sd">        data. See `upper_data_limit` for formatting.</span>
+
+<span class="sd">        :param str fprefix: The prefix to use in creating file names for Tweet\</span>
+<span class="sd">        collections.</span>
+
+<span class="sd">        :param str subdir: The name of the directory where Tweet collection\</span>
+<span class="sd">        files should be stored.</span>
+
+<span class="sd">        :param bool repeat: flag to determine whether multiple files should be\</span>
+<span class="sd">        written. If `True`, the length of each file will be set by the value\</span>
+<span class="sd">        of `limit`. See also :py:func:`handle`.</span>
+
+<span class="sd">        :param gzip_compress: if `True`, ouput files are compressed with gzip.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fprefix</span> <span class="o">=</span> <span class="n">fprefix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subdir</span> <span class="o">=</span> <span class="n">guess_path</span><span class="p">(</span><span class="n">subdir</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gzip_compress</span> <span class="o">=</span> <span class="n">gzip_compress</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timestamped_file</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">repeat</span> <span class="o">=</span> <span class="n">repeat</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">TweetHandlerI</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">upper_date_limit</span><span class="p">,</span> <span class="n">lower_date_limit</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="TweetWriter.timestamped_file"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetWriter.timestamped_file">[docs]</a>    <span class="k">def</span> <span class="nf">timestamped_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: timestamped file name</span>
+<span class="sd">        :rtype: str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">subdir</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subdir</span>
+        <span class="n">fprefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fprefix</span>
+        <span class="k">if</span> <span class="n">subdir</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">subdir</span><span class="p">):</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">subdir</span><span class="p">)</span>
+
+        <span class="n">fname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">subdir</span><span class="p">,</span> <span class="n">fprefix</span><span class="p">)</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;%Y%m</span><span class="si">%d</span><span class="s">-%H%M%S&#39;</span>
+        <span class="n">timestamp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="n">fmt</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gzip_compress</span><span class="p">:</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="s">&#39;.gz&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="n">outfile</span> <span class="o">=</span> <span class="s">&#39;{0}.{1}.json{2}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">timestamp</span><span class="p">,</span> <span class="n">suffix</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outfile</span>
+
+</div>
+<div class="viewcode-block" id="TweetWriter.handle"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetWriter.handle">[docs]</a>    <span class="k">def</span> <span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Write Twitter data as line-delimited JSON into one or more files.</span>
+
+<span class="sd">        :return: return `False` if processing should cease, otherwise return `True`.</span>
+<span class="sd">        :param data: tweet object returned by Twitter API</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">startingup</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gzip_compress</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="n">gzip</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fname</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fname</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Writing to {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fname</span><span class="p">))</span>
+
+        <span class="n">json_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gzip_compress</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">write</span><span class="p">((</span><span class="n">json_data</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json_data</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_date_limit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_stop</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">startingup</span> <span class="o">=</span> <span class="bp">False</span>
+</div>
+<div class="viewcode-block" id="TweetWriter.on_finish"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetWriter.on_finish">[docs]</a>    <span class="k">def</span> <span class="nf">on_finish</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Written {0} Tweets&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">counter</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="TweetWriter.do_continue"><a class="viewcode-back" href="../../../api/nltk.twitter.html#nltk.twitter.twitterclient.TweetWriter.do_continue">[docs]</a>    <span class="k">def</span> <span class="nf">do_continue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repeat</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">TweetHandlerI</span><span class="o">.</span><span class="n">do_continue</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_stop</span><span class="p">:</span>
+            <span class="c"># stop for a functional cause (e.g. date limit)</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">counter</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit</span><span class="p">:</span>
+            <span class="c"># repeat is True, thus close output file and</span>
+            <span class="c"># create a new one</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_restart_file</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+</div>
+    <span class="k">def</span> <span class="nf">_restart_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">on_finish</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timestamped_file</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">startingup</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+            <p class="searchtip" style="font-size: 90%">
+                Enter search terms or a module, class or function name.
+            </p>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, NLTK Project.
+      Last updated on Mar 03, 2016.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
