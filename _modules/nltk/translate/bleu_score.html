@@ -52,20 +52,27 @@
 <span class="c"># -*- coding: utf-8 -*-</span>
 <span class="c"># Natural Language Toolkit: BLEU Score</span>
 <span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c"># Copyright (C) 2001-2016 NLTK Project</span>
 <span class="c"># Authors: Chin Yee Lee, Hengfeng Li, Ruxin Hou, Calvin Tanujaya Lim</span>
 <span class="c"># Contributors: Dmitrijs Milajevs, Liling Tan</span>
 <span class="c"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c"># For license information, see LICENSE.TXT</span>
+
 <span class="sd">&quot;&quot;&quot;BLEU score implementation.&quot;&quot;&quot;</span>
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span>
 
 <span class="kn">import</span> <span class="nn">math</span>
-<span class="kn">from</span> <span class="nn">fractions</span> <span class="kn">import</span> <span class="n">Fraction</span>
+<span class="kn">import</span> <span class="nn">fractions</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span>
 
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ngrams</span>
 
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">fractions</span><span class="o">.</span><span class="n">Fraction</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="kn">from</span> <span class="nn">fractions</span> <span class="kn">import</span> <span class="n">Fraction</span>
+<span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="kn">import</span> <span class="n">Fraction</span>
+    
 
 <div class="viewcode-block" id="sentence_bleu"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.sentence_bleu">[docs]</a><span class="k">def</span> <span class="nf">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span>
                   <span class="n">smoothing_function</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
@@ -120,31 +127,7 @@
 <span class="sd">    :return: The sentence-level BLEU score.</span>
 <span class="sd">    :rtype: float</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c"># Calculates the brevity penalty.</span>
-    <span class="c"># *hyp_len* is referred to as *c* in Papineni et. al. (2002)</span>
-    <span class="n">hyp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
-    <span class="c"># *closest_ref_len* is referred to as *r* variable in Papineni et. al. (2002)</span>
-    <span class="n">closest_ref_len</span> <span class="o">=</span> <span class="n">_closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
-    <span class="n">bp</span> <span class="o">=</span> <span class="n">_brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
-    
-    <span class="c"># Calculates the modified precision *p_n* for each order of ngram.</span>
-    <span class="n">p_n</span> <span class="o">=</span> <span class="p">[</span><span class="n">_modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
-
-    <span class="c"># Smoothen the modified precision.</span>
-    <span class="c"># Note: smooth_precision() converts values into float.</span>
-    <span class="k">if</span> <span class="n">smoothing_function</span><span class="p">:</span>
-        <span class="n">p_n</span> <span class="o">=</span> <span class="n">smoothing_function</span><span class="p">(</span><span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="o">=</span><span class="n">references</span><span class="p">,</span> 
-                                 <span class="n">hypothesis</span><span class="o">=</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="n">hyp_len</span><span class="p">)</span>
-    
-    <span class="c"># Calculates the overall modified precision for all ngrams.</span>
-    <span class="c"># By sum of the product of the weights and the respective *p_n*</span>
-    <span class="n">s</span> <span class="o">=</span> <span class="p">(</span><span class="n">w</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p_i</span><span class="p">)</span> <span class="k">if</span> <span class="n">p_i</span> <span class="k">else</span> <span class="mi">0</span> 
-         <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">p_n</span><span class="p">))</span>
-    <span class="n">sum_s</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">fsum</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">sum_s</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">p_n</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">return</span> <span class="mi">0</span>
-    <span class="k">return</span> <span class="n">bp</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">sum_s</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">corpus_bleu</span><span class="p">([</span><span class="n">references</span><span class="p">],</span> <span class="p">[</span><span class="n">hypothesis</span><span class="p">],</span> <span class="n">weights</span><span class="p">,</span> <span class="n">smoothing_function</span><span class="p">)</span>
 
 </div>
 <div class="viewcode-block" id="corpus_bleu"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.corpus_bleu">[docs]</a><span class="k">def</span> <span class="nf">corpus_bleu</span><span class="p">(</span><span class="n">list_of_references</span><span class="p">,</span> <span class="n">hypotheses</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span>
@@ -179,7 +162,7 @@
 <span class="sd">    &gt;&gt;&gt; list_of_references = [[ref1a, ref1b, ref1c], [ref2a]]</span>
 <span class="sd">    &gt;&gt;&gt; hypotheses = [hyp1, hyp2]</span>
 <span class="sd">    &gt;&gt;&gt; corpus_bleu(list_of_references, hypotheses) # doctest: +ELLIPSIS</span>
-<span class="sd">    0.5520...</span>
+<span class="sd">    0.5920...</span>
 <span class="sd">    </span>
 <span class="sd">    The example below show that corpus_bleu() is different from averaging </span>
 <span class="sd">    sentence_bleu() for hypotheses </span>
@@ -198,6 +181,8 @@
 <span class="sd">    :return: The corpus-level BLEU score.</span>
 <span class="sd">    :rtype: float</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Before proceeding to compute BLEU, perform sanity checks.</span>
+
     <span class="n">p_numerators</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span> <span class="c"># Key = ngram order, and value = no. of ngram matches.</span>
     <span class="n">p_denominators</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span> <span class="c"># Key = ngram order, and value = no. of ngram in ref.</span>
     <span class="n">hyp_lengths</span><span class="p">,</span> <span class="n">ref_lengths</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
@@ -209,7 +194,7 @@
         <span class="c"># For each order of ngram, calculate the numerator and</span>
         <span class="c"># denominator for the corpus-level modified precision.</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span> 
-            <span class="n">p_i</span> <span class="o">=</span> <span class="n">_modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">p_i</span> <span class="o">=</span> <span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
             <span class="n">p_numerators</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span>
             <span class="n">p_denominators</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span>
             
@@ -217,30 +202,36 @@
         <span class="c"># Adds them to the corpus-level hypothesis and reference counts.</span>
         <span class="n">hyp_len</span> <span class="o">=</span>  <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
         <span class="n">hyp_lengths</span> <span class="o">+=</span> <span class="n">hyp_len</span>
-        <span class="n">ref_lengths</span> <span class="o">+=</span> <span class="n">_closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>    
-        
+        <span class="n">ref_lengths</span> <span class="o">+=</span> <span class="n">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
+    
     <span class="c"># Calculate corpus-level brevity penalty.</span>
-    <span class="n">bp</span> <span class="o">=</span> <span class="n">_brevity_penalty</span><span class="p">(</span><span class="n">ref_lengths</span><span class="p">,</span> <span class="n">hyp_lengths</span><span class="p">)</span>
+    <span class="n">bp</span> <span class="o">=</span> <span class="n">brevity_penalty</span><span class="p">(</span><span class="n">ref_lengths</span><span class="p">,</span> <span class="n">hyp_lengths</span><span class="p">)</span>
     
     <span class="c"># Collects the various precision values for the different ngram orders.</span>
-    <span class="n">p_n</span> <span class="o">=</span> <span class="p">[</span><span class="n">Fraction</span><span class="p">(</span><span class="n">p_numerators</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">p_denominators</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> 
+    <span class="n">p_n</span> <span class="o">=</span> <span class="p">[</span><span class="n">Fraction</span><span class="p">(</span><span class="n">p_numerators</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">p_denominators</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">_normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> 
            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+    
+    <span class="c"># Returns 0 if there&#39;s no matching n-grams </span>
+    <span class="c"># We only need to check for p_numerators[1] == 0, since if there&#39;s</span>
+    <span class="c"># no unigrams, there won&#39;t be any higher order ngrams.</span>
+    <span class="k">if</span> <span class="n">p_numerators</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
     
     <span class="c"># Smoothen the modified precision.</span>
     <span class="c"># Note: smooth_precision() converts values into float.</span>
     <span class="k">if</span> <span class="n">smoothing_function</span><span class="p">:</span>
         <span class="n">p_n</span> <span class="o">=</span> <span class="n">smoothing_function</span><span class="p">(</span><span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="o">=</span><span class="n">references</span><span class="p">,</span> 
                                  <span class="n">hypothesis</span><span class="o">=</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="n">hyp_len</span><span class="p">)</span>
-        
+    
     <span class="c"># Calculates the overall modified precision for all ngrams.</span>
     <span class="c"># By sum of the product of the weights and the respective *p_n*</span>
-    <span class="n">s</span> <span class="o">=</span> <span class="p">(</span><span class="n">w</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p_i</span><span class="p">)</span> <span class="k">if</span> <span class="n">p_i</span> <span class="k">else</span> <span class="mi">0</span> 
-         <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">p_n</span><span class="p">))</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="p">(</span><span class="n">w</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p_i</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">p_n</span><span class="p">)</span> 
+         <span class="k">if</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
         
     <span class="k">return</span> <span class="n">bp</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">fsum</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
 
 </div>
-<span class="k">def</span> <span class="nf">_modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+<div class="viewcode-block" id="modified_precision"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.modified_precision">[docs]</a><span class="k">def</span> <span class="nf">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate modified ngram precision.</span>
 
@@ -260,7 +251,7 @@
 <span class="sd">        &gt;&gt;&gt; reference2 = &#39;there is a cat on the mat&#39;.split()</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis1 = &#39;the the the the the the the&#39;.split()</span>
 <span class="sd">        &gt;&gt;&gt; references = [reference1, reference2]</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis1, n=1)) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis1, n=1)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.2857...</span>
 <span class="sd">    </span>
 <span class="sd">    In the modified n-gram precision, a reference word will be considered </span>
@@ -278,9 +269,9 @@
 <span class="sd">        ...               &#39;of&#39;, &#39;the&#39;, &#39;party&#39;]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = &#39;of the&#39;.split()</span>
 <span class="sd">        &gt;&gt;&gt; references = [reference1, reference2, reference3]</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis, n=1))</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis, n=1))</span>
 <span class="sd">        1.0</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis, n=2))</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis, n=2))</span>
 <span class="sd">        1.0</span>
 <span class="sd">        </span>
 <span class="sd">    An example of a normal machine translation hypothesis:</span>
@@ -306,13 +297,13 @@
 <span class="sd">        ...               &#39;army&#39;, &#39;always&#39;, &#39;to&#39;, &#39;heed&#39;, &#39;the&#39;, &#39;directions&#39;,</span>
 <span class="sd">        ...               &#39;of&#39;, &#39;the&#39;, &#39;party&#39;]</span>
 <span class="sd">        &gt;&gt;&gt; references = [reference1, reference2, reference3]</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis1, n=1)) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis1, n=1)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.9444...</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis2, n=1)) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis2, n=1)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.5714...</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis1, n=2)) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis1, n=2)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.5882352941176471</span>
-<span class="sd">        &gt;&gt;&gt; float(_modified_precision(references, hypothesis2, n=2)) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; float(modified_precision(references, hypothesis2, n=2)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.07692...</span>
 <span class="sd">     </span>
 <span class="sd">    </span>
@@ -325,27 +316,29 @@
 <span class="sd">    :return: BLEU&#39;s modified precision for the nth order ngram.</span>
 <span class="sd">    :rtype: Fraction</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Extracts all ngrams in hypothesis.</span>
     <span class="n">counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
 
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">counts</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">Fraction</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-
+    <span class="c"># Extract a union of references&#39; counts.</span>
+    <span class="c">## max_counts = reduce(or_, [Counter(ngrams(ref, n)) for ref in references])</span>
     <span class="n">max_counts</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">reference</span> <span class="ow">in</span> <span class="n">references</span><span class="p">:</span>
         <span class="n">reference_counts</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
         <span class="k">for</span> <span class="n">ngram</span> <span class="ow">in</span> <span class="n">counts</span><span class="p">:</span>
-            <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ngram</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">reference_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">])</span>
-
-    <span class="n">clipped_counts</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">ngram</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">]))</span> 
-                          <span class="k">for</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+            <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ngram</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> 
+                                    <span class="n">reference_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">])</span>
     
+    <span class="c"># Assigns the intersection between hypothesis and references&#39; counts.</span>
+    <span class="n">clipped_counts</span> <span class="o">=</span> <span class="p">{</span><span class="n">ngram</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">max_counts</span><span class="p">[</span><span class="n">ngram</span><span class="p">])</span> 
+                      <span class="k">for</span> <span class="n">ngram</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">counts</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
     <span class="n">numerator</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">clipped_counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-    <span class="n">denominator</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>  
+    <span class="n">denominator</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
     
-    <span class="k">return</span> <span class="n">Fraction</span><span class="p">(</span><span class="n">numerator</span><span class="p">,</span> <span class="n">denominator</span><span class="p">)</span>  
+    <span class="k">return</span> <span class="n">Fraction</span><span class="p">(</span><span class="n">numerator</span><span class="p">,</span> <span class="n">denominator</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>  
     
-
-<span class="k">def</span> <span class="nf">_closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
+</div>
+<div class="viewcode-block" id="closest_ref_length"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.closest_ref_length">[docs]</a><span class="k">def</span> <span class="nf">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This function finds the reference that is the closest length to the </span>
 <span class="sd">    hypothesis. The closest reference length is referred to as *r* variable </span>
@@ -363,7 +356,8 @@
                           <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">ref_len</span> <span class="o">-</span> <span class="n">hyp_len</span><span class="p">),</span> <span class="n">ref_len</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">closest_ref_len</span>
 
-<span class="k">def</span> <span class="nf">_brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
+</div>
+<div class="viewcode-block" id="brevity_penalty"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.brevity_penalty">[docs]</a><span class="k">def</span> <span class="nf">brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate brevity penalty.</span>
 
@@ -380,8 +374,8 @@
 <span class="sd">        &gt;&gt;&gt; hypothesis = list(&#39;aaaaaaaaaaaa&#39;)      # i.e. [&#39;a&#39;] * 12</span>
 <span class="sd">        &gt;&gt;&gt; references = [reference1, reference2, reference3]</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; _brevity_penalty(closest_ref_len, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; brevity_penalty(closest_ref_len, hyp_len)</span>
 <span class="sd">        1.0</span>
 
 <span class="sd">    In case a hypothesis translation is shorter than the references, penalty is</span>
@@ -390,8 +384,8 @@
 <span class="sd">        &gt;&gt;&gt; references = [[&#39;a&#39;] * 28, [&#39;a&#39;] * 28]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = [&#39;a&#39;] * 12</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; _brevity_penalty(closest_ref_len, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; brevity_penalty(closest_ref_len, hyp_len)</span>
 <span class="sd">        0.2635971381157267</span>
 
 <span class="sd">    The length of the closest reference is used to compute the penalty. If the</span>
@@ -402,8 +396,8 @@
 <span class="sd">        &gt;&gt;&gt; references = [[&#39;a&#39;] * 13, [&#39;a&#39;] * 2]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = [&#39;a&#39;] * 12</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; _brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.9200...</span>
 
 <span class="sd">    The brevity penalty doesn&#39;t depend on reference order. More importantly,</span>
@@ -413,11 +407,11 @@
 <span class="sd">        &gt;&gt;&gt; references = [[&#39;a&#39;] * 13, [&#39;a&#39;] * 11]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = [&#39;a&#39;] * 12</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; bp1 = _brevity_penalty(closest_ref_len, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; bp1 = brevity_penalty(closest_ref_len, hyp_len)</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(reversed(references), hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; bp2 = _brevity_penalty(closest_ref_len, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(reversed(references), hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; bp2 = brevity_penalty(closest_ref_len, hyp_len)</span>
 <span class="sd">        &gt;&gt;&gt; bp1 == bp2 == 1</span>
 <span class="sd">        True</span>
 
@@ -426,15 +420,15 @@
 <span class="sd">        &gt;&gt;&gt; references = [[&#39;a&#39;] * 11, [&#39;a&#39;] * 8]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = [&#39;a&#39;] * 7</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; _brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.8668...</span>
 
 <span class="sd">        &gt;&gt;&gt; references = [[&#39;a&#39;] * 11, [&#39;a&#39;] * 8, [&#39;a&#39;] * 6, [&#39;a&#39;] * 7]</span>
 <span class="sd">        &gt;&gt;&gt; hypothesis = [&#39;a&#39;] * 7</span>
 <span class="sd">        &gt;&gt;&gt; hyp_len = len(hypothesis)</span>
-<span class="sd">        &gt;&gt;&gt; closest_ref_len =  _closest_ref_length(references, hyp_len)</span>
-<span class="sd">        &gt;&gt;&gt; _brevity_penalty(closest_ref_len, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; closest_ref_len =  closest_ref_length(references, hyp_len)</span>
+<span class="sd">        &gt;&gt;&gt; brevity_penalty(closest_ref_len, hyp_len)</span>
 <span class="sd">        1.0</span>
 <span class="sd">    </span>
 <span class="sd">    :param hyp_len: The length of the hypothesis for a single sentence OR the </span>
@@ -451,7 +445,7 @@
     <span class="k">else</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">closest_ref_len</span> <span class="o">/</span> <span class="n">hyp_len</span><span class="p">)</span>
 
-
+</div>
 <div class="viewcode-block" id="SmoothingFunction"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.SmoothingFunction">[docs]</a><span class="k">class</span> <span class="nc">SmoothingFunction</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This is an implementation of the smoothing techniques </span>
@@ -481,7 +475,7 @@
 <span class="sd">        &gt;&gt;&gt; print (sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method1)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.4118...</span>
 <span class="sd">        &gt;&gt;&gt; print (sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method2)) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.4576...</span>
+<span class="sd">        0.4489...</span>
 <span class="sd">        &gt;&gt;&gt; print (sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method3)) # doctest: +ELLIPSIS</span>
 <span class="sd">        0.4118...</span>
 <span class="sd">        &gt;&gt;&gt; print (sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method4)) # doctest: +ELLIPSIS</span>
@@ -522,7 +516,7 @@
 <span class="sd">        machine translation quality using longest common subsequence and </span>
 <span class="sd">        skip-bigram statistics. In ACL04.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">Fraction</span><span class="p">(</span><span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="n">p_n</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">Fraction</span><span class="p">(</span><span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="n">p_n</span><span class="p">]</span>
         </div>
 <div class="viewcode-block" id="SmoothingFunction.method3"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.bleu_score.SmoothingFunction.method3">[docs]</a>    <span class="k">def</span> <span class="nf">method3</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -541,7 +535,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">incvnt</span> <span class="o">=</span> <span class="mi">1</span> <span class="c"># From the mteval-v13a.pl, it&#39;s referred to as k.</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p_n</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">p_i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="n">incvnt</span> <span class="o">*</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span><span class="p">)</span>
                 <span class="n">incvnt</span><span class="o">+=</span><span class="mi">1</span>
         <span class="k">return</span> <span class="n">p_n</span>
@@ -556,7 +550,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">incvnt</span> <span class="o">=</span> <span class="mi">1</span> 
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p_n</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">p_i</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">hyp_len</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">hyp_len</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">incvnt</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">hyp_len</span><span class="p">)</span> <span class="c"># Note that this K is different from the K from NIST.</span>
                 <span class="n">incvnt</span><span class="o">+=</span><span class="mi">1</span>
         <span class="k">return</span> <span class="n">p_n</span>
@@ -571,7 +565,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">m</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="c"># Requires an precision value for an addition ngram order.</span>
-        <span class="n">p_n_plus1</span> <span class="o">=</span> <span class="n">p_n</span> <span class="o">+</span> <span class="p">[</span><span class="n">_modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="mi">5</span><span class="p">)]</span>
+        <span class="n">p_n_plus1</span> <span class="o">=</span> <span class="n">p_n</span> <span class="o">+</span> <span class="p">[</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="mi">5</span><span class="p">)]</span>
         <span class="n">m</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">p_n</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p_n</span><span class="p">):</span>
             <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">p_i</span> <span class="o">+</span> <span class="n">p_n_plus1</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mi">3</span>
@@ -658,7 +652,7 @@
           
     <div class="footer" role="contentinfo">
         &copy; Copyright 2015, NLTK Project.
-      Last updated on Mar 03, 2016.
+      Last updated on Apr 09, 2016.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
     </div>
         </div>
