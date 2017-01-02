@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>nltk.sentiment.vader &mdash; NLTK 3.0 documentation</title>
+    <title>nltk.sentiment.vader &#8212; NLTK 3.0 documentation</title>
     
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
@@ -17,14 +17,15 @@
         VERSION:     '3.0',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
-        HAS_SOURCE:  true
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
       };
     </script>
     <script type="text/javascript" src="../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
-    <link rel="top" title="NLTK 3.0 documentation" href="../../../index.html" />
-    <link rel="up" title="Module code" href="../../index.html" /> 
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
   </head>
   <body role="document">
     <div class="header-wrapper" role="banner">
@@ -49,19 +50,20 @@
           <div class="body" role="main">
             
   <h1>Source code for nltk.sentiment.vader</h1><div class="highlight"><pre>
-<span class="c"># coding: utf-8</span>
-<span class="c"># Natural Language Toolkit: vader</span>
-<span class="c">#</span>
-<span class="c"># Copyright (C) 2001-2016 NLTK Project</span>
-<span class="c"># Author: C.J. Hutto &lt;Clayton.Hutto@gtri.gatech.edu&gt;</span>
-<span class="c">#         Ewan Klein &lt;ewan@inf.ed.ac.uk&gt; (modifications)</span>
-<span class="c">#         Pierpaolo Pantone &lt;24alsecondo@gmail.com&gt; (modifications)</span>
-<span class="c"># URL: &lt;http://nltk.org/&gt;</span>
-<span class="c"># For license information, see LICENSE.TXT</span>
-<span class="c">#</span>
-<span class="c"># Modifications to the original VADER code have been made in order to</span>
-<span class="c"># integrate it into NLTK. These have involved changes to</span>
-<span class="c"># ensure Python 3 compatibility, and refactoring to achieve greater modularity.</span>
+<span></span><span class="c1"># coding: utf-8</span>
+<span class="c1"># Natural Language Toolkit: vader</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2017 NLTK Project</span>
+<span class="c1"># Author: C.J. Hutto &lt;Clayton.Hutto@gtri.gatech.edu&gt;</span>
+<span class="c1">#         Ewan Klein &lt;ewan@inf.ed.ac.uk&gt; (modifications)</span>
+<span class="c1">#         Pierpaolo Pantone &lt;24alsecondo@gmail.com&gt; (modifications)</span>
+<span class="c1">#         George Berry &lt;geb97@cornell.edu&gt; (modifications)</span>
+<span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+<span class="c1">#</span>
+<span class="c1"># Modifications to the original VADER code have been made in order to</span>
+<span class="c1"># integrate it into NLTK. These have involved changes to</span>
+<span class="c1"># ensure Python 3 compatibility, and refactoring to achieve greater modularity.</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">If you use the VADER sentiment analysis tools, please cite:</span>
@@ -75,65 +77,66 @@
 <span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">string</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="k">import</span> <span class="n">product</span>
 <span class="kn">import</span> <span class="nn">nltk.data</span>
 
-<span class="c">##Constants##</span>
+<span class="c1">##Constants##</span>
 
-<span class="c"># (empirically derived mean sentiment intensity rating increase for booster words)</span>
+<span class="c1"># (empirically derived mean sentiment intensity rating increase for booster words)</span>
 <span class="n">B_INCR</span> <span class="o">=</span> <span class="mf">0.293</span>
 <span class="n">B_DECR</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.293</span>
 
-<span class="c"># (empirically derived mean sentiment intensity rating increase for using</span>
-<span class="c"># ALLCAPs to emphasize a word)</span>
+<span class="c1"># (empirically derived mean sentiment intensity rating increase for using</span>
+<span class="c1"># ALLCAPs to emphasize a word)</span>
 <span class="n">C_INCR</span> <span class="o">=</span> <span class="mf">0.733</span>
 
 <span class="n">N_SCALAR</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.74</span>
 
-<span class="c"># for removing punctuation</span>
-<span class="n">REGEX_REMOVE_PUNCTUATION</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;[</span><span class="si">%s</span><span class="s">]&#39;</span> <span class="o">%</span> <span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">string</span><span class="o">.</span><span class="n">punctuation</span><span class="p">))</span>
+<span class="c1"># for removing punctuation</span>
+<span class="n">REGEX_REMOVE_PUNCTUATION</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s1">&#39;[</span><span class="si">{0}</span><span class="s1">]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">string</span><span class="o">.</span><span class="n">punctuation</span><span class="p">)))</span>
 
-<span class="n">PUNC_LIST</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;.&quot;</span><span class="p">,</span> <span class="s">&quot;!&quot;</span><span class="p">,</span> <span class="s">&quot;?&quot;</span><span class="p">,</span> <span class="s">&quot;,&quot;</span><span class="p">,</span> <span class="s">&quot;;&quot;</span><span class="p">,</span> <span class="s">&quot;:&quot;</span><span class="p">,</span> <span class="s">&quot;-&quot;</span><span class="p">,</span> <span class="s">&quot;&#39;&quot;</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">&quot;</span><span class="p">,</span>
-             <span class="s">&quot;!!&quot;</span><span class="p">,</span> <span class="s">&quot;!!!&quot;</span><span class="p">,</span> <span class="s">&quot;??&quot;</span><span class="p">,</span> <span class="s">&quot;???&quot;</span><span class="p">,</span> <span class="s">&quot;?!?&quot;</span><span class="p">,</span> <span class="s">&quot;!?!&quot;</span><span class="p">,</span> <span class="s">&quot;?!?!&quot;</span><span class="p">,</span> <span class="s">&quot;!?!?&quot;</span><span class="p">]</span>
+<span class="n">PUNC_LIST</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="s2">&quot;!&quot;</span><span class="p">,</span> <span class="s2">&quot;?&quot;</span><span class="p">,</span> <span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;;&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">&quot;</span><span class="p">,</span>
+             <span class="s2">&quot;!!&quot;</span><span class="p">,</span> <span class="s2">&quot;!!!&quot;</span><span class="p">,</span> <span class="s2">&quot;??&quot;</span><span class="p">,</span> <span class="s2">&quot;???&quot;</span><span class="p">,</span> <span class="s2">&quot;?!?&quot;</span><span class="p">,</span> <span class="s2">&quot;!?!&quot;</span><span class="p">,</span> <span class="s2">&quot;?!?!&quot;</span><span class="p">,</span> <span class="s2">&quot;!?!?&quot;</span><span class="p">]</span>
 <span class="n">NEGATE</span> <span class="o">=</span> \
-<span class="p">[</span><span class="s">&quot;aint&quot;</span><span class="p">,</span> <span class="s">&quot;arent&quot;</span><span class="p">,</span> <span class="s">&quot;cannot&quot;</span><span class="p">,</span> <span class="s">&quot;cant&quot;</span><span class="p">,</span> <span class="s">&quot;couldnt&quot;</span><span class="p">,</span> <span class="s">&quot;darent&quot;</span><span class="p">,</span> <span class="s">&quot;didnt&quot;</span><span class="p">,</span> <span class="s">&quot;doesnt&quot;</span><span class="p">,</span>
- <span class="s">&quot;ain&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;aren&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;can&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;couldn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;daren&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;didn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;doesn&#39;t&quot;</span><span class="p">,</span>
- <span class="s">&quot;dont&quot;</span><span class="p">,</span> <span class="s">&quot;hadnt&quot;</span><span class="p">,</span> <span class="s">&quot;hasnt&quot;</span><span class="p">,</span> <span class="s">&quot;havent&quot;</span><span class="p">,</span> <span class="s">&quot;isnt&quot;</span><span class="p">,</span> <span class="s">&quot;mightnt&quot;</span><span class="p">,</span> <span class="s">&quot;mustnt&quot;</span><span class="p">,</span> <span class="s">&quot;neither&quot;</span><span class="p">,</span>
- <span class="s">&quot;don&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;hadn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;hasn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;haven&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;isn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;mightn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;mustn&#39;t&quot;</span><span class="p">,</span>
- <span class="s">&quot;neednt&quot;</span><span class="p">,</span> <span class="s">&quot;needn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;never&quot;</span><span class="p">,</span> <span class="s">&quot;none&quot;</span><span class="p">,</span> <span class="s">&quot;nope&quot;</span><span class="p">,</span> <span class="s">&quot;nor&quot;</span><span class="p">,</span> <span class="s">&quot;not&quot;</span><span class="p">,</span> <span class="s">&quot;nothing&quot;</span><span class="p">,</span> <span class="s">&quot;nowhere&quot;</span><span class="p">,</span>
- <span class="s">&quot;oughtnt&quot;</span><span class="p">,</span> <span class="s">&quot;shant&quot;</span><span class="p">,</span> <span class="s">&quot;shouldnt&quot;</span><span class="p">,</span> <span class="s">&quot;uhuh&quot;</span><span class="p">,</span> <span class="s">&quot;wasnt&quot;</span><span class="p">,</span> <span class="s">&quot;werent&quot;</span><span class="p">,</span>
- <span class="s">&quot;oughtn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;shan&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;shouldn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;uh-uh&quot;</span><span class="p">,</span> <span class="s">&quot;wasn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;weren&#39;t&quot;</span><span class="p">,</span>
- <span class="s">&quot;without&quot;</span><span class="p">,</span> <span class="s">&quot;wont&quot;</span><span class="p">,</span> <span class="s">&quot;wouldnt&quot;</span><span class="p">,</span> <span class="s">&quot;won&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;wouldn&#39;t&quot;</span><span class="p">,</span> <span class="s">&quot;rarely&quot;</span><span class="p">,</span> <span class="s">&quot;seldom&quot;</span><span class="p">,</span> <span class="s">&quot;despite&quot;</span><span class="p">]</span>
+<span class="p">[</span><span class="s2">&quot;aint&quot;</span><span class="p">,</span> <span class="s2">&quot;arent&quot;</span><span class="p">,</span> <span class="s2">&quot;cannot&quot;</span><span class="p">,</span> <span class="s2">&quot;cant&quot;</span><span class="p">,</span> <span class="s2">&quot;couldnt&quot;</span><span class="p">,</span> <span class="s2">&quot;darent&quot;</span><span class="p">,</span> <span class="s2">&quot;didnt&quot;</span><span class="p">,</span> <span class="s2">&quot;doesnt&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;ain&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;aren&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;can&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;couldn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;daren&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;didn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;doesn&#39;t&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;dont&quot;</span><span class="p">,</span> <span class="s2">&quot;hadnt&quot;</span><span class="p">,</span> <span class="s2">&quot;hasnt&quot;</span><span class="p">,</span> <span class="s2">&quot;havent&quot;</span><span class="p">,</span> <span class="s2">&quot;isnt&quot;</span><span class="p">,</span> <span class="s2">&quot;mightnt&quot;</span><span class="p">,</span> <span class="s2">&quot;mustnt&quot;</span><span class="p">,</span> <span class="s2">&quot;neither&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;don&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;hadn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;hasn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;haven&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;isn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;mightn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;mustn&#39;t&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;neednt&quot;</span><span class="p">,</span> <span class="s2">&quot;needn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;never&quot;</span><span class="p">,</span> <span class="s2">&quot;none&quot;</span><span class="p">,</span> <span class="s2">&quot;nope&quot;</span><span class="p">,</span> <span class="s2">&quot;nor&quot;</span><span class="p">,</span> <span class="s2">&quot;not&quot;</span><span class="p">,</span> <span class="s2">&quot;nothing&quot;</span><span class="p">,</span> <span class="s2">&quot;nowhere&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;oughtnt&quot;</span><span class="p">,</span> <span class="s2">&quot;shant&quot;</span><span class="p">,</span> <span class="s2">&quot;shouldnt&quot;</span><span class="p">,</span> <span class="s2">&quot;uhuh&quot;</span><span class="p">,</span> <span class="s2">&quot;wasnt&quot;</span><span class="p">,</span> <span class="s2">&quot;werent&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;oughtn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;shan&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;shouldn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;uh-uh&quot;</span><span class="p">,</span> <span class="s2">&quot;wasn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;weren&#39;t&quot;</span><span class="p">,</span>
+ <span class="s2">&quot;without&quot;</span><span class="p">,</span> <span class="s2">&quot;wont&quot;</span><span class="p">,</span> <span class="s2">&quot;wouldnt&quot;</span><span class="p">,</span> <span class="s2">&quot;won&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;wouldn&#39;t&quot;</span><span class="p">,</span> <span class="s2">&quot;rarely&quot;</span><span class="p">,</span> <span class="s2">&quot;seldom&quot;</span><span class="p">,</span> <span class="s2">&quot;despite&quot;</span><span class="p">]</span>
 
-<span class="c"># booster/dampener &#39;intensifiers&#39; or &#39;degree adverbs&#39;</span>
-<span class="c"># http://en.wiktionary.org/wiki/Category:English_degree_adverbs</span>
+<span class="c1"># booster/dampener &#39;intensifiers&#39; or &#39;degree adverbs&#39;</span>
+<span class="c1"># http://en.wiktionary.org/wiki/Category:English_degree_adverbs</span>
 
 <span class="n">BOOSTER_DICT</span> <span class="o">=</span> \
-<span class="p">{</span><span class="s">&quot;absolutely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;amazingly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;awfully&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;completely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;considerably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;decidedly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;deeply&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;effing&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;enormously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;entirely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;especially&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;exceptionally&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;extremely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;fabulously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;flipping&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;flippin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;fricking&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;frickin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;frigging&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;friggin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;fully&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;fucking&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;greatly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;hella&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;highly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;hugely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;incredibly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;intensely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;majorly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;more&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;most&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;particularly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;purely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;quite&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;really&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;remarkably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;so&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;substantially&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;thoroughly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;totally&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;tremendously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;uber&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;unbelievably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;unusually&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s">&quot;utterly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;very&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
- <span class="s">&quot;almost&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;barely&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;hardly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;just enough&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
- <span class="s">&quot;kind of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;kinda&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;kindof&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;kind-of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
- <span class="s">&quot;less&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;little&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;marginally&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;occasionally&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;partly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
- <span class="s">&quot;scarcely&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;slightly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;somewhat&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
- <span class="s">&quot;sort of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;sorta&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;sortof&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s">&quot;sort-of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">}</span>
+<span class="p">{</span><span class="s2">&quot;absolutely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;amazingly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;awfully&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;completely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;considerably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;decidedly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;deeply&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;effing&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;enormously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;entirely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;especially&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;exceptionally&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;extremely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;fabulously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;flipping&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;flippin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;fricking&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;frickin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;frigging&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;friggin&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;fully&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;fucking&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;greatly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;hella&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;highly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;hugely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;incredibly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;intensely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;majorly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;more&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;most&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;particularly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;purely&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;quite&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;really&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;remarkably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;so&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;substantially&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;thoroughly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;totally&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;tremendously&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;uber&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;unbelievably&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;unusually&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span> <span class="s2">&quot;utterly&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;very&quot;</span><span class="p">:</span> <span class="n">B_INCR</span><span class="p">,</span>
+ <span class="s2">&quot;almost&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;barely&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;hardly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;just enough&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
+ <span class="s2">&quot;kind of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;kinda&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;kindof&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;kind-of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
+ <span class="s2">&quot;less&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;little&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;marginally&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;occasionally&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;partly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
+ <span class="s2">&quot;scarcely&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;slightly&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;somewhat&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span>
+ <span class="s2">&quot;sort of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;sorta&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;sortof&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">,</span> <span class="s2">&quot;sort-of&quot;</span><span class="p">:</span> <span class="n">B_DECR</span><span class="p">}</span>
 
-<span class="c"># check for special case idioms using a sentiment-laden keyword known to SAGE</span>
-<span class="n">SPECIAL_CASE_IDIOMS</span> <span class="o">=</span> <span class="p">{</span><span class="s">&quot;the shit&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s">&quot;the bomb&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s">&quot;bad ass&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="s">&quot;yeah right&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span>
-                       <span class="s">&quot;cut the mustard&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&quot;kiss of death&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.5</span><span class="p">,</span> <span class="s">&quot;hand to mouth&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">2</span><span class="p">}</span>
+<span class="c1"># check for special case idioms using a sentiment-laden keyword known to SAGE</span>
+<span class="n">SPECIAL_CASE_IDIOMS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;the shit&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;the bomb&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;bad ass&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="s2">&quot;yeah right&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span>
+                       <span class="s2">&quot;cut the mustard&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;kiss of death&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.5</span><span class="p">,</span> <span class="s2">&quot;hand to mouth&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">2</span><span class="p">}</span>
 
 
-<span class="c">##Static methods##</span>
+<span class="c1">##Static methods##</span>
 
-<div class="viewcode-block" id="negated"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.negated">[docs]</a><span class="k">def</span> <span class="nf">negated</span><span class="p">(</span><span class="n">input_words</span><span class="p">,</span> <span class="n">include_nt</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+<div class="viewcode-block" id="negated"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.negated">[docs]</a><span class="k">def</span> <span class="nf">negated</span><span class="p">(</span><span class="n">input_words</span><span class="p">,</span> <span class="n">include_nt</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine if input contains negation words</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -141,27 +144,27 @@
     <span class="n">neg_words</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">NEGATE</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">neg_words</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">input_words</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">True</span>
+            <span class="k">return</span> <span class="kc">True</span>
     <span class="k">if</span> <span class="n">include_nt</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">input_words</span><span class="p">:</span>
-            <span class="k">if</span> <span class="s">&quot;n&#39;t&quot;</span> <span class="ow">in</span> <span class="n">word</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">True</span>
-    <span class="k">if</span> <span class="s">&quot;least&quot;</span> <span class="ow">in</span> <span class="n">input_words</span><span class="p">:</span>
-        <span class="n">i</span> <span class="o">=</span> <span class="n">input_words</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&quot;least&quot;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">input_words</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&quot;at&quot;</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">True</span>
-    <span class="k">return</span> <span class="bp">False</span>
+            <span class="k">if</span> <span class="s2">&quot;n&#39;t&quot;</span> <span class="ow">in</span> <span class="n">word</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="s2">&quot;least&quot;</span> <span class="ow">in</span> <span class="n">input_words</span><span class="p">:</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">input_words</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s2">&quot;least&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">input_words</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;at&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
 
-</div>
+
 <div class="viewcode-block" id="normalize"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.normalize">[docs]</a><span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mi">15</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Normalize the score to be between -1 and 1 using an alpha that</span>
 <span class="sd">    approximates the max expected value</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">norm_score</span> <span class="o">=</span> <span class="n">score</span><span class="o">/</span><span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">score</span><span class="o">*</span><span class="n">score</span><span class="p">)</span> <span class="o">+</span> <span class="n">alpha</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">norm_score</span>
+    <span class="k">return</span> <span class="n">norm_score</span></div>
 
-</div>
+
 <div class="viewcode-block" id="allcap_differential"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.allcap_differential">[docs]</a><span class="k">def</span> <span class="nf">allcap_differential</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether just some words in the input are ALL CAPS</span>
@@ -169,17 +172,17 @@
 <span class="sd">    :param list words: The words to inspect</span>
 <span class="sd">    :returns: `True` if some but not all items in `words` are ALL CAPS</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">is_different</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="n">is_different</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">allcap_words</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">words</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">word</span><span class="o">.</span><span class="n">isupper</span><span class="p">():</span>
             <span class="n">allcap_words</span> <span class="o">+=</span> <span class="mi">1</span>
     <span class="n">cap_differential</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">words</span><span class="p">)</span> <span class="o">-</span> <span class="n">allcap_words</span>
     <span class="k">if</span> <span class="n">cap_differential</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">cap_differential</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
-        <span class="n">is_different</span> <span class="o">=</span> <span class="bp">True</span>
-    <span class="k">return</span> <span class="n">is_different</span>
+        <span class="n">is_different</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="n">is_different</span></div>
 
-</div>
+
 <div class="viewcode-block" id="scalar_inc_dec"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.scalar_inc_dec">[docs]</a><span class="k">def</span> <span class="nf">scalar_inc_dec</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">valence</span><span class="p">,</span> <span class="n">is_cap_diff</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the preceding words increase, decrease, or negate/nullify the</span>
@@ -191,64 +194,65 @@
         <span class="n">scalar</span> <span class="o">=</span> <span class="n">BOOSTER_DICT</span><span class="p">[</span><span class="n">word_lower</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">valence</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">scalar</span> <span class="o">*=</span> <span class="o">-</span><span class="mi">1</span>
-        <span class="c">#check if booster/dampener word is in ALLCAPS (while others aren&#39;t)</span>
+        <span class="c1">#check if booster/dampener word is in ALLCAPS (while others aren&#39;t)</span>
         <span class="k">if</span> <span class="n">word</span><span class="o">.</span><span class="n">isupper</span><span class="p">()</span> <span class="ow">and</span> <span class="n">is_cap_diff</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">valence</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">scalar</span> <span class="o">+=</span> <span class="n">C_INCR</span>
             <span class="k">else</span><span class="p">:</span> <span class="n">scalar</span> <span class="o">-=</span> <span class="n">C_INCR</span>
-    <span class="k">return</span> <span class="n">scalar</span>
-</div>
+    <span class="k">return</span> <span class="n">scalar</span></div>
+
 <div class="viewcode-block" id="SentiText"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.SentiText">[docs]</a><span class="k">class</span> <span class="nc">SentiText</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Identify sentiment-relevant string-level properties of input text.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-            <span class="n">text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">))</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">text</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">words_and_emoticons</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words_and_emoticons</span><span class="p">()</span>
-        <span class="c"># doesn&#39;t separate words from\</span>
-        <span class="c"># adjacent punctuation (keeps emoticons &amp; contractions)</span>
+        <span class="c1"># doesn&#39;t separate words from\</span>
+        <span class="c1"># adjacent punctuation (keeps emoticons &amp; contractions)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">is_cap_diff</span> <span class="o">=</span> <span class="n">allcap_differential</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words_and_emoticons</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">_words_only</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">text_mod</span> <span class="o">=</span> <span class="n">REGEX_REMOVE_PUNCTUATION</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-        <span class="c"># removes punctuation (but loses emoticons &amp; contractions)</span>
-        <span class="n">words_only</span> <span class="o">=</span> <span class="n">text_mod</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="c"># get rid of empty items or single letter &quot;words&quot; like &#39;a&#39; and &#39;I&#39;</span>
-        <span class="n">words_only</span> <span class="o">=</span> <span class="p">[</span><span class="n">word</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">words_only</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">words_only</span>
+    <span class="k">def</span> <span class="nf">_words_plus_punc</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns mapping of form:</span>
+<span class="sd">        {</span>
+<span class="sd">            &#39;cat,&#39;: &#39;cat&#39;,</span>
+<span class="sd">            &#39;,cat&#39;: &#39;cat&#39;,</span>
+<span class="sd">        }</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">no_punc_text</span> <span class="o">=</span> <span class="n">REGEX_REMOVE_PUNCTUATION</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># removes punctuation (but loses emoticons &amp; contractions)</span>
+        <span class="n">words_only</span> <span class="o">=</span> <span class="n">no_punc_text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># remove singletons</span>
+        <span class="n">words_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span> <span class="n">w</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words_only</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="p">)</span>
+        <span class="c1"># the product gives (&#39;cat&#39;, &#39;,&#39;) and (&#39;,&#39;, &#39;cat&#39;)</span>
+        <span class="n">punc_before</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">p</span><span class="p">):</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">product</span><span class="p">(</span><span class="n">PUNC_LIST</span><span class="p">,</span> <span class="n">words_only</span><span class="p">)}</span>
+        <span class="n">punc_after</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">p</span><span class="p">):</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">product</span><span class="p">(</span><span class="n">words_only</span><span class="p">,</span> <span class="n">PUNC_LIST</span><span class="p">)}</span>
+        <span class="n">words_punc_dict</span> <span class="o">=</span> <span class="n">punc_before</span>
+        <span class="n">words_punc_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">punc_after</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">words_punc_dict</span>
 
     <span class="k">def</span> <span class="nf">_words_and_emoticons</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes leading and trailing puncutation</span>
+<span class="sd">        Leaves contractions and most emoticons</span>
+<span class="sd">            Does not preserve punc-plus-letter emoticons (e.g. :D)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">wes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-
-        <span class="c"># get rid of residual empty items or single letter words</span>
+        <span class="n">words_punc_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words_plus_punc</span><span class="p">()</span>
         <span class="n">wes</span> <span class="o">=</span> <span class="p">[</span><span class="n">we</span> <span class="k">for</span> <span class="n">we</span> <span class="ow">in</span> <span class="n">wes</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">we</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">we</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">wes</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">we</span> <span class="ow">in</span> <span class="n">words_punc_dict</span><span class="p">:</span>
+                <span class="n">wes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">words_punc_dict</span><span class="p">[</span><span class="n">we</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">wes</span></div>
 
-        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_words_only</span><span class="p">():</span>
-            <span class="k">for</span> <span class="n">punct</span> <span class="ow">in</span> <span class="n">PUNC_LIST</span><span class="p">:</span>
-                <span class="n">pword</span> <span class="o">=</span> <span class="n">punct</span> <span class="o">+</span> <span class="n">word</span>
-                <span class="n">x1</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">pword</span><span class="p">)</span>
-                <span class="k">while</span> <span class="n">x1</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">i</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">pword</span><span class="p">)</span>
-                    <span class="n">wes</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">pword</span><span class="p">)</span>
-                    <span class="n">wes</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">word</span><span class="p">)</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">pword</span><span class="p">)</span>
-
-                <span class="n">wordp</span> <span class="o">=</span> <span class="n">word</span> <span class="o">+</span> <span class="n">punct</span>
-                <span class="n">x2</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">wordp</span><span class="p">)</span>
-                <span class="k">while</span> <span class="n">x2</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">i</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">wordp</span><span class="p">)</span>
-                    <span class="n">wes</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">wordp</span><span class="p">)</span>
-                    <span class="n">wes</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">word</span><span class="p">)</span>
-                    <span class="n">x2</span> <span class="o">=</span> <span class="n">wes</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">wordp</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">wes</span>
-</div>
 <div class="viewcode-block" id="SentimentIntensityAnalyzer"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.SentimentIntensityAnalyzer">[docs]</a><span class="k">class</span> <span class="nc">SentimentIntensityAnalyzer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Give a sentiment intensity score to sentences.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lexicon_file</span><span class="o">=</span><span class="s">&quot;sentiment/vader_lexicon.zip/vader_lexicon/vader_lexicon.txt&quot;</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lexicon_file</span><span class="o">=</span><span class="s2">&quot;sentiment/vader_lexicon.zip/vader_lexicon/vader_lexicon.txt&quot;</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lexicon_file</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">lexicon_file</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_lex_dict</span><span class="p">()</span>
 
@@ -257,11 +261,11 @@
 <span class="sd">        Convert lexicon file to a dictionary</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">lex_dict</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon_file</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):</span>
-            <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">measure</span><span class="p">)</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon_file</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">):</span>
+            <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">measure</span><span class="p">)</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span>
             <span class="n">lex_dict</span><span class="p">[</span><span class="n">word</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">measure</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">lex_dict</span>
-</div>
+        <span class="k">return</span> <span class="n">lex_dict</span></div>
+
 <div class="viewcode-block" id="SentimentIntensityAnalyzer.polarity_scores"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.SentimentIntensityAnalyzer.polarity_scores">[docs]</a>    <span class="k">def</span> <span class="nf">polarity_scores</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a float for sentiment strength based on the input text.</span>
@@ -269,15 +273,15 @@
 <span class="sd">        valence.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">sentitext</span> <span class="o">=</span> <span class="n">SentiText</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
-        <span class="c">#text, words_and_emoticons, is_cap_diff = self.preprocess(text)</span>
+        <span class="c1">#text, words_and_emoticons, is_cap_diff = self.preprocess(text)</span>
 
         <span class="n">sentiments</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">words_and_emoticons</span> <span class="o">=</span> <span class="n">sentitext</span><span class="o">.</span><span class="n">words_and_emoticons</span>
         <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">words_and_emoticons</span><span class="p">:</span>
             <span class="n">valence</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="n">i</span> <span class="o">=</span> <span class="n">words_and_emoticons</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
-            <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">item</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&quot;kind&quot;</span> <span class="ow">and</span> \
-                <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&quot;of&quot;</span><span class="p">)</span> <span class="ow">or</span> \
+            <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">item</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;kind&quot;</span> <span class="ow">and</span> \
+                <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;of&quot;</span><span class="p">)</span> <span class="ow">or</span> \
                 <span class="n">item</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">BOOSTER_DICT</span><span class="p">:</span>
                 <span class="n">sentiments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">valence</span><span class="p">)</span>
                 <span class="k">continue</span>
@@ -286,17 +290,17 @@
 
         <span class="n">sentiments</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_but_check</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">sentiments</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_valence</span><span class="p">(</span><span class="n">sentiments</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
-</div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_valence</span><span class="p">(</span><span class="n">sentiments</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span></div>
+
 <div class="viewcode-block" id="SentimentIntensityAnalyzer.sentiment_valence"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.SentimentIntensityAnalyzer.sentiment_valence">[docs]</a>    <span class="k">def</span> <span class="nf">sentiment_valence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valence</span><span class="p">,</span> <span class="n">sentitext</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">sentiments</span><span class="p">):</span>
         <span class="n">is_cap_diff</span> <span class="o">=</span> <span class="n">sentitext</span><span class="o">.</span><span class="n">is_cap_diff</span>
         <span class="n">words_and_emoticons</span> <span class="o">=</span> <span class="n">sentitext</span><span class="o">.</span><span class="n">words_and_emoticons</span>
         <span class="n">item_lowercase</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">item_lowercase</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span><span class="p">:</span>
-            <span class="c">#get the sentiment valence</span>
+            <span class="c1">#get the sentiment valence</span>
             <span class="n">valence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span><span class="p">[</span><span class="n">item_lowercase</span><span class="p">]</span>
 
-            <span class="c">#check if sentiment laden word is in ALL CAPS (while others aren&#39;t)</span>
+            <span class="c1">#check if sentiment laden word is in ALL CAPS (while others aren&#39;t)</span>
             <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">isupper</span><span class="p">()</span> <span class="ow">and</span> <span class="n">is_cap_diff</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">valence</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">valence</span> <span class="o">+=</span> <span class="n">C_INCR</span>
@@ -305,9 +309,9 @@
 
             <span class="k">for</span> <span class="n">start_i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="n">start_i</span> <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="p">(</span><span class="n">start_i</span><span class="o">+</span><span class="mi">1</span><span class="p">)]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span><span class="p">:</span>
-                    <span class="c"># dampen the scalar modifier of preceding words and emoticons</span>
-                    <span class="c"># (excluding the ones that immediately preceed the item) based</span>
-                    <span class="c"># on their distance from the current item.</span>
+                    <span class="c1"># dampen the scalar modifier of preceding words and emoticons</span>
+                    <span class="c1"># (excluding the ones that immediately preceed the item) based</span>
+                    <span class="c1"># on their distance from the current item.</span>
                     <span class="n">s</span> <span class="o">=</span> <span class="n">scalar_inc_dec</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="p">(</span><span class="n">start_i</span><span class="o">+</span><span class="mi">1</span><span class="p">)],</span> <span class="n">valence</span><span class="p">,</span> <span class="n">is_cap_diff</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">start_i</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">s</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
                         <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="o">*</span><span class="mf">0.95</span>
@@ -318,36 +322,36 @@
                     <span class="k">if</span> <span class="n">start_i</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
                         <span class="n">valence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_idioms_check</span><span class="p">(</span><span class="n">valence</span><span class="p">,</span> <span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                        <span class="c"># future work: consider other sentiment-laden idioms</span>
-                        <span class="c"># other_idioms =</span>
-                        <span class="c"># {&quot;back handed&quot;: -2, &quot;blow smoke&quot;: -2, &quot;blowing smoke&quot;: -2,</span>
-                        <span class="c">#  &quot;upper hand&quot;: 1, &quot;break a leg&quot;: 2,</span>
-                        <span class="c">#  &quot;cooking with gas&quot;: 2, &quot;in the black&quot;: 2, &quot;in the red&quot;: -2,</span>
-                        <span class="c">#  &quot;on the ball&quot;: 2,&quot;under the weather&quot;: -2}</span>
+                        <span class="c1"># future work: consider other sentiment-laden idioms</span>
+                        <span class="c1"># other_idioms =</span>
+                        <span class="c1"># {&quot;back handed&quot;: -2, &quot;blow smoke&quot;: -2, &quot;blowing smoke&quot;: -2,</span>
+                        <span class="c1">#  &quot;upper hand&quot;: 1, &quot;break a leg&quot;: 2,</span>
+                        <span class="c1">#  &quot;cooking with gas&quot;: 2, &quot;in the black&quot;: 2, &quot;in the red&quot;: -2,</span>
+                        <span class="c1">#  &quot;on the ball&quot;: 2,&quot;under the weather&quot;: -2}</span>
 
             <span class="n">valence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_least_check</span><span class="p">(</span><span class="n">valence</span><span class="p">,</span> <span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
         <span class="n">sentiments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">valence</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">sentiments</span>
-</div>
+        <span class="k">return</span> <span class="n">sentiments</span></div>
+
     <span class="k">def</span> <span class="nf">_least_check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valence</span><span class="p">,</span> <span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
-        <span class="c"># check for negation case using &quot;least&quot;</span>
+        <span class="c1"># check for negation case using &quot;least&quot;</span>
         <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span> \
-           <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&quot;least&quot;</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s">&quot;at&quot;</span> <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s">&quot;very&quot;</span><span class="p">:</span>
+           <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;least&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;at&quot;</span> <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;very&quot;</span><span class="p">:</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="n">N_SCALAR</span>
         <span class="k">elif</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lexicon</span> \
-             <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&quot;least&quot;</span><span class="p">:</span>
+             <span class="ow">and</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;least&quot;</span><span class="p">:</span>
             <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="n">N_SCALAR</span>
         <span class="k">return</span> <span class="n">valence</span>
 
     <span class="k">def</span> <span class="nf">_but_check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">sentiments</span><span class="p">):</span>
-        <span class="c"># check for modification in sentiment due to contrastive conjunction &#39;but&#39;</span>
-        <span class="k">if</span> <span class="s">&#39;but&#39;</span> <span class="ow">in</span> <span class="n">words_and_emoticons</span> <span class="ow">or</span> <span class="s">&#39;BUT&#39;</span> <span class="ow">in</span> <span class="n">words_and_emoticons</span><span class="p">:</span>
+        <span class="c1"># check for modification in sentiment due to contrastive conjunction &#39;but&#39;</span>
+        <span class="k">if</span> <span class="s1">&#39;but&#39;</span> <span class="ow">in</span> <span class="n">words_and_emoticons</span> <span class="ow">or</span> <span class="s1">&#39;BUT&#39;</span> <span class="ow">in</span> <span class="n">words_and_emoticons</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="n">bi</span> <span class="o">=</span> <span class="n">words_and_emoticons</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;but&#39;</span><span class="p">)</span>
+                <span class="n">bi</span> <span class="o">=</span> <span class="n">words_and_emoticons</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;but&#39;</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                <span class="n">bi</span> <span class="o">=</span> <span class="n">words_and_emoticons</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s">&#39;BUT&#39;</span><span class="p">)</span>
+                <span class="n">bi</span> <span class="o">=</span> <span class="n">words_and_emoticons</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;BUT&#39;</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">sentiment</span> <span class="ow">in</span> <span class="n">sentiments</span><span class="p">:</span>
                 <span class="n">si</span> <span class="o">=</span> <span class="n">sentiments</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">sentiment</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">si</span> <span class="o">&lt;</span> <span class="n">bi</span><span class="p">:</span>
@@ -359,17 +363,17 @@
         <span class="k">return</span> <span class="n">sentiments</span>
 
     <span class="k">def</span> <span class="nf">_idioms_check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">valence</span><span class="p">,</span> <span class="n">words_and_emoticons</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
-        <span class="n">onezero</span> <span class="o">=</span> <span class="s">&quot;{0} {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="n">onezero</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
-        <span class="n">twoonezero</span> <span class="o">=</span> <span class="s">&quot;{0} {1} {2}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span>
+        <span class="n">twoonezero</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2"> </span><span class="si">{2}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span>
                                        <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
-        <span class="n">twoone</span> <span class="o">=</span> <span class="s">&quot;{0} {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">twoone</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 
-        <span class="n">threetwoone</span> <span class="o">=</span> <span class="s">&quot;{0} {1} {2}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">],</span>
+        <span class="n">threetwoone</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2"> </span><span class="si">{2}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">],</span>
                                         <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 
-        <span class="n">threetwo</span> <span class="o">=</span> <span class="s">&quot;{0} {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">threetwo</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span>
 
         <span class="n">sequences</span> <span class="o">=</span> <span class="p">[</span><span class="n">onezero</span><span class="p">,</span> <span class="n">twoonezero</span><span class="p">,</span> <span class="n">twoone</span><span class="p">,</span> <span class="n">threetwoone</span><span class="p">,</span> <span class="n">threetwo</span><span class="p">]</span>
 
@@ -379,15 +383,15 @@
                 <span class="k">break</span>
 
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span> <span class="o">&gt;</span> <span class="n">i</span><span class="p">:</span>
-            <span class="n">zeroone</span> <span class="o">=</span> <span class="s">&quot;{0} {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">zeroone</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
             <span class="k">if</span> <span class="n">zeroone</span> <span class="ow">in</span> <span class="n">SPECIAL_CASE_IDIOMS</span><span class="p">:</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">SPECIAL_CASE_IDIOMS</span><span class="p">[</span><span class="n">zeroone</span><span class="p">]</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span> <span class="o">&gt;</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:</span>
-            <span class="n">zeroonetwo</span> <span class="o">=</span> <span class="s">&quot;{0} {1} {2}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">])</span>
+            <span class="n">zeroonetwo</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> </span><span class="si">{1}</span><span class="s2"> </span><span class="si">{2}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">])</span>
             <span class="k">if</span> <span class="n">zeroonetwo</span> <span class="ow">in</span> <span class="n">SPECIAL_CASE_IDIOMS</span><span class="p">:</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">SPECIAL_CASE_IDIOMS</span><span class="p">[</span><span class="n">zeroonetwo</span><span class="p">]</span>
 
-        <span class="c"># check for booster/dampener bi-grams such as &#39;sort of&#39; or &#39;kind of&#39;</span>
+        <span class="c1"># check for booster/dampener bi-grams such as &#39;sort of&#39; or &#39;kind of&#39;</span>
         <span class="k">if</span> <span class="n">threetwo</span> <span class="ow">in</span> <span class="n">BOOSTER_DICT</span> <span class="ow">or</span> <span class="n">twoone</span> <span class="ow">in</span> <span class="n">BOOSTER_DICT</span><span class="p">:</span>
             <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">+</span><span class="n">B_DECR</span>
         <span class="k">return</span> <span class="n">valence</span>
@@ -397,61 +401,61 @@
             <span class="k">if</span> <span class="n">negated</span><span class="p">([</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]]):</span>
                     <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="n">N_SCALAR</span>
         <span class="k">if</span> <span class="n">start_i</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;never&quot;</span> <span class="ow">and</span>\
-               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;so&quot;</span> <span class="ow">or</span>
-                <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;this&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;never&quot;</span> <span class="ow">and</span>\
+               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;so&quot;</span> <span class="ow">or</span>
+                <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;this&quot;</span><span class="p">):</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="mf">1.5</span>
             <span class="k">elif</span> <span class="n">negated</span><span class="p">([</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="p">(</span><span class="n">start_i</span><span class="o">+</span><span class="mi">1</span><span class="p">)]]):</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="n">N_SCALAR</span>
         <span class="k">if</span> <span class="n">start_i</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;never&quot;</span> <span class="ow">and</span> \
-               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;so&quot;</span> <span class="ow">or</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;this&quot;</span><span class="p">)</span> <span class="ow">or</span> \
-               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;so&quot;</span> <span class="ow">or</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;this&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;never&quot;</span> <span class="ow">and</span> \
+               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;so&quot;</span> <span class="ow">or</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;this&quot;</span><span class="p">)</span> <span class="ow">or</span> \
+               <span class="p">(</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;so&quot;</span> <span class="ow">or</span> <span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;this&quot;</span><span class="p">):</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="mf">1.25</span>
             <span class="k">elif</span> <span class="n">negated</span><span class="p">([</span><span class="n">words_and_emoticons</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="p">(</span><span class="n">start_i</span><span class="o">+</span><span class="mi">1</span><span class="p">)]]):</span>
                 <span class="n">valence</span> <span class="o">=</span> <span class="n">valence</span><span class="o">*</span><span class="n">N_SCALAR</span>
         <span class="k">return</span> <span class="n">valence</span>
 
     <span class="k">def</span> <span class="nf">_punctuation_emphasis</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sum_s</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
-        <span class="c"># add emphasis from exclamation points and question marks</span>
+        <span class="c1"># add emphasis from exclamation points and question marks</span>
         <span class="n">ep_amplifier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_amplify_ep</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
         <span class="n">qm_amplifier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_amplify_qm</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
         <span class="n">punct_emph_amplifier</span> <span class="o">=</span> <span class="n">ep_amplifier</span><span class="o">+</span><span class="n">qm_amplifier</span>
         <span class="k">return</span> <span class="n">punct_emph_amplifier</span>
 
     <span class="k">def</span> <span class="nf">_amplify_ep</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
-        <span class="c"># check for added emphasis resulting from exclamation points (up to 4 of them)</span>
-        <span class="n">ep_count</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&quot;!&quot;</span><span class="p">)</span>
+        <span class="c1"># check for added emphasis resulting from exclamation points (up to 4 of them)</span>
+        <span class="n">ep_count</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s2">&quot;!&quot;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">ep_count</span> <span class="o">&gt;</span> <span class="mi">4</span><span class="p">:</span>
             <span class="n">ep_count</span> <span class="o">=</span> <span class="mi">4</span>
-        <span class="c"># (empirically derived mean sentiment intensity rating increase for</span>
-        <span class="c"># exclamation points)</span>
+        <span class="c1"># (empirically derived mean sentiment intensity rating increase for</span>
+        <span class="c1"># exclamation points)</span>
         <span class="n">ep_amplifier</span> <span class="o">=</span> <span class="n">ep_count</span><span class="o">*</span><span class="mf">0.292</span>
         <span class="k">return</span> <span class="n">ep_amplifier</span>
 
     <span class="k">def</span> <span class="nf">_amplify_qm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
-        <span class="c"># check for added emphasis resulting from question marks (2 or 3+)</span>
-        <span class="n">qm_count</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&quot;?&quot;</span><span class="p">)</span>
+        <span class="c1"># check for added emphasis resulting from question marks (2 or 3+)</span>
+        <span class="n">qm_count</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s2">&quot;?&quot;</span><span class="p">)</span>
         <span class="n">qm_amplifier</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">if</span> <span class="n">qm_count</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">qm_count</span> <span class="o">&lt;=</span> <span class="mi">3</span><span class="p">:</span>
-                <span class="c"># (empirically derived mean sentiment intensity rating increase for</span>
-                <span class="c"># question marks)</span>
+                <span class="c1"># (empirically derived mean sentiment intensity rating increase for</span>
+                <span class="c1"># question marks)</span>
                 <span class="n">qm_amplifier</span> <span class="o">=</span> <span class="n">qm_count</span><span class="o">*</span><span class="mf">0.18</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">qm_amplifier</span> <span class="o">=</span> <span class="mf">0.96</span>
         <span class="k">return</span> <span class="n">qm_amplifier</span>
 
     <span class="k">def</span> <span class="nf">_sift_sentiment_scores</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentiments</span><span class="p">):</span>
-        <span class="c"># want separate positive versus negative sentiment scores</span>
+        <span class="c1"># want separate positive versus negative sentiment scores</span>
         <span class="n">pos_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
         <span class="n">neg_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
         <span class="n">neu_count</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">for</span> <span class="n">sentiment_score</span> <span class="ow">in</span> <span class="n">sentiments</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">sentiment_score</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">pos_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sentiment_score</span><span class="p">)</span> <span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="c"># compensates for neutral words that are counted as 1</span>
+                <span class="n">pos_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sentiment_score</span><span class="p">)</span> <span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="c1"># compensates for neutral words that are counted as 1</span>
             <span class="k">if</span> <span class="n">sentiment_score</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">neg_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sentiment_score</span><span class="p">)</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c"># when used with math.fabs(), compensates for neutrals</span>
+                <span class="n">neg_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sentiment_score</span><span class="p">)</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c1"># when used with math.fabs(), compensates for neutrals</span>
             <span class="k">if</span> <span class="n">sentiment_score</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">neu_count</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="n">pos_sum</span><span class="p">,</span> <span class="n">neg_sum</span><span class="p">,</span> <span class="n">neu_count</span>
@@ -459,7 +463,7 @@
 <div class="viewcode-block" id="SentimentIntensityAnalyzer.score_valence"><a class="viewcode-back" href="../../../api/nltk.sentiment.html#nltk.sentiment.vader.SentimentIntensityAnalyzer.score_valence">[docs]</a>    <span class="k">def</span> <span class="nf">score_valence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentiments</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">sentiments</span><span class="p">:</span>
             <span class="n">sum_s</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">sentiments</span><span class="p">))</span>
-            <span class="c"># compute and add emphasis from punctuation in text</span>
+            <span class="c1"># compute and add emphasis from punctuation in text</span>
             <span class="n">punct_emph_amplifier</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_punctuation_emphasis</span><span class="p">(</span><span class="n">sum_s</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">sum_s</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">sum_s</span> <span class="o">+=</span> <span class="n">punct_emph_amplifier</span>
@@ -467,7 +471,7 @@
                 <span class="n">sum_s</span> <span class="o">-=</span> <span class="n">punct_emph_amplifier</span>
 
             <span class="n">compound</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">sum_s</span><span class="p">)</span>
-            <span class="c"># discriminate between positive, negative and neutral sentiment scores</span>
+            <span class="c1"># discriminate between positive, negative and neutral sentiment scores</span>
             <span class="n">pos_sum</span><span class="p">,</span> <span class="n">neg_sum</span><span class="p">,</span> <span class="n">neu_count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sift_sentiment_scores</span><span class="p">(</span><span class="n">sentiments</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">pos_sum</span> <span class="o">&gt;</span> <span class="n">math</span><span class="o">.</span><span class="n">fabs</span><span class="p">(</span><span class="n">neg_sum</span><span class="p">):</span>
@@ -487,10 +491,10 @@
             <span class="n">neu</span> <span class="o">=</span> <span class="mf">0.0</span>
 
         <span class="n">sentiment_dict</span> <span class="o">=</span> \
-            <span class="p">{</span><span class="s">&quot;neg&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">neg</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
-             <span class="s">&quot;neu&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">neu</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
-             <span class="s">&quot;pos&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
-             <span class="s">&quot;compound&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">compound</span><span class="p">,</span> <span class="mi">4</span><span class="p">)}</span>
+            <span class="p">{</span><span class="s2">&quot;neg&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">neg</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+             <span class="s2">&quot;neu&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">neu</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+             <span class="s2">&quot;pos&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+             <span class="s2">&quot;compound&quot;</span> <span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">compound</span><span class="p">,</span> <span class="mi">4</span><span class="p">)}</span>
 
         <span class="k">return</span> <span class="n">sentiment_dict</span></div></div>
 </pre></div>
@@ -520,9 +524,6 @@
                 <input type="hidden" name="check_keywords" value="yes" />
                 <input type="hidden" name="area" value="default" />
             </form>
-            <p class="searchtip" style="font-size: 90%">
-                Enter search terms or a module, class or function name.
-            </p>
           </div>
         </div>
         <div class="clearer"></div>
@@ -545,9 +546,9 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &copy; Copyright 2015, NLTK Project.
-      Last updated on Apr 09, 2016.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+        &#169; Copyright 2015, NLTK Project.
+      Last updated on Jan 02, 2017.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.1.
     </div>
         </div>
         <div class="clearer"></div>

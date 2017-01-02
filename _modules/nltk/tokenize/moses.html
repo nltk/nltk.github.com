@@ -1,0 +1,718 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>nltk.tokenize.moses &#8212; NLTK 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+  </head>
+  <body role="document">
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.0 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.tokenize.moses</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="c1"># Natural Language Toolkit:</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2015 NLTK Project</span>
+<span class="c1"># Author: Pidong Wang, Josh Schroeder, Ondrej Bojar, based on code by Philipp Koehn</span>
+<span class="c1"># Contributors: Liling Tan, Martijn Pieters, Wiktor Stribizew</span>
+<span class="c1">#</span>
+<span class="c1"># URL: &lt;http://nltk.sourceforge.net&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">six</span> <span class="k">import</span> <span class="n">text_type</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tokenize.api</span> <span class="k">import</span> <span class="n">TokenizerI</span>
+<span class="kn">from</span> <span class="nn">nltk.tokenize.util</span> <span class="k">import</span> <span class="n">is_cjk</span>
+<span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">perluniprops</span><span class="p">,</span> <span class="n">nonbreaking_prefixes</span>
+
+
+<div class="viewcode-block" id="MosesTokenizer"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer">[docs]</a><span class="k">class</span> <span class="nc">MosesTokenizer</span><span class="p">(</span><span class="n">TokenizerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This is a Python port of the Moses Tokenizer from</span>
+<span class="sd">    https://github.com/moses-smt/mosesdecoder/blob/master/scripts/tokenizer/tokenizer.perl</span>
+
+<span class="sd">    &gt;&gt;&gt; tokenizer = MosesTokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; text = u&#39;This, is a sentence with weird\xbb symbols\u2026 appearing everywhere\xbf&#39;</span>
+<span class="sd">    &gt;&gt;&gt; expected_tokenized = u&#39;This , is a sentence with weird \xbb symbols \u2026 appearing everywhere \xbf&#39;</span>
+<span class="sd">    &gt;&gt;&gt; tokenized_text = tokenizer.tokenize(text, return_str=True)</span>
+<span class="sd">    &gt;&gt;&gt; tokenized_text == expected_tokenized</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; tokenizer.tokenize(text) == [u&#39;This&#39;, u&#39;,&#39;, u&#39;is&#39;, u&#39;a&#39;, u&#39;sentence&#39;, u&#39;with&#39;, u&#39;weird&#39;, u&#39;\xbb&#39;, u&#39;symbols&#39;, u&#39;\u2026&#39;, u&#39;appearing&#39;, u&#39;everywhere&#39;, u&#39;\xbf&#39;]</span>
+<span class="sd">    True</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Perl Unicode Properties character sets.</span>
+    <span class="n">IsN</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsN&#39;</span><span class="p">)))</span>
+    <span class="n">IsAlnum</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsAlnum&#39;</span><span class="p">)))</span>
+    <span class="n">IsSc</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsSc&#39;</span><span class="p">)))</span>
+    <span class="n">IsSo</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsSo&#39;</span><span class="p">)))</span>
+    <span class="n">IsAlpha</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsAlpha&#39;</span><span class="p">)))</span>
+    <span class="n">IsLower</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsLower&#39;</span><span class="p">)))</span>
+
+    <span class="c1"># Remove ASCII junk.</span>
+    <span class="n">DEDUPLICATE_SPACE</span> <span class="o">=</span> <span class="s1">r&#39;\s+&#39;</span><span class="p">,</span> <span class="s1">r&#39; &#39;</span>
+    <span class="n">ASCII_JUNK</span> <span class="o">=</span> <span class="s1">r&#39;[\000-\037]&#39;</span><span class="p">,</span> <span class="s1">r&#39;&#39;</span>
+
+    <span class="c1"># Neurotic Perl heading space, multi-space and trailing space chomp.</span>
+    <span class="c1"># These regexes are kept for reference purposes and shouldn&#39;t be used!!</span>
+    <span class="n">MID_STRIP</span> <span class="o">=</span> <span class="s2">r&quot; +&quot;</span><span class="p">,</span> <span class="s2">r&quot; &quot;</span>     <span class="c1"># Use DEDUPLICATE_SPACE instead.</span>
+    <span class="n">LEFT_STRIP</span> <span class="o">=</span> <span class="s2">r&quot;^ &quot;</span><span class="p">,</span> <span class="s2">r&quot;&quot;</span>     <span class="c1"># Uses text.lstrip() instead.</span>
+    <span class="n">RIGHT_STRIP</span> <span class="o">=</span> <span class="s2">r&quot; $&quot;</span><span class="p">,</span> <span class="s2">r&quot;&quot;</span>    <span class="c1"># Uses text.rstrip() instead.</span>
+
+    <span class="c1"># Pad all &quot;other&quot; special characters not in IsAlnum.</span>
+    <span class="n">PAD_NOT_ISALNUM</span> <span class="o">=</span> <span class="s1">u&#39;([^</span><span class="si">{}</span><span class="s1">\s\.</span><span class="se">\&#39;</span><span class="s1">\`\,\-])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">IsAlnum</span><span class="p">),</span> <span class="s1">r&#39; \1 &#39;</span>
+
+    <span class="c1"># Splits all hypens (regardless of circumstances), e.g.</span>
+    <span class="c1"># &#39;foo -- bar&#39; -&gt; &#39;foo @-@ @-@ bar&#39; , &#39;foo-bar&#39; -&gt; &#39;foo @-@ bar&#39;</span>
+    <span class="n">AGGRESSIVE_HYPHEN_SPLIT</span> <span class="o">=</span> <span class="s1">u&#39;([</span><span class="si">{alphanum}</span><span class="s1">])\-(?=[</span><span class="si">{alphanum}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alphanum</span><span class="o">=</span><span class="n">IsAlnum</span><span class="p">),</span> <span class="s1">r&#39;\1 \@-\@ &#39;</span>
+
+    <span class="c1"># Make multi-dots stay together.</span>
+    <span class="n">REPLACE_DOT_WITH_LITERALSTRING_1</span> <span class="o">=</span> <span class="s1">r&#39;\.([\.]+)&#39;</span><span class="p">,</span> <span class="s1">&#39; DOTMULTI</span><span class="se">\1</span><span class="s1">&#39;</span>
+    <span class="n">REPLACE_DOT_WITH_LITERALSTRING_2</span> <span class="o">=</span> <span class="s1">r&#39;DOTMULTI\.([^\.])&#39;</span><span class="p">,</span> <span class="s1">&#39;DOTDOTMULTI </span><span class="se">\1</span><span class="s1">&#39;</span>
+    <span class="n">REPLACE_DOT_WITH_LITERALSTRING_3</span> <span class="o">=</span> <span class="s1">r&#39;DOTMULTI\.&#39;</span><span class="p">,</span> <span class="s1">&#39;DOTDOTMULTI&#39;</span>
+
+    <span class="c1"># Separate out &quot;,&quot; except if within numbers (5,300)</span>
+    <span class="c1"># e.g.  A,B,C,D,E &gt; A , B,C , D,E</span>
+    <span class="c1"># First application uses up B so rule can&#39;t see B,C</span>
+    <span class="c1"># two-step version here may create extra spaces but these are removed later</span>
+    <span class="c1"># will also space digit,letter or letter,digit forms (redundant with next section)</span>
+    <span class="n">COMMA_SEPARATE_1</span> <span class="o">=</span> <span class="s1">u&#39;([^</span><span class="si">{}</span><span class="s1">])[,]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">IsN</span><span class="p">),</span> <span class="s1">r&#39;\1 , &#39;</span>
+    <span class="n">COMMA_SEPARATE_2</span> <span class="o">=</span> <span class="s1">u&#39;[,]([^</span><span class="si">{}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">IsN</span><span class="p">),</span> <span class="s1">r&#39; , \1&#39;</span>
+
+    <span class="c1"># Attempt to get correct directional quotes.</span>
+    <span class="n">DIRECTIONAL_QUOTE_1</span> <span class="o">=</span> <span class="s1">r&#39;^``&#39;</span><span class="p">,</span>               <span class="s1">r&#39;`` &#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_2</span> <span class="o">=</span> <span class="s1">r&#39;^&quot;&#39;</span><span class="p">,</span>                <span class="s1">r&#39;`` &#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_3</span> <span class="o">=</span> <span class="s1">r&#39;^`([^`])&#39;</span><span class="p">,</span>          <span class="s1">r&#39;` \1&#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_4</span> <span class="o">=</span> <span class="s2">r&quot;^&#39;&quot;</span><span class="p">,</span>                <span class="s1">r&#39;`  &#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_5</span> <span class="o">=</span> <span class="s1">r&#39;([ ([{&lt;])&quot;&#39;</span><span class="p">,</span>        <span class="s1">r&#39;\1 `` &#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_6</span> <span class="o">=</span> <span class="s1">r&#39;([ ([{&lt;])``&#39;</span><span class="p">,</span>       <span class="s1">r&#39;\1 `` &#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_7</span> <span class="o">=</span> <span class="s1">r&#39;([ ([{&lt;])`([^`])&#39;</span><span class="p">,</span>  <span class="s1">r&#39;\1 ` \2&#39;</span>
+    <span class="n">DIRECTIONAL_QUOTE_8</span> <span class="o">=</span> <span class="s2">r&quot;([ ([{&lt;])&#39;&quot;</span><span class="p">,</span>        <span class="s1">r&#39;\1 ` &#39;</span>
+
+    <span class="c1"># Replace ... with _ELLIPSIS_</span>
+    <span class="n">REPLACE_ELLIPSIS</span> <span class="o">=</span> <span class="s1">r&#39;\.\.\.&#39;</span><span class="p">,</span>       <span class="s1">r&#39; _ELLIPSIS_ &#39;</span>
+    <span class="c1"># Restore _ELLIPSIS_ with ...</span>
+    <span class="n">RESTORE_ELLIPSIS</span> <span class="o">=</span> <span class="s1">r&#39;_ELLIPSIS_&#39;</span><span class="p">,</span>   <span class="s1">r&#39;\.\.\.&#39;</span>
+
+    <span class="c1"># Pad , with tailing space except if within numbers, e.g. 5,300</span>
+    <span class="c1"># These are used in nltk.tokenize.moses.penn_tokenize()</span>
+    <span class="n">COMMA_1</span> <span class="o">=</span> <span class="s1">u&#39;([^</span><span class="si">{numbers}</span><span class="s1">])[,]([^</span><span class="si">{numbers}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">numbers</span><span class="o">=</span><span class="n">IsN</span><span class="p">),</span> <span class="s1">r&#39;\1 , \2&#39;</span>
+    <span class="n">COMMA_2</span> <span class="o">=</span> <span class="s1">u&#39;([</span><span class="si">{numbers}</span><span class="s1">])[,]([^</span><span class="si">{numbers}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">numbers</span><span class="o">=</span><span class="n">IsN</span><span class="p">),</span> <span class="s1">r&#39;\1 , \2&#39;</span>
+    <span class="n">COMMA_3</span> <span class="o">=</span> <span class="s1">u&#39;([^</span><span class="si">{numbers}</span><span class="s1">])[,]([</span><span class="si">{numbers}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">numbers</span><span class="o">=</span><span class="n">IsN</span><span class="p">),</span> <span class="s1">r&#39;\1 , \2&#39;</span>
+
+    <span class="c1"># Pad unicode symbols with spaces.</span>
+    <span class="n">SYMBOLS</span> <span class="o">=</span> <span class="s1">u&#39;([;:@#\$%&amp;</span><span class="si">{}{}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">IsSc</span><span class="p">,</span> <span class="n">IsSo</span><span class="p">),</span> <span class="s1">r&#39; \1 &#39;</span>
+
+    <span class="c1"># Separate out intra-token slashes.  PTB tokenization doesn&#39;t do this, so</span>
+    <span class="c1"># the tokens should be merged prior to parsing with a PTB-trained parser.</span>
+    <span class="c1"># e.g. &quot;and/or&quot; -&gt; &quot;and @/@ or&quot;</span>
+    <span class="n">INTRATOKEN_SLASHES</span> <span class="o">=</span> <span class="s1">u&#39;([</span><span class="si">{alphanum}</span><span class="s1">])\/([</span><span class="si">{alphanum}</span><span class="s1">])&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alphanum</span><span class="o">=</span><span class="n">IsAlnum</span><span class="p">),</span> <span class="s1">r&#39;$1 \@\/\@ $2&#39;</span>
+
+    <span class="c1"># Splits final period at end of string.</span>
+    <span class="n">FINAL_PERIOD</span> <span class="o">=</span> <span class="s2">r&quot;&quot;&quot;([^.])([.])([\]\)}&gt;&quot;&#39;]*) ?$&quot;&quot;&quot;</span><span class="p">,</span> <span class="s1">r&#39;\1 \2\3&#39;</span>
+    <span class="c1"># Pad all question marks and exclamation marks with spaces.</span>
+    <span class="n">PAD_QUESTION_EXCLAMATION_MARK</span> <span class="o">=</span> <span class="s1">r&#39;([?!])&#39;</span><span class="p">,</span> <span class="s1">r&#39; \1 &#39;</span>
+
+    <span class="c1"># Handles parentheses, brackets and converts them to PTB symbols.</span>
+    <span class="n">PAD_PARENTHESIS</span> <span class="o">=</span> <span class="s1">r&#39;([\]\[\(\)</span><span class="si">{}</span><span class="s1">&lt;&gt;])&#39;</span><span class="p">,</span> <span class="s1">r&#39; \1 &#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_1</span> <span class="o">=</span> <span class="s1">r&#39;\(&#39;</span><span class="p">,</span> <span class="s1">&#39;-LRB-&#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_2</span> <span class="o">=</span> <span class="s1">r&#39;\)&#39;</span><span class="p">,</span> <span class="s1">&#39;-RRB-&#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_3</span> <span class="o">=</span> <span class="s1">r&#39;\[&#39;</span><span class="p">,</span> <span class="s1">&#39;-LSB-&#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_4</span> <span class="o">=</span> <span class="s1">r&#39;\]&#39;</span><span class="p">,</span> <span class="s1">&#39;-RSB-&#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_5</span> <span class="o">=</span> <span class="s1">r&#39;\{&#39;</span><span class="p">,</span> <span class="s1">&#39;-LCB-&#39;</span>
+    <span class="n">CONVERT_PARENTHESIS_6</span> <span class="o">=</span> <span class="s1">r&#39;\}&#39;</span><span class="p">,</span> <span class="s1">&#39;-RCB-&#39;</span>
+
+    <span class="c1"># Pads double dashes with spaces.</span>
+    <span class="n">PAD_DOUBLE_DASHES</span> <span class="o">=</span> <span class="s1">r&#39;--&#39;</span><span class="p">,</span> <span class="s1">&#39; -- &#39;</span>
+
+    <span class="c1"># Adds spaces to start and end of string to simplify further regexps.</span>
+    <span class="n">PAD_START_OF_STR</span> <span class="o">=</span> <span class="s1">r&#39;^&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span>
+    <span class="n">PAD_END_OF_STR</span> <span class="o">=</span> <span class="s1">r&#39;$&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span>
+
+    <span class="c1"># Converts double quotes to two single quotes and pad with spaces.</span>
+    <span class="n">CONVERT_DOUBLE_TO_SINGLE_QUOTES</span> <span class="o">=</span> <span class="s1">r&#39;&quot;&#39;</span><span class="p">,</span> <span class="s2">&quot; &#39;&#39; &quot;</span>
+    <span class="c1"># Handles single quote in possessives or close-single-quote.</span>
+    <span class="n">HANDLES_SINGLE_QUOTES</span> <span class="o">=</span> <span class="s2">r&quot;([^&#39;])&#39; &quot;</span><span class="p">,</span> <span class="s2">r&quot;\1 &#39; &quot;</span>
+
+    <span class="c1"># Pad apostrophe in possessive or close-single-quote.</span>
+    <span class="n">APOSTROPHE</span> <span class="o">=</span> <span class="s2">r&quot;([^&#39;])&#39;&quot;</span><span class="p">,</span> <span class="s2">r&quot;\1 &#39; &quot;</span>
+
+    <span class="c1"># Prepend space on contraction apostrophe.</span>
+    <span class="n">CONTRACTION_1</span> <span class="o">=</span> <span class="s2">r&quot;&#39;([sSmMdD]) &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;\1 &quot;</span>
+    <span class="n">CONTRACTION_2</span> <span class="o">=</span> <span class="s2">r&quot;&#39;ll &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;ll &quot;</span>
+    <span class="n">CONTRACTION_3</span> <span class="o">=</span> <span class="s2">r&quot;&#39;re &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;re &quot;</span>
+    <span class="n">CONTRACTION_4</span> <span class="o">=</span> <span class="s2">r&quot;&#39;ve &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;ve &quot;</span>
+    <span class="n">CONTRACTION_5</span> <span class="o">=</span> <span class="s2">r&quot;n&#39;t &quot;</span><span class="p">,</span> <span class="s2">r&quot; n&#39;t &quot;</span>
+    <span class="n">CONTRACTION_6</span> <span class="o">=</span> <span class="s2">r&quot;&#39;LL &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;LL &quot;</span>
+    <span class="n">CONTRACTION_7</span> <span class="o">=</span> <span class="s2">r&quot;&#39;RE &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;RE &quot;</span>
+    <span class="n">CONTRACTION_8</span> <span class="o">=</span> <span class="s2">r&quot;&#39;VE &quot;</span><span class="p">,</span> <span class="s2">r&quot; &#39;VE &quot;</span>
+    <span class="n">CONTRACTION_9</span> <span class="o">=</span> <span class="s2">r&quot;N&#39;T &quot;</span><span class="p">,</span> <span class="s2">r&quot; N&#39;T &quot;</span>
+
+    <span class="c1"># Informal Contractions.</span>
+    <span class="n">CONTRACTION_10</span> <span class="o">=</span> <span class="s2">r&quot; ([Cc])annot &quot;</span><span class="p">,</span>  <span class="s2">r&quot; \1an not &quot;</span>
+    <span class="n">CONTRACTION_11</span> <span class="o">=</span> <span class="s2">r&quot; ([Dd])&#39;ye &quot;</span><span class="p">,</span>    <span class="s2">r&quot; \1&#39; ye &quot;</span>
+    <span class="n">CONTRACTION_12</span> <span class="o">=</span> <span class="s2">r&quot; ([Gg])imme &quot;</span><span class="p">,</span>   <span class="s2">r&quot; \1im me &quot;</span>
+    <span class="n">CONTRACTION_13</span> <span class="o">=</span> <span class="s2">r&quot; ([Gg])onna &quot;</span><span class="p">,</span>   <span class="s2">r&quot; \1on na &quot;</span>
+    <span class="n">CONTRACTION_14</span> <span class="o">=</span> <span class="s2">r&quot; ([Gg])otta &quot;</span><span class="p">,</span>   <span class="s2">r&quot; \1ot ta &quot;</span>
+    <span class="n">CONTRACTION_15</span> <span class="o">=</span> <span class="s2">r&quot; ([Ll])emme &quot;</span><span class="p">,</span>   <span class="s2">r&quot; \1em me &quot;</span>
+    <span class="n">CONTRACTION_16</span> <span class="o">=</span> <span class="s2">r&quot; ([Mm])ore$text =~ s=&#39;n &quot;</span><span class="p">,</span>  <span class="s2">r&quot; \1ore &#39;n &quot;</span>
+    <span class="n">CONTRACTION_17</span> <span class="o">=</span> <span class="s2">r&quot; &#39;([Tt])is &quot;</span><span class="p">,</span>    <span class="s2">r&quot; &#39;\1 is &quot;</span>
+    <span class="n">CONTRACTION_18</span> <span class="o">=</span> <span class="s2">r&quot; &#39;([Tt])was &quot;</span><span class="p">,</span>   <span class="s2">r&quot; &#39;\1 was &quot;</span>
+    <span class="n">CONTRACTION_19</span> <span class="o">=</span> <span class="s2">r&quot; ([Ww])anna &quot;</span><span class="p">,</span>   <span class="s2">r&quot; \1an na &quot;</span>
+
+    <span class="c1"># Clean out extra spaces</span>
+    <span class="n">CLEAN_EXTRA_SPACE_1</span> <span class="o">=</span> <span class="s1">r&#39;  *&#39;</span><span class="p">,</span> <span class="s1">r&#39; &#39;</span>
+    <span class="n">CLEAN_EXTRA_SPACE_2</span> <span class="o">=</span> <span class="s1">r&#39;^ *&#39;</span><span class="p">,</span> <span class="s1">r&#39;&#39;</span>
+    <span class="n">CLEAN_EXTRA_SPACE_3</span> <span class="o">=</span> <span class="s1">r&#39; *$&#39;</span><span class="p">,</span> <span class="s1">r&#39;&#39;</span>
+
+    <span class="c1"># Neurotic Perl regexes to escape special characters.</span>
+    <span class="c1"># These XML escaping regexes are kept such that tokens generated from</span>
+    <span class="c1"># NLTK&#39;s implementation is consistent with Moses&#39; tokenizer&#39;s output.</span>
+    <span class="c1"># Outside of the MosesTokenizer function, it&#39;s strongly encouraged to use</span>
+    <span class="c1"># nltk.tokenize.util.xml_escape() function instead.</span>
+    <span class="n">ESCAPE_AMPERSAND</span> <span class="o">=</span> <span class="s1">r&#39;&amp;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;amp;&#39;</span>
+    <span class="n">ESCAPE_PIPE</span> <span class="o">=</span> <span class="s1">r&#39;\|&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;#124;&#39;</span>
+    <span class="n">ESCAPE_LEFT_ANGLE_BRACKET</span> <span class="o">=</span> <span class="s1">r&#39;&lt;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;lt;&#39;</span>
+    <span class="n">ESCAPE_RIGHT_ANGLE_BRACKET</span> <span class="o">=</span> <span class="s1">r&#39;&gt;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;gt;&#39;</span>
+    <span class="n">ESCAPE_SINGLE_QUOTE</span> <span class="o">=</span> <span class="s2">r&quot;\&#39;&quot;</span><span class="p">,</span> <span class="s2">r&quot;&amp;apos;&quot;</span>
+    <span class="n">ESCAPE_DOUBLE_QUOTE</span> <span class="o">=</span> <span class="s1">r&#39;\&quot;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;quot;&#39;</span>
+    <span class="n">ESCAPE_LEFT_SQUARE_BRACKET</span> <span class="o">=</span> <span class="s2">r&quot;\[&quot;</span><span class="p">,</span> <span class="s2">r&quot;&amp;#91;&quot;</span>
+    <span class="n">ESCAPE_RIGHT_SQUARE_BRACKET</span> <span class="o">=</span> <span class="s2">r&quot;]&quot;</span><span class="p">,</span> <span class="s2">r&quot;&amp;#93;&quot;</span>
+
+    <span class="n">EN_SPECIFIC_1</span> <span class="o">=</span> <span class="s2">u&quot;([^</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([^</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">EN_SPECIFIC_2</span> <span class="o">=</span> <span class="s2">u&quot;([^</span><span class="si">{alpha}{isn}</span><span class="s2">])[&#39;]([</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">,</span> <span class="n">isn</span><span class="o">=</span><span class="n">IsN</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">EN_SPECIFIC_3</span> <span class="o">=</span> <span class="s2">u&quot;([</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([^</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">EN_SPECIFIC_4</span> <span class="o">=</span> <span class="s2">u&quot;([</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39;\2&quot;</span>
+    <span class="n">EN_SPECIFIC_5</span> <span class="o">=</span> <span class="s2">u&quot;([</span><span class="si">{isn}</span><span class="s2">])[&#39;]([s])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">isn</span><span class="o">=</span><span class="n">IsN</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39;\2&quot;</span>
+
+    <span class="n">ENGLISH_SPECIFIC_APOSTROPHE</span> <span class="o">=</span> <span class="p">[</span><span class="n">EN_SPECIFIC_1</span><span class="p">,</span> <span class="n">EN_SPECIFIC_2</span><span class="p">,</span> <span class="n">EN_SPECIFIC_3</span><span class="p">,</span>
+                                   <span class="n">EN_SPECIFIC_4</span><span class="p">,</span> <span class="n">EN_SPECIFIC_5</span><span class="p">]</span>
+
+    <span class="n">FR_IT_SPECIFIC_1</span> <span class="o">=</span> <span class="s2">u&quot;([^</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([^</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">FR_IT_SPECIFIC_2</span> <span class="o">=</span> <span class="s2">u&quot;([^</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">FR_IT_SPECIFIC_3</span> <span class="o">=</span> <span class="s2">u&quot;([</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([^</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1 &#39; \2&quot;</span>
+    <span class="n">FR_IT_SPECIFIC_4</span> <span class="o">=</span> <span class="s2">u&quot;([</span><span class="si">{alpha}</span><span class="s2">])[&#39;]([</span><span class="si">{alpha}</span><span class="s2">])&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="s2">r&quot;\1&#39; \2&quot;</span>
+
+    <span class="n">FR_IT_SPECIFIC_APOSTROPHE</span> <span class="o">=</span> <span class="p">[</span><span class="n">FR_IT_SPECIFIC_1</span><span class="p">,</span> <span class="n">FR_IT_SPECIFIC_2</span><span class="p">,</span>
+                                 <span class="n">FR_IT_SPECIFIC_3</span><span class="p">,</span> <span class="n">FR_IT_SPECIFIC_4</span><span class="p">]</span>
+
+    <span class="n">NON_SPECIFIC_APOSTROPHE</span> <span class="o">=</span> <span class="s2">r&quot;\&#39;&quot;</span><span class="p">,</span> <span class="s2">r&quot; \&#39; &quot;</span>
+
+    <span class="n">MOSES_PENN_REGEXES_1</span> <span class="o">=</span> <span class="p">[</span><span class="n">DEDUPLICATE_SPACE</span><span class="p">,</span> <span class="n">ASCII_JUNK</span><span class="p">,</span> <span class="n">DIRECTIONAL_QUOTE_1</span><span class="p">,</span>
+                              <span class="n">DIRECTIONAL_QUOTE_2</span><span class="p">,</span> <span class="n">DIRECTIONAL_QUOTE_3</span><span class="p">,</span>
+                              <span class="n">DIRECTIONAL_QUOTE_4</span><span class="p">,</span> <span class="n">DIRECTIONAL_QUOTE_5</span><span class="p">,</span>
+                              <span class="n">DIRECTIONAL_QUOTE_6</span><span class="p">,</span> <span class="n">DIRECTIONAL_QUOTE_7</span><span class="p">,</span>
+                              <span class="n">DIRECTIONAL_QUOTE_8</span><span class="p">,</span> <span class="n">REPLACE_ELLIPSIS</span><span class="p">,</span> <span class="n">COMMA_1</span><span class="p">,</span>
+                              <span class="n">COMMA_2</span><span class="p">,</span> <span class="n">COMMA_3</span><span class="p">,</span> <span class="n">SYMBOLS</span><span class="p">,</span> <span class="n">INTRATOKEN_SLASHES</span><span class="p">,</span>
+                              <span class="n">FINAL_PERIOD</span><span class="p">,</span> <span class="n">PAD_QUESTION_EXCLAMATION_MARK</span><span class="p">,</span>
+                              <span class="n">PAD_PARENTHESIS</span><span class="p">,</span> <span class="n">CONVERT_PARENTHESIS_1</span><span class="p">,</span>
+                              <span class="n">CONVERT_PARENTHESIS_2</span><span class="p">,</span> <span class="n">CONVERT_PARENTHESIS_3</span><span class="p">,</span>
+                              <span class="n">CONVERT_PARENTHESIS_4</span><span class="p">,</span> <span class="n">CONVERT_PARENTHESIS_5</span><span class="p">,</span>
+                              <span class="n">CONVERT_PARENTHESIS_6</span><span class="p">,</span> <span class="n">PAD_DOUBLE_DASHES</span><span class="p">,</span>
+                              <span class="n">PAD_START_OF_STR</span><span class="p">,</span> <span class="n">PAD_END_OF_STR</span><span class="p">,</span>
+                              <span class="n">CONVERT_DOUBLE_TO_SINGLE_QUOTES</span><span class="p">,</span>
+                              <span class="n">HANDLES_SINGLE_QUOTES</span><span class="p">,</span> <span class="n">APOSTROPHE</span><span class="p">,</span> <span class="n">CONTRACTION_1</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_2</span><span class="p">,</span> <span class="n">CONTRACTION_3</span><span class="p">,</span> <span class="n">CONTRACTION_4</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_5</span><span class="p">,</span> <span class="n">CONTRACTION_6</span><span class="p">,</span> <span class="n">CONTRACTION_7</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_8</span><span class="p">,</span> <span class="n">CONTRACTION_9</span><span class="p">,</span> <span class="n">CONTRACTION_10</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_11</span><span class="p">,</span> <span class="n">CONTRACTION_12</span><span class="p">,</span> <span class="n">CONTRACTION_13</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_14</span><span class="p">,</span> <span class="n">CONTRACTION_15</span><span class="p">,</span> <span class="n">CONTRACTION_16</span><span class="p">,</span>
+                              <span class="n">CONTRACTION_17</span><span class="p">,</span> <span class="n">CONTRACTION_18</span><span class="p">,</span> <span class="n">CONTRACTION_19</span><span class="p">]</span>
+
+    <span class="n">MOSES_PENN_REGEXES_2</span> <span class="o">=</span> <span class="p">[</span><span class="n">RESTORE_ELLIPSIS</span><span class="p">,</span> <span class="n">CLEAN_EXTRA_SPACE_1</span><span class="p">,</span>
+                        <span class="n">CLEAN_EXTRA_SPACE_2</span><span class="p">,</span> <span class="n">CLEAN_EXTRA_SPACE_3</span><span class="p">,</span>
+                        <span class="n">ESCAPE_AMPERSAND</span><span class="p">,</span> <span class="n">ESCAPE_PIPE</span><span class="p">,</span>
+                        <span class="n">ESCAPE_LEFT_ANGLE_BRACKET</span><span class="p">,</span> <span class="n">ESCAPE_RIGHT_ANGLE_BRACKET</span><span class="p">,</span>
+                        <span class="n">ESCAPE_SINGLE_QUOTE</span><span class="p">,</span> <span class="n">ESCAPE_DOUBLE_QUOTE</span><span class="p">]</span>
+
+    <span class="n">MOSES_ESCAPE_XML_REGEXES</span> <span class="o">=</span> <span class="p">[</span><span class="n">ESCAPE_AMPERSAND</span><span class="p">,</span> <span class="n">ESCAPE_PIPE</span><span class="p">,</span>
+                                <span class="n">ESCAPE_LEFT_ANGLE_BRACKET</span><span class="p">,</span>
+                                <span class="n">ESCAPE_RIGHT_ANGLE_BRACKET</span><span class="p">,</span>
+                                <span class="n">ESCAPE_SINGLE_QUOTE</span><span class="p">,</span> <span class="n">ESCAPE_DOUBLE_QUOTE</span><span class="p">,</span>
+                                <span class="n">ESCAPE_LEFT_SQUARE_BRACKET</span><span class="p">,</span>
+                                <span class="n">ESCAPE_RIGHT_SQUARE_BRACKET</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">):</span>
+        <span class="c1"># Initialize the object.</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">MosesTokenizer</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">=</span> <span class="n">lang</span>
+        <span class="c1"># Initialize the language specific nonbreaking prefixes.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="o">=</span> <span class="n">nonbreaking_prefixes</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">lang</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_ONLY_PREFIXES</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span>
+                                      <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="k">if</span>
+                                      <span class="bp">self</span><span class="o">.</span><span class="n">has_numeric_only</span><span class="p">(</span><span class="n">w</span><span class="p">)]</span>
+
+
+
+<div class="viewcode-block" id="MosesTokenizer.replace_multidots"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.replace_multidots">[docs]</a>    <span class="k">def</span> <span class="nf">replace_multidots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">r&#39;\.([\.]+)&#39;</span><span class="p">,</span> <span class="s1">r&#39; DOTMULTI\1&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;DOTMULTI\.&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">r&#39;DOTMULTI\.([^\.])&#39;</span><span class="p">,</span> <span class="s1">r&#39;DOTDOTMULTI \1&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">r&#39;DOTMULTI\.&#39;</span><span class="p">,</span> <span class="s1">&#39;DOTDOTMULTI&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">text</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.restore_multidots"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.restore_multidots">[docs]</a>    <span class="k">def</span> <span class="nf">restore_multidots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">while</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;DOTDOTMULTI&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">r&#39;DOTDOTMULTI&#39;</span><span class="p">,</span> <span class="s1">r&#39;DOTMULTI.&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">r&#39;DOTMULTI&#39;</span><span class="p">,</span> <span class="s1">r&#39;.&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.islower"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.islower">[docs]</a>    <span class="k">def</span> <span class="nf">islower</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">(</span><span class="n">text</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">IsLower</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.isalpha"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.isalpha">[docs]</a>    <span class="k">def</span> <span class="nf">isalpha</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">(</span><span class="n">text</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">IsAlpha</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.has_numeric_only"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.has_numeric_only">[docs]</a>    <span class="k">def</span> <span class="nf">has_numeric_only</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;(.*)[\s]+(\#NUMERIC_ONLY\#)&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.handles_nonbreaking_prefixes"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.handles_nonbreaking_prefixes">[docs]</a>    <span class="k">def</span> <span class="nf">handles_nonbreaking_prefixes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="c1"># Splits the text into tokens to check for nonbreaking prefixes.</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">num_tokens</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+            <span class="c1"># Checks if token ends with a fullstop.</span>
+            <span class="n">token_ends_with_period</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^(\S+)\.$&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">token_ends_with_period</span><span class="p">:</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="n">token_ends_with_period</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="c1"># Checks for 3 conditions if</span>
+                <span class="c1"># i.   the prefix is a token made up of chars within the IsAlpha</span>
+                <span class="c1"># ii.  the prefix is in the list of nonbreaking prefixes and</span>
+                <span class="c1">#      does not contain #NUMERIC_ONLY#</span>
+                <span class="c1"># iii. the token is not the last token and that the</span>
+                <span class="c1">#      next token contains all lowercase.</span>
+                <span class="k">if</span> <span class="p">(</span> <span class="p">(</span><span class="n">prefix</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">isalpha</span><span class="p">(</span><span class="n">prefix</span><span class="p">))</span> <span class="ow">or</span>
+                     <span class="p">(</span><span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="ow">and</span>
+                      <span class="n">prefix</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_ONLY_PREFIXES</span><span class="p">)</span> <span class="ow">or</span>
+                     <span class="p">(</span><span class="n">i</span> <span class="o">!=</span> <span class="n">num_tokens</span><span class="o">-</span><span class="mi">1</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">islower</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]))</span> <span class="p">):</span>
+                    <span class="k">pass</span> <span class="c1"># No change to the token.</span>
+                <span class="c1"># Checks if the prefix is in NUMERIC_ONLY_PREFIXES</span>
+                <span class="c1"># and ensures that the next word is a digit.</span>
+                <span class="k">elif</span> <span class="p">(</span><span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_ONLY_PREFIXES</span> <span class="ow">and</span>
+                      <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[0-9]+&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])):</span>
+                    <span class="k">pass</span> <span class="c1"># No change to the token.</span>
+                <span class="k">else</span><span class="p">:</span> <span class="c1"># Otherwise, adds a space after the tokens before a dot.</span>
+                    <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39; .&#39;</span>
+        <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="c1"># Stitch the tokens back.</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.escape_xml"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.escape_xml">[docs]</a>    <span class="k">def</span> <span class="nf">escape_xml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">MOSES_ESCAPE_XML_REGEXES</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">text</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.penn_tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.penn_tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">penn_tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This is a Python port of the Penn treebank tokenizer adapted by the Moses</span>
+<span class="sd">        machine translation community. It&#39;s a little different from the</span>
+<span class="sd">        version in nltk.tokenize.treebank.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Converts input string into unicode.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Perform a chain of regex substituitions using MOSES_PENN_REGEXES_1</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">MOSES_PENN_REGEXES_1</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Handles nonbreaking prefixes.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handles_nonbreaking_prefixes</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Restore ellipsis, clean extra spaces, escape XML symbols.</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">MOSES_PENN_REGEXES_2</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="MosesTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">agressive_dash_splits</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Python port of the Moses tokenizer.</span>
+
+<span class="sd">        &gt;&gt;&gt; mtokenizer = MosesTokenizer()</span>
+<span class="sd">        &gt;&gt;&gt; text = u&#39;Is 9.5 or 525,600 my favorite number?&#39;</span>
+<span class="sd">        &gt;&gt;&gt; print (mtokenizer.tokenize(text, return_str=True))</span>
+<span class="sd">        Is 9.5 or 525,600 my favorite number ?</span>
+<span class="sd">        &gt;&gt;&gt; text = u&#39;The https://github.com/jonsafari/tok-tok/blob/master/tok-tok.pl is a website with/and/or slashes and sort of weird : things&#39;</span>
+<span class="sd">        &gt;&gt;&gt; print (mtokenizer.tokenize(text, return_str=True))</span>
+<span class="sd">        The https : / / github.com / jonsafari / tok-tok / blob / master / tok-tok.pl is a website with / and / or slashes and sort of weird : things</span>
+<span class="sd">        &gt;&gt;&gt; text = u&#39;This, is a sentence with weird\xbb symbols\u2026 appearing everywhere\xbf&#39;</span>
+<span class="sd">        &gt;&gt;&gt; expected = u&#39;This , is a sentence with weird \xbb symbols \u2026 appearing everywhere \xbf&#39;</span>
+<span class="sd">        &gt;&gt;&gt; assert mtokenizer.tokenize(text, return_str=True) == expected</span>
+
+<span class="sd">        :param tokens: A single string, i.e. sentence text.</span>
+<span class="sd">        :type tokens: str</span>
+<span class="sd">        :param agressive_dash_splits: Option to trigger dash split rules .</span>
+<span class="sd">        :type agressive_dash_splits: bool</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Converts input string into unicode.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># De-duplicate spaces and clean ASCII junk</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">DEDUPLICATE_SPACE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ASCII_JUNK</span><span class="p">]:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Strips heading and trailing spaces.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="c1"># Separate special characters outside of IsAlnum character set.</span>
+        <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">PAD_NOT_ISALNUM</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Aggressively splits dashes</span>
+        <span class="k">if</span> <span class="n">agressive_dash_splits</span><span class="p">:</span>
+            <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">AGGRESSIVE_HYPHEN_SPLIT</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Replaces multidots with &quot;DOTDOTMULTI&quot; literal strings.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">replace_multidots</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Separate out &quot;,&quot; except if within numbers e.g. 5,300</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">COMMA_SEPARATE_1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">COMMA_SEPARATE_2</span><span class="p">]:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># (Language-specific) apostrophe tokenization.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;en&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ENGLISH_SPECIFIC_APOSTROPHE</span><span class="p">:</span>
+                 <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;fr&#39;</span><span class="p">,</span> <span class="s1">&#39;it&#39;</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">FR_IT_SPECIFIC_APOSTROPHE</span><span class="p">:</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">NON_SPECIFIC_APOSTROPHE</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># Handles nonbreaking prefixes.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handles_nonbreaking_prefixes</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Cleans up extraneous spaces.</span>
+        <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">DEDUPLICATE_SPACE</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span><span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="c1"># Restore multidots.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">restore_multidots</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Escape XML symbols.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">escape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div></div>
+
+
+<div class="viewcode-block" id="MosesDetokenizer"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer">[docs]</a><span class="k">class</span> <span class="nc">MosesDetokenizer</span><span class="p">(</span><span class="n">TokenizerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This is a Python port of the Moses Detokenizer from</span>
+<span class="sd">    https://github.com/moses-smt/mosesdecoder/blob/master/scripts/tokenizer/detokenizer.perl</span>
+
+<span class="sd">    &gt;&gt;&gt; tokenizer = MosesTokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; text = u&#39;This, is a sentence with weird\xbb symbols\u2026 appearing everywhere\xbf&#39;</span>
+<span class="sd">    &gt;&gt;&gt; expected_tokenized = u&#39;This , is a sentence with weird \xbb symbols \u2026 appearing everywhere \xbf&#39;</span>
+<span class="sd">    &gt;&gt;&gt; tokenized_text = tokenizer.tokenize(text, return_str=True)</span>
+<span class="sd">    &gt;&gt;&gt; tokenized_text == expected_tokenized</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; detokenizer = MosesDetokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; expected_detokenized = u&#39;This, is a sentence with weird \xbb symbols \u2026 appearing everywhere \xbf&#39;</span>
+<span class="sd">    &gt;&gt;&gt; detokenized_text = detokenizer.detokenize(tokenized_text.split(), return_str=True)</span>
+<span class="sd">    &gt;&gt;&gt; detokenized_text == expected_detokenized</span>
+<span class="sd">    True</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.tokenize.moses import MosesTokenizer, MosesDetokenizer</span>
+<span class="sd">    &gt;&gt;&gt; t, d = MosesTokenizer(), MosesDetokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; sent = &quot;This ain&#39;t funny. It&#39;s actually hillarious, yet double Ls. | [] &lt; &gt; [ ] &amp; You&#39;re gonna shake it off? Don&#39;t?&quot;</span>
+<span class="sd">    &gt;&gt;&gt; expected_tokens = [u&#39;This&#39;, u&#39;ain&#39;, u&#39;&amp;apos;t&#39;, u&#39;funny.&#39;, u&#39;It&#39;, u&#39;&amp;apos;s&#39;, u&#39;actually&#39;, u&#39;hillarious&#39;, u&#39;,&#39;, u&#39;yet&#39;, u&#39;double&#39;, u&#39;Ls.&#39;, u&#39;&amp;#124;&#39;, u&#39;&amp;#91;&#39;, u&#39;&amp;#93;&#39;, u&#39;&amp;lt;&#39;, u&#39;&amp;gt;&#39;, u&#39;&amp;#91;&#39;, u&#39;&amp;#93;&#39;, u&#39;&amp;amp;&#39;, u&#39;You&#39;, u&#39;&amp;apos;re&#39;, u&#39;gonna&#39;, u&#39;shake&#39;, u&#39;it&#39;, u&#39;off&#39;, u&#39;?&#39;, u&#39;Don&#39;, u&#39;&amp;apos;t&#39;, u&#39;?&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; expected_detokens = &quot;This ain&#39;t funny. It&#39;s actually hillarious, yet double Ls. | [] &lt; &gt; [] &amp; You&#39;re gonna shake it off? Don&#39;t?&quot;</span>
+<span class="sd">    &gt;&gt;&gt; tokens = t.tokenize(sent)</span>
+<span class="sd">    &gt;&gt;&gt; tokens == expected_tokens</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; detokens = d.detokenize(tokens)</span>
+<span class="sd">    &gt;&gt;&gt; &quot; &quot;.join(detokens) == expected_detokens</span>
+<span class="sd">    True</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Currency Symbols.</span>
+    <span class="n">IsAlnum</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsAlnum&#39;</span><span class="p">)))</span>
+    <span class="n">IsAlpha</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsAlpha&#39;</span><span class="p">)))</span>
+    <span class="n">IsSc</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsSc&#39;</span><span class="p">)))</span>
+
+    <span class="n">AGGRESSIVE_HYPHEN_SPLIT</span> <span class="o">=</span> <span class="s1">r&#39; \@\-\@ &#39;</span><span class="p">,</span> <span class="s1">r&#39;-&#39;</span>
+
+    <span class="c1"># Merge multiple spaces.</span>
+    <span class="n">ONE_SPACE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s1">r&#39; {2,}&#39;</span><span class="p">),</span> <span class="s1">&#39; &#39;</span>
+
+    <span class="c1"># Unescape special characters.</span>
+    <span class="n">UNESCAPE_FACTOR_SEPARATOR</span> <span class="o">=</span> <span class="s1">r&#39;&amp;#124;&#39;</span><span class="p">,</span> <span class="s1">r&#39;|&#39;</span>
+    <span class="n">UNESCAPE_LEFT_ANGLE_BRACKET</span> <span class="o">=</span> <span class="s1">r&#39;&amp;lt;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&lt;&#39;</span>
+    <span class="n">UNESCAPE_RIGHT_ANGLE_BRACKET</span> <span class="o">=</span> <span class="s1">r&#39;&amp;gt;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&gt;&#39;</span>
+    <span class="n">UNESCAPE_DOUBLE_QUOTE</span> <span class="o">=</span> <span class="s1">r&#39;&amp;quot;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&quot;&#39;</span>
+    <span class="n">UNESCAPE_SINGLE_QUOTE</span> <span class="o">=</span> <span class="s2">r&quot;&amp;apos;&quot;</span><span class="p">,</span> <span class="s2">r&quot;&#39;&quot;</span>
+    <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_LEFT</span> <span class="o">=</span> <span class="s1">r&#39;&amp;#91;&#39;</span><span class="p">,</span> <span class="s1">r&#39;[&#39;</span>
+    <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_RIGHT</span> <span class="o">=</span> <span class="s1">r&#39;&amp;#93;&#39;</span><span class="p">,</span> <span class="s1">r&#39;]&#39;</span>
+    <span class="n">UNESCAPE_AMPERSAND</span> <span class="o">=</span> <span class="s1">r&#39;&amp;amp;&#39;</span><span class="p">,</span> <span class="s1">r&#39;&amp;&#39;</span>
+    <span class="c1"># The legacy regexes are used to support outputs from older Moses versions.</span>
+    <span class="n">UNESCAPE_FACTOR_SEPARATOR_LEGACY</span> <span class="o">=</span> <span class="s1">r&#39;&amp;bar;&#39;</span><span class="p">,</span> <span class="s1">r&#39;|&#39;</span>
+    <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_LEFT_LEGACY</span> <span class="o">=</span> <span class="s1">r&#39;&amp;bra;&#39;</span><span class="p">,</span> <span class="s1">r&#39;[&#39;</span>
+    <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_RIGHT_LEGACY</span> <span class="o">=</span> <span class="s1">r&#39;&amp;ket;&#39;</span><span class="p">,</span> <span class="s1">r&#39;]&#39;</span>
+
+
+    <span class="n">MOSES_UNESCAPE_XML_REGEXES</span> <span class="o">=</span> <span class="p">[</span><span class="n">UNESCAPE_FACTOR_SEPARATOR_LEGACY</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_FACTOR_SEPARATOR</span><span class="p">,</span> <span class="n">UNESCAPE_LEFT_ANGLE_BRACKET</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_RIGHT_ANGLE_BRACKET</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_LEFT_LEGACY</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_RIGHT_LEGACY</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_DOUBLE_QUOTE</span><span class="p">,</span> <span class="n">UNESCAPE_SINGLE_QUOTE</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_LEFT</span><span class="p">,</span>
+                        <span class="n">UNESCAPE_SYNTAX_NONTERMINAL_RIGHT</span><span class="p">,</span> <span class="n">UNESCAPE_AMPERSAND</span><span class="p">]</span>
+
+    <span class="n">FINNISH_MORPHSET_1</span> <span class="o">=</span> <span class="p">[</span><span class="s1">u&#39;N&#39;</span><span class="p">,</span> <span class="s1">u&#39;n&#39;</span><span class="p">,</span> <span class="s1">u&#39;A&#39;</span><span class="p">,</span> <span class="s1">u&#39;a&#39;</span><span class="p">,</span> <span class="s1">u&#39;</span><span class="se">\xc4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;ssa&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;Ssa&#39;</span><span class="p">,</span> <span class="s1">u&#39;ss</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;Ss</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;sta&#39;</span><span class="p">,</span> <span class="s1">u&#39;st</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;Sta&#39;</span><span class="p">,</span> <span class="s1">u&#39;St</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;hun&#39;</span><span class="p">,</span> <span class="s1">u&#39;Hun&#39;</span><span class="p">,</span> <span class="s1">u&#39;hyn&#39;</span><span class="p">,</span> <span class="s1">u&#39;Hyn&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;han&#39;</span><span class="p">,</span> <span class="s1">u&#39;Han&#39;</span><span class="p">,</span> <span class="s1">u&#39;h</span><span class="se">\xe4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;H</span><span class="se">\xe4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;h</span><span class="se">\xf6</span><span class="s1">n&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;H</span><span class="se">\xf6</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;un&#39;</span><span class="p">,</span> <span class="s1">u&#39;Un&#39;</span><span class="p">,</span> <span class="s1">u&#39;yn&#39;</span><span class="p">,</span> <span class="s1">u&#39;Yn&#39;</span><span class="p">,</span> <span class="s1">u&#39;an&#39;</span><span class="p">,</span> <span class="s1">u&#39;An&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;</span><span class="se">\xe4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;</span><span class="se">\xc4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;</span><span class="se">\xf6</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;</span><span class="se">\xd6</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;seen&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;Seen&#39;</span><span class="p">,</span> <span class="s1">u&#39;lla&#39;</span><span class="p">,</span> <span class="s1">u&#39;Lla&#39;</span><span class="p">,</span> <span class="s1">u&#39;ll</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;Ll</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;lta&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;Lta&#39;</span><span class="p">,</span> <span class="s1">u&#39;lt</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;Lt</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;lle&#39;</span><span class="p">,</span> <span class="s1">u&#39;Lle&#39;</span><span class="p">,</span> <span class="s1">u&#39;ksi&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;Ksi&#39;</span><span class="p">,</span> <span class="s1">u&#39;kse&#39;</span><span class="p">,</span> <span class="s1">u&#39;Kse&#39;</span><span class="p">,</span> <span class="s1">u&#39;tta&#39;</span><span class="p">,</span> <span class="s1">u&#39;Tta&#39;</span><span class="p">,</span> <span class="s1">u&#39;ine&#39;</span><span class="p">,</span> <span class="s1">u&#39;Ine&#39;</span><span class="p">]</span>
+
+    <span class="n">FINNISH_MORPHSET_2</span> <span class="o">=</span> <span class="p">[</span><span class="s1">u&#39;ni&#39;</span><span class="p">,</span> <span class="s1">u&#39;si&#39;</span><span class="p">,</span> <span class="s1">u&#39;mme&#39;</span><span class="p">,</span> <span class="s1">u&#39;nne&#39;</span><span class="p">,</span> <span class="s1">u&#39;nsa&#39;</span><span class="p">]</span>
+
+    <span class="n">FINNISH_MORPHSET_3</span> <span class="o">=</span> <span class="p">[</span><span class="s1">u&#39;ko&#39;</span><span class="p">,</span> <span class="s1">u&#39;k</span><span class="se">\xf6</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">u&#39;han&#39;</span><span class="p">,</span> <span class="s1">u&#39;h</span><span class="se">\xe4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;pa&#39;</span><span class="p">,</span> <span class="s1">u&#39;p</span><span class="se">\xe4</span><span class="s1">&#39;</span><span class="p">,</span>
+                         <span class="s1">u&#39;kaan&#39;</span><span class="p">,</span> <span class="s1">u&#39;k</span><span class="se">\xe4\xe4</span><span class="s1">n&#39;</span><span class="p">,</span> <span class="s1">u&#39;kin&#39;</span><span class="p">]</span>
+
+    <span class="n">FINNISH_REGEX</span> <span class="o">=</span> <span class="s1">u&#39;^(</span><span class="si">{}</span><span class="s1">)(</span><span class="si">{}</span><span class="s1">)?(</span><span class="si">{}</span><span class="s1">)$&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">FINNISH_MORPHSET_1</span><span class="p">)),</span>
+                                               <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">FINNISH_MORPHSET_2</span><span class="p">)),</span>
+                                               <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">FINNISH_MORPHSET_3</span><span class="p">)))</span>
+
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">MosesDetokenizer</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">=</span> <span class="n">lang</span>
+
+
+<div class="viewcode-block" id="MosesDetokenizer.unescape_xml"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.unescape_xml">[docs]</a>    <span class="k">def</span> <span class="nf">unescape_xml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">MOSES_UNESCAPE_XML_REGEXES</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">text</span></div>
+
+
+<div class="viewcode-block" id="MosesDetokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Python port of the Moses detokenizer.</span>
+
+<span class="sd">        :param tokens: A list of strings, i.e. tokenized text.</span>
+<span class="sd">        :type tokens: list(str)</span>
+<span class="sd">        :return: str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert the list of tokens into a string and pad it with spaces.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="s2">u&quot; </span><span class="si">{}</span><span class="s2"> &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+        <span class="c1"># Converts input string into unicode.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Detokenize the agressive hyphen split.</span>
+        <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">AGGRESSIVE_HYPHEN_SPLIT</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Unescape the XML symbols.</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unescape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="c1"># Keep track of no. of quotation marks.</span>
+        <span class="n">quote_counts</span> <span class="o">=</span> <span class="p">{</span><span class="s2">u&quot;&#39;&quot;</span><span class="p">:</span><span class="mi">0</span> <span class="p">,</span> <span class="s1">u&#39;&quot;&#39;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="s2">u&quot;``&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="s2">u&quot;`&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="s2">u&quot;&#39;&#39;&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">}</span>
+
+        <span class="c1"># The *prepend_space* variable is used to control the &quot;effects&quot; of</span>
+        <span class="c1"># detokenization as the function loops through the list of tokens and</span>
+        <span class="c1"># changes the *prepend_space* accordingly as it sequentially checks</span>
+        <span class="c1"># through the language specific and language independent conditions.</span>
+        <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+        <span class="n">detokenized_text</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># Iterate through every token and apply language specific detokenization rule(s).</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">tokens</span><span class="p">)):</span>
+            <span class="c1"># Check if the first char is CJK.</span>
+            <span class="k">if</span> <span class="n">is_cjk</span><span class="p">(</span><span class="n">token</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+                <span class="c1"># Perform left shift if this is a second consecutive CJK word.</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">is_cjk</span><span class="p">(</span><span class="n">token</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+                    <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">token</span>
+                <span class="c1"># But do nothing special if this is a CJK word that doesn&#39;t follow a CJK word</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+            <span class="c1"># If it&#39;s a currency symbol.</span>
+            <span class="k">elif</span> <span class="n">token</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">IsSc</span><span class="p">:</span>
+                <span class="c1"># Perform right shift on currency and other random punctuation items</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+            <span class="k">elif</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[\,\.\?\!\:\;</span><span class="se">\\</span><span class="s1">\%\}\]\)]+$&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+                <span class="c1"># In French, these punctuations are prefixed with a non-breakable space.</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;fr&#39;</span> <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[\?\!\:\;</span><span class="se">\\</span><span class="s1">\%]$&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+                    <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span>
+                <span class="c1"># Perform left shift on punctuation items.</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+            <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;en&#39;</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s2">u&quot;^[</span><span class="se">\&#39;</span><span class="s2">][</span><span class="si">{}</span><span class="s2">]&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="n">token</span><span class="p">)):</span>
+                  <span class="c1">#and re.search(u&#39;[{}]$&#39;.format(self.IsAlnum), tokens[i-1])):</span>
+                <span class="c1"># For English, left-shift the contraction.</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+            <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;cs&#39;</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">1</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[0-9]+$&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span> <span class="c1"># If the previous previous token is a number.</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[.,]$&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="c1"># If previous token is a dot.</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[0-9]+$&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">)):</span> <span class="c1"># If the current token is a number.</span>
+                <span class="c1"># In Czech, left-shift floats that are decimal numbers.</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+            <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;fr&#39;</span><span class="p">,</span> <span class="s1">&#39;it&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span><span class="o">-</span><span class="mi">2</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">u&#39;[</span><span class="si">{}</span><span class="s1">][</span><span class="se">\&#39;</span><span class="s1">]$&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="n">token</span><span class="p">)</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">u&#39;^[</span><span class="si">{}</span><span class="s1">]$&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])):</span> <span class="c1"># If the next token is alpha.</span>
+                <span class="c1"># For French and Italian, right-shift the contraction.</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+            <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;cs&#39;</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span><span class="o">-</span><span class="mi">3</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">u&#39;[</span><span class="si">{}</span><span class="s1">][</span><span class="se">\&#39;</span><span class="s1">]$&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">IsAlpha</span><span class="p">),</span> <span class="n">token</span><span class="p">)</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">u&#39;^[-–]$&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">u&#39;^li$|^mail.*&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">2</span><span class="p">],</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)):</span> <span class="c1"># In Perl, ($words[$i+2] =~ /^li$|^mail.*/i)</span>
+                <span class="c1"># In Czech, right-shift &quot;-li&quot; and a few Czech dashed words (e.g. e-mail)</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span> <span class="o">+</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="c1"># Advance over the dash</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+            <span class="c1"># Combine punctuation smartly.</span>
+            <span class="k">elif</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;&#39;&#39;^[\&#39;\&quot;„“`]+$&#39;&#39;&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+                <span class="n">normalized_quo</span> <span class="o">=</span> <span class="n">token</span>
+                <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;^[„“”]+$&#39;</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+                    <span class="n">normalized_quo</span> <span class="o">=</span> <span class="s1">&#39;&quot;&#39;</span>
+                <span class="n">quote_counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">normalized_quo</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;cs&#39;</span> <span class="ow">and</span> <span class="n">token</span> <span class="o">==</span> <span class="s2">u&quot;„&quot;</span><span class="p">:</span>
+                    <span class="n">quote_counts</span><span class="p">[</span><span class="n">normalized_quo</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;cs&#39;</span> <span class="ow">and</span> <span class="n">token</span> <span class="o">==</span> <span class="s2">u&quot;“&quot;</span><span class="p">:</span>
+                    <span class="n">quote_counts</span><span class="p">[</span><span class="n">normalized_quo</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+
+                <span class="k">if</span> <span class="n">quote_counts</span><span class="p">[</span><span class="n">normalized_quo</span><span class="p">]</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;en&#39;</span> <span class="ow">and</span> <span class="n">token</span> <span class="o">==</span> <span class="s2">u&quot;&#39;&quot;</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span>
+                        <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;[s]$&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="p">):</span>
+                        <span class="c1"># Left shift on single quote for possessives ending</span>
+                        <span class="c1"># in &quot;s&quot;, e.g. &quot;The Jones&#39; house&quot;</span>
+                        <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">token</span>
+                        <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Right shift.</span>
+                        <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                        <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+                        <span class="n">quote_counts</span><span class="p">[</span><span class="n">normalized_quo</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Left shift.</span>
+                    <span class="n">text</span> <span class="o">+=</span> <span class="n">token</span>
+                    <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+                    <span class="n">quote_counts</span><span class="p">[</span><span class="n">normalized_quo</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;fi&#39;</span> <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">r&#39;:$&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                  <span class="ow">and</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">FINNISH_REGEX</span><span class="p">,</span> <span class="n">token</span><span class="p">)):</span>
+                <span class="c1"># Finnish : without intervening space if followed by case suffix</span>
+                <span class="c1"># EU:N EU:n EU:ssa EU:sta EU:hun EU:iin ...</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">detokenized_text</span> <span class="o">+=</span> <span class="n">prepend_space</span> <span class="o">+</span> <span class="n">token</span>
+                <span class="n">prepend_space</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+
+        <span class="c1"># Merge multiple spaces.</span>
+        <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ONE_SPACE</span>
+        <span class="n">detokenized_text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">detokenized_text</span><span class="p">)</span>
+        <span class="c1"># Removes heading and trailing spaces.</span>
+        <span class="n">detokenized_text</span> <span class="o">=</span> <span class="n">detokenized_text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">detokenized_text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">detokenized_text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="MosesDetokenizer.detokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.detokenize">[docs]</a>    <span class="k">def</span> <span class="nf">detokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Duck-typing the abstract *tokenize()*.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2015, NLTK Project.
+      Last updated on Jan 02, 2017.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

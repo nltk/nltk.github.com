@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>nltk.test.unit.translate.test_bleu &mdash; NLTK 3.0 documentation</title>
+    <title>nltk.test.unit.translate.test_bleu &#8212; NLTK 3.0 documentation</title>
     
     <link rel="stylesheet" href="../../../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../../../_static/pygments.css" type="text/css" />
@@ -17,14 +17,15 @@
         VERSION:     '3.0',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
-        HAS_SOURCE:  true
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
       };
     </script>
     <script type="text/javascript" src="../../../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../../../_static/doctools.js"></script>
-    <link rel="top" title="NLTK 3.0 documentation" href="../../../../../index.html" />
-    <link rel="up" title="Module code" href="../../../../index.html" /> 
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
   </head>
   <body role="document">
     <div class="header-wrapper" role="banner">
@@ -49,144 +50,227 @@
           <div class="body" role="main">
             
   <h1>Source code for nltk.test.unit.translate.test_bleu</h1><div class="highlight"><pre>
-<span class="c"># -*- coding: utf-8 -*-</span>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Tests for BLEU translation evaluation metric</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">io</span>
 <span class="kn">import</span> <span class="nn">unittest</span>
-<span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="kn">import</span> <span class="n">modified_precision</span><span class="p">,</span> <span class="n">brevity_penalty</span>
-<span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="kn">import</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">corpus_bleu</span>
+
+<span class="kn">from</span> <span class="nn">nltk.data</span> <span class="k">import</span> <span class="n">find</span>
+<span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="k">import</span> <span class="n">modified_precision</span><span class="p">,</span> <span class="n">brevity_penalty</span><span class="p">,</span> <span class="n">closest_ref_length</span>
+<span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="k">import</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">corpus_bleu</span><span class="p">,</span> <span class="n">SmoothingFunction</span>
 
 
 <div class="viewcode-block" id="TestBLEU"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU">[docs]</a><span class="k">class</span> <span class="nc">TestBLEU</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
 <div class="viewcode-block" id="TestBLEU.test_modified_precision"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_modified_precision">[docs]</a>    <span class="k">def</span> <span class="nf">test_modified_precision</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Examples from the original BLEU paper </span>
+<span class="sd">        Examples from the original BLEU paper</span>
 <span class="sd">        http://www.aclweb.org/anthology/P02-1040.pdf</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c"># Example 1: the &quot;the*&quot; example.</span>
-        <span class="c"># Reference sentences.</span>
-        <span class="n">ref1</span> <span class="o">=</span> <span class="s">&#39;the cat is on the mat&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="n">ref2</span> <span class="o">=</span> <span class="s">&#39;there is a cat on the mat&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="c"># Hypothesis sentence(s).</span>
-        <span class="n">hyp1</span> <span class="o">=</span> <span class="s">&#39;the the the the the the the&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref1</span><span class="p">,</span> <span class="n">ref2</span><span class="p">]</span> 
-        
-        <span class="c"># Testing modified unigram precision.</span>
+        <span class="c1"># Example 1: the &quot;the*&quot; example.</span>
+        <span class="c1"># Reference sentences.</span>
+        <span class="n">ref1</span> <span class="o">=</span> <span class="s1">&#39;the cat is on the mat&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">ref2</span> <span class="o">=</span> <span class="s1">&#39;there is a cat on the mat&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># Hypothesis sentence(s).</span>
+        <span class="n">hyp1</span> <span class="o">=</span> <span class="s1">&#39;the the the the the the the&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref1</span><span class="p">,</span> <span class="n">ref2</span><span class="p">]</span>
+
+        <span class="c1"># Testing modified unigram precision.</span>
         <span class="n">hyp1_unigram_precision</span> <span class="o">=</span>  <span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
         <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp1_unigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.2857</span><span class="p">)</span>
-        <span class="c"># With assertAlmostEqual at 4 place precision.</span>
+        <span class="c1"># With assertAlmostEqual at 4 place precision.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">hyp1_unigram_precision</span><span class="p">,</span> <span class="mf">0.28571428</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
-        
-        <span class="c"># Testing modified bigram precision.</span>
-        <span class="k">assert</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">)</span>
-        
-        
-        <span class="c"># Example 2: the &quot;of the&quot; example.</span>
-        <span class="c"># Reference sentences</span>
-        <span class="n">ref1</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;It is a guide to action that ensures that the military &#39;</span>
-                   <span class="s">&#39;will forever heed Party commands&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="n">ref2</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;It is the guiding principle which guarantees the military &#39;</span>
-                   <span class="s">&#39;forces always being under the command of the Party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="n">ref3</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;It is the practical guide for the army always to heed &#39;</span>
-                   <span class="s">&#39;the directions of the party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="c"># Hypothesis sentence(s).</span>
-        <span class="n">hyp1</span> <span class="o">=</span> <span class="s">&#39;of the&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref1</span><span class="p">,</span> <span class="n">ref2</span><span class="p">,</span> <span class="n">ref3</span><span class="p">]</span> 
-        <span class="c"># Testing modified unigram precision.</span>
-        <span class="k">assert</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
-        
-        <span class="c"># Testing modified bigram precision.</span>
-        <span class="k">assert</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
-        
 
-        <span class="c"># Example 3: Proper MT outputs.</span>
-        <span class="n">hyp1</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;It is a guide to action which ensures that the military &#39;</span>
-                   <span class="s">&#39;always obeys the commands of the party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="n">hyp2</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s">&#39;It is to insure the troops forever hearing the activity &#39;</span>
-                   <span class="s">&#39;guidebook that party direct&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        
+        <span class="c1"># Testing modified bigram precision.</span>
+        <span class="k">assert</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">)</span>
+
+
+        <span class="c1"># Example 2: the &quot;of the&quot; example.</span>
+        <span class="c1"># Reference sentences</span>
+        <span class="n">ref1</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s1">&#39;It is a guide to action that ensures that the military &#39;</span>
+                   <span class="s1">&#39;will forever heed Party commands&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">ref2</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s1">&#39;It is the guiding principle which guarantees the military &#39;</span>
+                   <span class="s1">&#39;forces always being under the command of the Party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">ref3</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s1">&#39;It is the practical guide for the army always to heed &#39;</span>
+                   <span class="s1">&#39;the directions of the party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># Hypothesis sentence(s).</span>
+        <span class="n">hyp1</span> <span class="o">=</span> <span class="s1">&#39;of the&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
         <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref1</span><span class="p">,</span> <span class="n">ref2</span><span class="p">,</span> <span class="n">ref3</span><span class="p">]</span>
-        
-        <span class="c"># Unigram precision.</span>
+        <span class="c1"># Testing modified unigram precision.</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
+
+        <span class="c1"># Testing modified bigram precision.</span>
+        <span class="k">assert</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
+
+
+        <span class="c1"># Example 3: Proper MT outputs.</span>
+        <span class="n">hyp1</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s1">&#39;It is a guide to action which ensures that the military &#39;</span>
+                   <span class="s1">&#39;always obeys the commands of the party&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">hyp2</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="s1">&#39;It is to insure the troops forever hearing the activity &#39;</span>
+                   <span class="s1">&#39;guidebook that party direct&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref1</span><span class="p">,</span> <span class="n">ref2</span><span class="p">,</span> <span class="n">ref3</span><span class="p">]</span>
+
+        <span class="c1"># Unigram precision.</span>
         <span class="n">hyp1_unigram_precision</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
         <span class="n">hyp2_unigram_precision</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp2</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-        <span class="c"># Test unigram precision with assertAlmostEqual at 4 place precision.</span>
+        <span class="c1"># Test unigram precision with assertAlmostEqual at 4 place precision.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">hyp1_unigram_precision</span><span class="p">,</span> <span class="mf">0.94444444</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">hyp2_unigram_precision</span><span class="p">,</span> <span class="mf">0.57142857</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
-        <span class="c"># Test unigram precision with rounding.</span>
+        <span class="c1"># Test unigram precision with rounding.</span>
         <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp1_unigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.9444</span><span class="p">)</span>
         <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp2_unigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.5714</span><span class="p">)</span>
-        
-        <span class="c"># Bigram precision</span>
+
+        <span class="c1"># Bigram precision</span>
         <span class="n">hyp1_bigram_precision</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
         <span class="n">hyp2_bigram_precision</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp2</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
-        <span class="c"># Test bigram precision with assertAlmostEqual at 4 place precision.</span>
+        <span class="c1"># Test bigram precision with assertAlmostEqual at 4 place precision.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">hyp1_bigram_precision</span><span class="p">,</span> <span class="mf">0.58823529</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">hyp2_bigram_precision</span><span class="p">,</span> <span class="mf">0.07692307</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
-        <span class="c"># Test bigram precision with rounding.</span>
+        <span class="c1"># Test bigram precision with rounding.</span>
         <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp1_bigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.5882</span><span class="p">)</span>
-        <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp2_bigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0769</span><span class="p">)</span>
-        </div>
+        <span class="k">assert</span> <span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">hyp2_bigram_precision</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0769</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TestBLEU.test_brevity_penalty"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_brevity_penalty">[docs]</a>    <span class="k">def</span> <span class="nf">test_brevity_penalty</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Test case from brevity_penalty_closest function in mteval-v13a.pl.</span>
+        <span class="c1"># Same test cases as in the doctest in nltk.translate.bleu_score.py</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">11</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">8</span><span class="p">]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span>
+        <span class="n">hyp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
+        <span class="n">closest_ref_len</span> <span class="o">=</span>  <span class="n">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">),</span> <span class="mf">0.8669</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">11</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">8</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">6</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span><span class="p">]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span>
+        <span class="n">hyp_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
+        <span class="n">closest_ref_len</span> <span class="o">=</span>  <span class="n">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span></div>
+
 <div class="viewcode-block" id="TestBLEU.test_zero_matches"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_zero_matches">[docs]</a>    <span class="k">def</span> <span class="nf">test_zero_matches</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># Test case where there&#39;s 0 matches</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;The candidate has no alignment to any of the references&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
-        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        
-        <span class="c"># Test BLEU to nth order of n-grams, where n is len(hypothesis). </span>
+        <span class="c1"># Test case where there&#39;s 0 matches</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;The candidate has no alignment to any of the references&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+        <span class="c1"># Test BLEU to nth order of n-grams, where n is len(hypothesis).</span>
         <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)):</span>
-            <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c"># Uniform weights.</span>
-            <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
-    </div>
-<div class="viewcode-block" id="TestBLEU.test_full_matches"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_full_matches">[docs]</a>    <span class="k">def</span> <span class="nf">test_full_matches</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>    
-        <span class="c"># Test case where there&#39;s 100% matches</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
-        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-    
-        <span class="c"># Test BLEU to nth order of n-grams, where n is len(hypothesis). </span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c1"># Uniform weights.</span>
+            <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TestBLEU.test_full_matches"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_full_matches">[docs]</a>    <span class="k">def</span> <span class="nf">test_full_matches</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Test case where there&#39;s 100% matches</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+        <span class="c1"># Test BLEU to nth order of n-grams, where n is len(hypothesis).</span>
         <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)):</span>
-            <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c"># Uniform weights.</span>
-            <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
-    </div>
+            <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c1"># Uniform weights.</span>
+            <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span></div>
+
 <div class="viewcode-block" id="TestBLEU.test_partial_matches_hypothesis_longer_than_reference"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEU.test_partial_matches_hypothesis_longer_than_reference">[docs]</a>    <span class="k">def</span> <span class="nf">test_partial_matches_hypothesis_longer_than_reference</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
-        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s">&#39;John loves Mary who loves Mike&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary who loves Mike&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">),</span> <span class="mf">0.4729</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
-            
-</div></div>
-<span class="nd">@unittest.skip</span><span class="p">(</span><span class="s">&quot;Skipping fringe cases for BLEU.&quot;</span><span class="p">)</span>
+        <span class="c1"># Checks that the warning has been raised because len(reference) &lt; 4.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertWarns</span><span class="p">(</span><span class="ne">UserWarning</span><span class="p">,</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span> <span class="c1"># unittest.TestCase.assertWarns is only supported in Python &gt;= 3.2.</span></div></div>
+
+<span class="c1">#@unittest.skip(&quot;Skipping fringe cases for BLEU.&quot;)</span>
 <div class="viewcode-block" id="TestBLEUFringeCases"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases">[docs]</a><span class="k">class</span> <span class="nc">TestBLEUFringeCases</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
 
 <div class="viewcode-block" id="TestBLEUFringeCases.test_case_where_n_is_bigger_than_hypothesis_length"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_case_where_n_is_bigger_than_hypothesis_length">[docs]</a>    <span class="k">def</span> <span class="nf">test_case_where_n_is_bigger_than_hypothesis_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># Test BLEU to nth order of n-grams, where n &gt; len(hypothesis).</span>
-        <span class="c"># TODO: Currently this test breaks the BLEU implementation (13.03.2016)</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
-        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span> <span class="c"># </span>
-        <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c"># Uniform weights.</span>
-        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
-    </div>
+        <span class="c1"># Test BLEU to nth order of n-grams, where n &gt; len(hypothesis).</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;John loves Mary ?&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span> <span class="c1">#</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="o">/</span><span class="n">n</span><span class="p">]</span> <span class="o">*</span> <span class="n">n</span> <span class="c1"># Uniform weights.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">),</span> <span class="mf">0.7165</span><span class="p">,</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="c1"># Checks that the warning has been raised because len(hypothesis) &lt; 4.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertWarns</span><span class="p">(</span><span class="ne">UserWarning</span><span class="p">,</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span> <span class="c1"># unittest.TestCase.assertWarns is only supported in Python &gt;= 3.2.</span>
+
+        <span class="c1"># Test case where n &gt; len(hypothesis) but so is n &gt; len(reference), and</span>
+        <span class="c1"># it&#39;s a special case where reference == hypothesis.</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span></div>
+
 <div class="viewcode-block" id="TestBLEUFringeCases.test_empty_hypothesis"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_empty_hypothesis">[docs]</a>    <span class="k">def</span> <span class="nf">test_empty_hypothesis</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># Test case where there&#39;s hypothesis is empty.</span>
-        <span class="c"># TODO: Currently this test breaks the BLEU implementation (13.03.2016)</span>
-        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;The candidate has no alignment to any of the references&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="c1"># Test case where there&#39;s hypothesis is empty.</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;The candidate has no alignment to any of the references&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
         <span class="n">hypothesis</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
-        </div>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span></div>
+
 <div class="viewcode-block" id="TestBLEUFringeCases.test_empty_references"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_empty_references">[docs]</a>    <span class="k">def</span> <span class="nf">test_empty_references</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># Test case where there&#39;s reference is empty.</span>
-        <span class="c"># TODO: Currently this test breaks the BLEU implementation (13.03.2016)</span>
+        <span class="c1"># Test case where there&#39;s reference is empty.</span>
         <span class="n">references</span> <span class="o">=</span> <span class="p">[[]]</span>
-        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
-        
-        </div>
-<div class="viewcode-block" id="TestBLEUFringeCases.test_brevity_penalty"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_brevity_penalty">[docs]</a>    <span class="k">def</span> <span class="nf">test_brevity_penalty</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">pass</span>
-    </div></div>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;John loves Mary&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TestBLEUFringeCases.test_empty_references_and_hypothesis"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_empty_references_and_hypothesis">[docs]</a>    <span class="k">def</span> <span class="nf">test_empty_references_and_hypothesis</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Test case where both references and hypothesis is empty.</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[[]]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TestBLEUFringeCases.test_reference_or_hypothesis_shorter_than_fourgrams"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUFringeCases.test_reference_or_hypothesis_shorter_than_fourgrams">[docs]</a>    <span class="k">def</span> <span class="nf">test_reference_or_hypothesis_shorter_than_fourgrams</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Tese case where the length of reference or hypothesis</span>
+        <span class="c1"># is shorter than 4.</span>
+        <span class="n">references</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;let it go&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39;let go it&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># Checks that the value the hypothesis and reference returns is 1.0</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="c1"># Checks that the warning has been raised.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertWarns</span><span class="p">(</span><span class="ne">UserWarning</span><span class="p">,</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span> <span class="c1"># unittest.TestCase.assertWarns is only supported in Python &gt;= 3.2.</span></div></div>
+
+<div class="viewcode-block" id="TestBLEUvsMteval13a"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUvsMteval13a">[docs]</a><span class="k">class</span> <span class="nc">TestBLEUvsMteval13a</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+
+<div class="viewcode-block" id="TestBLEUvsMteval13a.test_corpus_bleu"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.translate.html#nltk.test.unit.translate.test_bleu.TestBLEUvsMteval13a.test_corpus_bleu">[docs]</a>    <span class="k">def</span> <span class="nf">test_corpus_bleu</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ref_file</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="s1">&#39;models/wmt15_eval/ref.ru&#39;</span><span class="p">)</span>
+        <span class="n">hyp_file</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="s1">&#39;models/wmt15_eval/google.ru&#39;</span><span class="p">)</span>
+        <span class="n">mteval_output_file</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="s1">&#39;models/wmt15_eval/mteval-13a.output&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Reads the BLEU scores from the `mteval-13a.output` file.</span>
+        <span class="c1"># The order of the list corresponds to the order of the ngrams.</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mteval_output_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">mteval_fin</span><span class="p">:</span>
+            <span class="c1"># The numbers are located in the last 2nd line of the file.</span>
+            <span class="c1"># The first and 2nd item in the list are the score and system names.</span>
+            <span class="n">mteval_bleu_scores</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">mteval_fin</span><span class="o">.</span><span class="n">readlines</span><span class="p">()[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+        <span class="k">with</span> <span class="n">io</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">ref_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">ref_fin</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">io</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">hyp_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">hyp_fin</span><span class="p">:</span>
+                <span class="c1"># Whitespace tokenize the file.</span>
+                <span class="c1"># Note: split() automatically strip().</span>
+                <span class="n">hypothesis</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(),</span> <span class="n">hyp_fin</span><span class="p">))</span>
+                <span class="c1"># Note that the corpus_bleu input is list of list of references.</span>
+                <span class="n">references</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">()],</span> <span class="n">ref_fin</span><span class="p">))</span>
+                <span class="c1"># Without smoothing.</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">mteval_bleu</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">),</span> <span class="n">mteval_bleu_scores</span><span class="p">):</span>
+                    <span class="n">nltk_bleu</span> <span class="o">=</span> <span class="n">corpus_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="n">i</span><span class="p">,)</span><span class="o">*</span><span class="n">i</span><span class="p">)</span>
+                    <span class="c1"># Check that the BLEU scores difference is less than 0.005 .</span>
+                    <span class="c1"># Note: This is an approximate comparison; as much as</span>
+                    <span class="c1">#       +/- 0.01 BLEU might be &quot;statistically significant&quot;,</span>
+                    <span class="c1">#       the actual translation quality might not be.</span>
+                    <span class="k">assert</span> <span class="nb">abs</span><span class="p">(</span><span class="n">mteval_bleu</span> <span class="o">-</span> <span class="n">nltk_bleu</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.005</span>
+
+                <span class="c1"># With the same smoothing method used in mteval-v13a.pl</span>
+                <span class="n">chencherry</span> <span class="o">=</span> <span class="n">SmoothingFunction</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">mteval_bleu</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">10</span><span class="p">),</span> <span class="n">mteval_bleu_scores</span><span class="p">):</span>
+                    <span class="n">nltk_bleu</span> <span class="o">=</span> <span class="n">corpus_bleu</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span>
+                                            <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="n">i</span><span class="p">,)</span><span class="o">*</span><span class="n">i</span><span class="p">,</span>
+                                            <span class="n">smoothing_function</span><span class="o">=</span><span class="n">chencherry</span><span class="o">.</span><span class="n">method3</span><span class="p">)</span>
+                    <span class="k">assert</span> <span class="nb">abs</span><span class="p">(</span><span class="n">mteval_bleu</span> <span class="o">-</span> <span class="n">nltk_bleu</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.005</span></div></div>
 </pre></div>
 
           </div>
@@ -214,9 +298,6 @@
                 <input type="hidden" name="check_keywords" value="yes" />
                 <input type="hidden" name="area" value="default" />
             </form>
-            <p class="searchtip" style="font-size: 90%">
-                Enter search terms or a module, class or function name.
-            </p>
           </div>
         </div>
         <div class="clearer"></div>
@@ -239,9 +320,9 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &copy; Copyright 2015, NLTK Project.
-      Last updated on Apr 09, 2016.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+        &#169; Copyright 2015, NLTK Project.
+      Last updated on Jan 02, 2017.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.1.
     </div>
         </div>
         <div class="clearer"></div>
