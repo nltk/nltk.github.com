@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>nltk.probability &#8212; NLTK 3.0 documentation</title>
+    <title>nltk.probability &#8212; NLTK 3.2.3 documentation</title>
     
     <link rel="stylesheet" href="../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
@@ -14,7 +14,7 @@
     <script type="text/javascript">
       var DOCUMENTATION_OPTIONS = {
         URL_ROOT:    '../../',
-        VERSION:     '3.0',
+        VERSION:     '3.2.3',
         COLLAPSE_INDEX: false,
         FILE_SUFFIX: '.html',
         HAS_SOURCE:  true,
@@ -31,7 +31,7 @@
     <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
-          href="../../index.html">NLTK 3.0 documentation</a></div>
+          href="../../index.html">NLTK 3.2.3 documentation</a></div>
         <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -96,11 +96,13 @@
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">import</span> <span class="nn">array</span>
 <span class="kn">from</span> <span class="nn">operator</span> <span class="k">import</span> <span class="n">itemgetter</span>
-<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">Counter</span>
 <span class="kn">from</span> <span class="nn">functools</span> <span class="k">import</span> <span class="n">reduce</span>
-<span class="kn">from</span> <span class="nn">nltk</span> <span class="k">import</span> <span class="n">compat</span>
-<span class="kn">from</span> <span class="nn">nltk.compat</span> <span class="k">import</span> <span class="n">Counter</span>
+<span class="kn">from</span> <span class="nn">abc</span> <span class="k">import</span> <span class="n">ABCMeta</span><span class="p">,</span> <span class="n">abstractmethod</span>
 
+<span class="kn">from</span> <span class="nn">six</span> <span class="k">import</span> <span class="n">itervalues</span><span class="p">,</span> <span class="n">text_type</span><span class="p">,</span> <span class="n">add_metaclass</span>
+
+<span class="kn">from</span> <span class="nn">nltk</span> <span class="k">import</span> <span class="n">compat</span>
 <span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="k">import</span> <span class="n">raise_unorderable_types</span>
 
 <span class="n">_NINF</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-1e300&#39;</span><span class="p">)</span>
@@ -155,7 +157,10 @@
 <span class="sd">            distribution with.</span>
 <span class="sd">        :type samples: Sequence</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">Counter</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">)</span>
+        <span class="n">Counter</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">)</span>
+
+        <span class="c1"># Cached number of samples in this FreqDist</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="FreqDist.N"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.FreqDist.N">[docs]</a>    <span class="k">def</span> <span class="nf">N</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -166,7 +171,38 @@
 
 <span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Not already cached, or cache has been invalidated</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_N</span></div>
+
+    <span class="k">def</span> <span class="nf">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Override ``Counter.__setitem__()`` to invalidate the cached N</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__setitem__</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Override ``Counter.__delitem__()`` to invalidate the cached N</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__delitem__</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FreqDist.update"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.FreqDist.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Override ``Counter.update()`` to invalidate the cached N</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="FreqDist.setdefault"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.FreqDist.setdefault">[docs]</a>    <span class="k">def</span> <span class="nf">setdefault</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Override ``Counter.setdefault()`` to invalidate the cached N</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_N</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span></div>
 
 <div class="viewcode-block" id="FreqDist.B"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.FreqDist.B">[docs]</a>    <span class="k">def</span> <span class="nf">B</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -244,9 +280,10 @@
 <span class="sd">        :type sample: any</span>
 <span class="sd">        :rtype: float</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="mi">0</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">sample</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">()</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">sample</span><span class="p">]</span> <span class="o">/</span> <span class="n">n</span></div>
 
 <div class="viewcode-block" id="FreqDist.max"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.FreqDist.max">[docs]</a>    <span class="k">def</span> <span class="nf">max</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -303,7 +340,7 @@
             <span class="n">pylab</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">])</span>
             <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">]</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="n">pylab</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">)),</span> <span class="p">[</span><span class="n">compat</span><span class="o">.</span><span class="n">text_type</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
+        <span class="n">pylab</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">)),</span> <span class="p">[</span><span class="n">text_type</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Samples&quot;</span><span class="p">)</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="n">ylabel</span><span class="p">)</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></div>
@@ -347,10 +384,10 @@
 
 <span class="sd">        :rtype: FreqDist</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
 
-    <span class="c1"># Mathematical operatiors </span>
-    
+    <span class="c1"># Mathematical operatiors</span>
+
     <span class="k">def</span> <span class="nf">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Add counts from two counters.</span>
@@ -359,7 +396,7 @@
 <span class="sd">        FreqDist({&#39;b&#39;: 4, &#39;c&#39;: 2, &#39;a&#39;: 1})</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__add__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__add__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">__sub__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -369,7 +406,7 @@
 <span class="sd">        FreqDist({&#39;b&#39;: 2, &#39;a&#39;: 1})</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__sub__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__sub__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">__or__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -379,7 +416,7 @@
 <span class="sd">        FreqDist({&#39;b&#39;: 3, &#39;c&#39;: 2, &#39;a&#39;: 1})</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__or__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__or__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">__and__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -389,7 +426,7 @@
 <span class="sd">        FreqDist({&#39;b&#39;: 1})</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__and__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="nb">super</span><span class="p">(</span><span class="n">FreqDist</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__and__</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">__le__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">FreqDist</span><span class="p">):</span>
@@ -397,9 +434,9 @@
         <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">other</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">other</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">)</span>
 
     <span class="c1"># @total_ordering doesn&#39;t work here, since the class inherits from a builtin class</span>
-    <span class="n">__ge__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span> <span class="ow">or</span> <span class="bp">self</span> <span class="o">==</span> <span class="n">other</span>
-    <span class="n">__lt__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">==</span> <span class="n">other</span>
-    <span class="n">__gt__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span>
+    <span class="fm">__ge__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span> <span class="ow">or</span> <span class="bp">self</span> <span class="o">==</span> <span class="n">other</span>
+    <span class="fm">__lt__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">==</span> <span class="n">other</span>
+    <span class="fm">__gt__</span> <span class="o">=</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="ow">not</span> <span class="bp">self</span> <span class="o">&lt;=</span> <span class="n">other</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -445,6 +482,7 @@
 <span class="c1">##  Probability Distributions</span>
 <span class="c1">##//////////////////////////////////////////////////////</span>
 
+<span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ABCMeta</span><span class="p">)</span>
 <div class="viewcode-block" id="ProbDistI"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI">[docs]</a><span class="k">class</span> <span class="nc">ProbDistI</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A probability distribution for the outcomes of an experiment.  A</span>
@@ -462,10 +500,13 @@
     <span class="sd">&quot;&quot;&quot;True if the probabilities of the samples in this probability</span>
 <span class="sd">       distribution will always sum to one.&quot;&quot;&quot;</span>
 
+    <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span> <span class="o">==</span> <span class="n">ProbDistI</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;Interfaces can&#39;t be instantiated&quot;</span><span class="p">)</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classes inheriting from ProbDistI should implement __init__.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
 
+    <span class="nd">@abstractmethod</span>
 <div class="viewcode-block" id="ProbDistI.prob"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI.prob">[docs]</a>    <span class="k">def</span> <span class="nf">prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return the probability for a given sample.  Probabilities</span>
@@ -475,8 +516,7 @@
 <span class="sd">               should be returned.</span>
 <span class="sd">        :type sample: any</span>
 <span class="sd">        :rtype: float</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
 <div class="viewcode-block" id="ProbDistI.logprob"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI.logprob">[docs]</a>    <span class="k">def</span> <span class="nf">logprob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -491,6 +531,7 @@
         <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="k">if</span> <span class="n">p</span> <span class="o">!=</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">_NINF</span><span class="p">)</span></div>
 
+    <span class="nd">@abstractmethod</span>
 <div class="viewcode-block" id="ProbDistI.max"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI.max">[docs]</a>    <span class="k">def</span> <span class="nf">max</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return the sample with the greatest probability.  If two or</span>
@@ -498,17 +539,16 @@
 <span class="sd">        which sample is returned is undefined.</span>
 
 <span class="sd">        :rtype: any</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
+    <span class="nd">@abstractmethod</span>
 <div class="viewcode-block" id="ProbDistI.samples"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI.samples">[docs]</a>    <span class="k">def</span> <span class="nf">samples</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a list of all samples that have nonzero probabilities.</span>
 <span class="sd">        Use ``prob`` to find the probability of each sample.</span>
 
 <span class="sd">        :rtype: list</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
     <span class="c1"># cf self.SUM_TO_ONE</span>
 <div class="viewcode-block" id="ProbDistI.discount"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ProbDistI.discount">[docs]</a>    <span class="k">def</span> <span class="nf">discount</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -594,7 +634,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_samples</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_probs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
 
     <span class="nd">@classmethod</span>
-    <span class="k">def</span> <span class="nf">unirand</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">samples</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">unirand</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">samples</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        The key function that creates a randomized initial distribution</span>
 <span class="sd">        that still sums to 1. Set as a dictionary of prob values so that</span>
@@ -778,11 +818,11 @@
 <span class="sd">            ``bins`` is not specified, it defaults to ``freqdist.B()``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">bins</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">bins</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">freqdist</span><span class="o">.</span><span class="n">N</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
-            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">[:</span><span class="o">-</span><span class="mi">8</span><span class="p">]</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">[:</span><span class="o">-</span><span class="mi">8</span><span class="p">]</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;A </span><span class="si">%s</span><span class="s1"> probability distribution &#39;</span> <span class="o">%</span> <span class="n">name</span> <span class="o">+</span>
                              <span class="s1">&#39;must have at least one bin.&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">bins</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">bins</span> <span class="o">&lt;</span> <span class="n">freqdist</span><span class="o">.</span><span class="n">B</span><span class="p">()):</span>
-            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">[:</span><span class="o">-</span><span class="mi">8</span><span class="p">]</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">[:</span><span class="o">-</span><span class="mi">8</span><span class="p">]</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">The number of bins in a </span><span class="si">%s</span><span class="s1"> distribution &#39;</span> <span class="o">%</span> <span class="n">name</span> <span class="o">+</span>
                              <span class="s1">&#39;(</span><span class="si">%d</span><span class="s1">) must be greater than or equal to</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">bins</span> <span class="o">+</span>
                              <span class="s1">&#39;the number of bins in the FreqDist used &#39;</span> <span class="o">+</span>
@@ -864,7 +904,7 @@
 <span class="sd">            probabilities of the sample values to sum to one.  If</span>
 <span class="sd">            ``bins`` is not specified, it defaults to ``freqdist.B()``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">LidstoneProbDist</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freqdist</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">bins</span><span class="p">)</span>
+        <span class="n">LidstoneProbDist</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freqdist</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">bins</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -900,7 +940,7 @@
 <span class="sd">            probabilities of the sample values to sum to one.  If</span>
 <span class="sd">            ``bins`` is not specified, it defaults to ``freqdist.B()``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">LidstoneProbDist</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freqdist</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">bins</span><span class="p">)</span>
+        <span class="n">LidstoneProbDist</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freqdist</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">bins</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1800,14 +1840,15 @@
 <span class="sd">            frequency distribution with</span>
 <span class="sd">        :type cond_samples: Sequence of (condition, sample) tuples</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">defaultdict</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">FreqDist</span><span class="p">)</span>
+        <span class="n">defaultdict</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">FreqDist</span><span class="p">)</span>
+
         <span class="k">if</span> <span class="n">cond_samples</span><span class="p">:</span>
             <span class="k">for</span> <span class="p">(</span><span class="n">cond</span><span class="p">,</span> <span class="n">sample</span><span class="p">)</span> <span class="ow">in</span> <span class="n">cond_samples</span><span class="p">:</span>
                 <span class="bp">self</span><span class="p">[</span><span class="n">cond</span><span class="p">][</span><span class="n">sample</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
 
     <span class="k">def</span> <span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">kv_pairs</span> <span class="o">=</span> <span class="p">((</span><span class="n">cond</span><span class="p">,</span> <span class="bp">self</span><span class="p">[</span><span class="n">cond</span><span class="p">])</span> <span class="k">for</span> <span class="n">cond</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">conditions</span><span class="p">())</span>
-        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">,</span> <span class="p">(),</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">kv_pairs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="p">(),</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">kv_pairs</span><span class="p">)</span>
 
 <div class="viewcode-block" id="ConditionalFreqDist.conditions"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ConditionalFreqDist.conditions">[docs]</a>    <span class="k">def</span> <span class="nf">conditions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1828,7 +1869,7 @@
 
 <span class="sd">        :rtype: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">fdist</span><span class="o">.</span><span class="n">N</span><span class="p">()</span> <span class="k">for</span> <span class="n">fdist</span> <span class="ow">in</span> <span class="n">compat</span><span class="o">.</span><span class="n">itervalues</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">fdist</span><span class="o">.</span><span class="n">N</span><span class="p">()</span> <span class="k">for</span> <span class="n">fdist</span> <span class="ow">in</span> <span class="n">itervalues</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
 
 <div class="viewcode-block" id="ConditionalFreqDist.plot"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ConditionalFreqDist.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1872,7 +1913,7 @@
 
         <span class="n">pylab</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="n">legend_loc</span><span class="p">)</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;silver&quot;</span><span class="p">)</span>
-        <span class="n">pylab</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">)),</span> <span class="p">[</span><span class="n">compat</span><span class="o">.</span><span class="n">text_type</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
+        <span class="n">pylab</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">samples</span><span class="p">)),</span> <span class="p">[</span><span class="n">text_type</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">title</span><span class="p">:</span>
             <span class="n">pylab</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
         <span class="n">pylab</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Samples&quot;</span><span class="p">)</span>
@@ -1917,7 +1958,7 @@
             <span class="nb">print</span><span class="p">()</span></div>
 
     <span class="c1"># Mathematical operators</span>
-    
+
     <span class="k">def</span> <span class="nf">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Add counts from two ConditionalFreqDists.</span>
@@ -1973,7 +2014,7 @@
         <span class="k">return</span> <span class="n">result</span>
 
     <span class="k">def</span> <span class="nf">__and__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot; </span>
+        <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Intersection is the minimum of corresponding counts.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">ConditionalFreqDist</span><span class="p">):</span>
@@ -2014,6 +2055,7 @@
 
 
 <span class="nd">@compat</span><span class="o">.</span><span class="n">python_2_unicode_compatible</span>
+<span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ABCMeta</span><span class="p">)</span>
 <div class="viewcode-block" id="ConditionalProbDistI"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ConditionalProbDistI">[docs]</a><span class="k">class</span> <span class="nc">ConditionalProbDistI</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A collection of probability distributions for a single experiment</span>
@@ -2027,8 +2069,11 @@
 <span class="sd">    condition to the ``ProbDist`` for the experiment under that</span>
 <span class="sd">    condition.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;Interfaces can&#39;t be instantiated&quot;</span><span class="p">)</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classes inheriting from ConditionalProbDistI should implement __init__.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
 
 <div class="viewcode-block" id="ConditionalProbDistI.conditions"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ConditionalProbDistI.conditions">[docs]</a>    <span class="k">def</span> <span class="nf">conditions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -2046,7 +2091,7 @@
 
 <span class="sd">        :rtype: str</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="s1">&#39;&lt;</span><span class="si">%s</span><span class="s1"> with </span><span class="si">%d</span><span class="s1"> conditions&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+        <span class="k">return</span> <span class="s1">&#39;&lt;</span><span class="si">%s</span><span class="s1"> with </span><span class="si">%d</span><span class="s1"> conditions&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="ConditionalProbDist"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ConditionalProbDist">[docs]</a><span class="k">class</span> <span class="nc">ConditionalProbDist</span><span class="p">(</span><span class="n">ConditionalProbDistI</span><span class="p">):</span>
@@ -2144,7 +2189,7 @@
 <span class="c1">##//////////////////////////////////////////////////////</span>
 
 <span class="c1"># If the difference is bigger than this, then just take the bigger one:</span>
-<span class="n">_ADD_LOGS_MAX_DIFF</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span><span class="n">e</span><span class="o">-</span><span class="mi">30</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">_ADD_LOGS_MAX_DIFF</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1e-30</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
 
 <div class="viewcode-block" id="add_logs"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.add_logs">[docs]</a><span class="k">def</span> <span class="nf">add_logs</span><span class="p">(</span><span class="n">logx</span><span class="p">,</span> <span class="n">logy</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -2262,9 +2307,9 @@
 
 <div class="viewcode-block" id="ImmutableProbabilisticMixIn"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ImmutableProbabilisticMixIn">[docs]</a><span class="k">class</span> <span class="nc">ImmutableProbabilisticMixIn</span><span class="p">(</span><span class="n">ProbabilisticMixIn</span><span class="p">):</span>
 <div class="viewcode-block" id="ImmutableProbabilisticMixIn.set_prob"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ImmutableProbabilisticMixIn.set_prob">[docs]</a>    <span class="k">def</span> <span class="nf">set_prob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prob</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> is immutable&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span></div>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> is immutable&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span></div>
 <div class="viewcode-block" id="ImmutableProbabilisticMixIn.set_logprob"><a class="viewcode-back" href="../../api/nltk.html#nltk.probability.ImmutableProbabilisticMixIn.set_logprob">[docs]</a>    <span class="k">def</span> <span class="nf">set_logprob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prob</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> is immutable&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span></div></div>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> is immutable&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span></div></div>
 
 <span class="c1">## Helper function for processing keyword arguments</span>
 
@@ -2378,7 +2423,7 @@
     <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Generating:&#39;</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">pdist</span> <span class="ow">in</span> <span class="n">pdists</span><span class="p">:</span>
         <span class="n">fdist</span> <span class="o">=</span> <span class="n">FreqDist</span><span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="n">generate</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5000</span><span class="p">))</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%20s</span><span class="s1"> </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">[:</span><span class="mi">20</span><span class="p">],</span> <span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fdist</span><span class="p">)[:</span><span class="mi">55</span><span class="p">]))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%20s</span><span class="s1"> </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">pdist</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">[:</span><span class="mi">20</span><span class="p">],</span> <span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fdist</span><span class="p">)[:</span><span class="mi">55</span><span class="p">]))</span>
     <span class="nb">print</span><span class="p">()</span>
 
 <span class="k">def</span> <span class="nf">gt_demo</span><span class="p">():</span>
@@ -2393,7 +2438,7 @@
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%18s</span><span class="s1"> </span><span class="si">%8d</span><span class="s1">  </span><span class="si">%14e</span><span class="s1">&#39;</span> \
             <span class="o">%</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">fd</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">sgt</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">key</span><span class="p">)))</span>
 
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
     <span class="n">demo</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
     <span class="n">demo</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5000</span><span class="p">)</span>
     <span class="n">gt_demo</span><span class="p">()</span>
@@ -2455,9 +2500,9 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &#169; Copyright 2015, NLTK Project.
-      Last updated on Jan 02, 2017.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.1.
+        &#169; Copyright 2017, NLTK Project.
+      Last updated on May 18, 2017.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.5.
     </div>
         </div>
         <div class="clearer"></div>
