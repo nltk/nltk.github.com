@@ -215,7 +215,19 @@
 <span class="sd">            True</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="n">raw_tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># Convert converted quotes back to original double quotes</span>
+        <span class="c1"># Do this only if original text contains double quote(s)</span>
+        <span class="k">if</span> <span class="s1">&#39;&quot;&#39;</span> <span class="ow">in</span> <span class="n">text</span><span class="p">:</span>
+            <span class="c1"># Find double quotes and converted quotes</span>
+            <span class="n">matched</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;[(``)(</span><span class="se">\&#39;\&#39;</span><span class="s1">)(&quot;)]+&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)]</span>
+            
+            <span class="c1"># Replace converted quotes back to double quotes</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">matched</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s2">&quot;``&quot;</span><span class="p">,</span> <span class="s2">&quot;&#39;&#39;&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="n">tok</span> <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">raw_tokens</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">raw_tokens</span>
+
         <span class="k">return</span> <span class="n">align_tokens</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span></div></div>
 
 
@@ -254,6 +266,29 @@
 <span class="sd">    &gt;&gt;&gt; expected_detoken = &#39;Good muffins cost $3.88 in New (York). Please (buy) me two of them. (Thanks).&#39;</span>
 <span class="sd">    &gt;&gt;&gt; expected_detoken == d.detokenize(t.tokenize(s, convert_parentheses=True), convert_parentheses=True)</span>
 <span class="sd">    True</span>
+
+<span class="sd">    During tokenization it&#39;s safe to add more spaces but during detokenization,</span>
+<span class="sd">    simply undoing the padding doesn&#39;t really help. </span>
+
+<span class="sd">    - During tokenization, left and right pad is added to [!?], when</span>
+<span class="sd">      detokenizing, only left shift the [!?] is needed.</span>
+<span class="sd">      Thus (re.compile(r&#39;\s([?!])&#39;), r&#39;\g&lt;1&gt;&#39;)</span>
+
+<span class="sd">    - During tokenization [:,] are left and right padded but when detokenizing,</span>
+<span class="sd">      only left shift is necessary and we keep right pad after comma/colon</span>
+<span class="sd">      if the string after is a non-digit.</span>
+<span class="sd">      Thus (re.compile(r&#39;\s([:,])\s([^\d])&#39;), r&#39;\1 \2&#39;)</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.tokenize.treebank import TreebankWordDetokenizer</span>
+<span class="sd">    &gt;&gt;&gt; toks = [&#39;hello&#39;, &#39;,&#39;, &#39;i&#39;, &#39;ca&#39;, &quot;n&#39;t&quot;, &#39;feel&#39;, &#39;my&#39;, &#39;feet&#39;, &#39;!&#39;, &#39;Help&#39;, &#39;!&#39;, &#39;!&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; twd = TreebankWordDetokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; twd.detokenize(toks)</span>
+<span class="sd">    &quot;hello, i can&#39;t feel my feet! Help!!&quot;</span>
+
+<span class="sd">    &gt;&gt;&gt; toks = [&#39;hello&#39;, &#39;,&#39;, &#39;i&#39;, &quot;can&#39;t&quot;, &#39;feel&#39;, &#39;;&#39;, &#39;my&#39;, &#39;feet&#39;, &#39;!&#39;,</span>
+<span class="sd">    ... &#39;Help&#39;, &#39;!&#39;, &#39;!&#39;, &#39;He&#39;, &#39;said&#39;, &#39;:&#39;, &#39;Help&#39;, &#39;,&#39;, &#39;help&#39;, &#39;?&#39;, &#39;!&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; twd.detokenize(toks)</span>
+<span class="sd">    &quot;hello, i can&#39;t feel; my feet! Help!! He said: Help, help?!&quot;</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">_contractions</span> <span class="o">=</span> <span class="n">MacIntyreContractions</span><span class="p">()</span>
     <span class="n">CONTRACTIONS2</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;(?#X)&#39;</span><span class="p">,</span> <span class="s1">&#39;\s&#39;</span><span class="p">))</span>
@@ -287,7 +322,8 @@
     <span class="c1">#punctuation</span>
     <span class="n">PUNCTUATION</span> <span class="o">=</span> <span class="p">[</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;([^&#39;])\s&#39;\s&quot;</span><span class="p">),</span> <span class="sa">r</span><span class="s2">&quot;\1&#39; &quot;</span><span class="p">),</span>
-        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([?!])\s&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\g&lt;1&gt;&#39;</span><span class="p">),</span>
+        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([?!])&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\g&lt;1&gt;&#39;</span><span class="p">),</span> <span class="c1"># Strip left pad for [?!]</span>
+        <span class="c1">#(re.compile(r&#39;\s([?!])\s&#39;), r&#39;\g&lt;1&gt;&#39;),</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;([^\.])\s(\.)([\]\)}&gt;&quot;</span><span class="se">\&#39;</span><span class="s1">]*)\s*$&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\1\2\3&#39;</span><span class="p">),</span>
         <span class="c1"># When tokenizing, [;@#$%&amp;] are padded with whitespace regardless of</span>
         <span class="c1"># whether there are spaces before or after them.</span>
@@ -298,7 +334,8 @@
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([&amp;])\s&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39; \g&lt;1&gt; &#39;</span><span class="p">),</span> <span class="c1"># Unknown pad.</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s\.\.\.\s&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;...&#39;</span><span class="p">),</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([:,])\s$&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\1&#39;</span><span class="p">),</span>
-        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([:,])\s([^\d])&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\1\2&#39;</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s([:,])\s([^\d])&#39;</span><span class="p">),</span> <span class="sa">r</span><span class="s1">&#39;\1 \2&#39;</span><span class="p">)</span> <span class="c1"># Keep right pad after comma/colon before non-digits.</span>
+        <span class="c1">#(re.compile(r&#39;\s([:,])\s([^\d])&#39;), r&#39;\1\2&#39;)</span>
         <span class="p">]</span>
 
     <span class="c1">#starting quotes</span>
@@ -406,7 +443,7 @@
           
     <div class="footer" role="contentinfo">
         &#169; Copyright 2017, NLTK Project.
-      Last updated on May 21, 2017.
+      Last updated on Sep 24, 2017.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.5.
     </div>
         </div>

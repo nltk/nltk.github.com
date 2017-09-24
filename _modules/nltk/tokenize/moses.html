@@ -88,6 +88,19 @@
 <span class="sd">    &gt;&gt;&gt; m = MosesTokenizer()</span>
 <span class="sd">    &gt;&gt;&gt; m.tokenize(&#39;abc def.&#39;)</span>
 <span class="sd">    [u&#39;abc&#39;, u&#39;def&#39;, u&#39;.&#39;]</span>
+
+<span class="sd">    The nonbreaking prefixes should deal the situation when numeric only prefix is the last token.</span>
+<span class="sd">    In below example, &quot;pp&quot; is the last element, and there is no digit after it.</span>
+
+<span class="sd">    &gt;&gt;&gt; m = MosesTokenizer()</span>
+<span class="sd">    &gt;&gt;&gt; m.tokenize(&#39;2016, pp.&#39;)</span>
+<span class="sd">    [u&#39;2016&#39;, u&#39;,&#39;, u&#39;pp&#39;, u&#39;.&#39;]</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; sent = &quot;This ain&#39;t funny. It&#39;s actually hillarious, yet double Ls. | [] &lt; &gt; [ ] &amp; You&#39;re gonna shake it off? Don&#39;t?&quot;</span>
+<span class="sd">    &gt;&gt;&gt; m.tokenize(sent, escape=True)</span>
+<span class="sd">    [&#39;This&#39;, &#39;ain&#39;, &#39;&amp;apos;t&#39;, &#39;funny&#39;, &#39;.&#39;, &#39;It&#39;, &#39;&amp;apos;s&#39;, &#39;actually&#39;, &#39;hillarious&#39;, &#39;,&#39;, &#39;yet&#39;, &#39;double&#39;, &#39;Ls&#39;, &#39;.&#39;, &#39;&amp;#124;&#39;, &#39;&amp;#91;&#39;, &#39;&amp;#93;&#39;, &#39;&amp;lt;&#39;, &#39;&amp;gt;&#39;, &#39;&amp;#91;&#39;, &#39;&amp;#93;&#39;, &#39;&amp;amp;&#39;, &#39;You&#39;, &#39;&amp;apos;re&#39;, &#39;gonna&#39;, &#39;shake&#39;, &#39;it&#39;, &#39;off&#39;, &#39;?&#39;, &#39;Don&#39;, &#39;&amp;apos;t&#39;, &#39;?&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; m.tokenize(sent, escape=False)</span>
+<span class="sd">    [&#39;This&#39;, &#39;ain&#39;, &quot;&#39;t&quot;, &#39;funny&#39;, &#39;.&#39;, &#39;It&#39;, &quot;&#39;s&quot;, &#39;actually&#39;, &#39;hillarious&#39;, &#39;,&#39;, &#39;yet&#39;, &#39;double&#39;, &#39;Ls&#39;, &#39;.&#39;, &#39;|&#39;, &#39;[&#39;, &#39;]&#39;, &#39;&lt;&#39;, &#39;&gt;&#39;, &#39;[&#39;, &#39;]&#39;, &#39;&amp;&#39;, &#39;You&#39;, &quot;&#39;re&quot;, &#39;gonna&#39;, &#39;shake&#39;, &#39;it&#39;, &#39;off&#39;, &#39;?&#39;, &#39;Don&#39;, &quot;&#39;t&quot;, &#39;?&#39;]</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="c1"># Perl Unicode Properties character sets.</span>
@@ -286,7 +299,7 @@
         <span class="nb">super</span><span class="p">(</span><span class="n">MosesTokenizer</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lang</span> <span class="o">=</span> <span class="n">lang</span>
         <span class="c1"># Initialize the language specific nonbreaking prefixes.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="o">=</span> <span class="n">nonbreaking_prefixes</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">lang</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="o">=</span> <span class="p">[</span><span class="n">_nbp</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">_nbp</span> <span class="ow">in</span> <span class="n">nonbreaking_prefixes</span><span class="o">.</span><span class="n">words</span><span class="p">(</span><span class="n">lang</span><span class="p">)]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_ONLY_PREFIXES</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span>
                                       <span class="bp">self</span><span class="o">.</span><span class="n">NONBREAKING_PREFIXES</span> <span class="k">if</span>
                                       <span class="bp">self</span><span class="o">.</span><span class="n">has_numeric_only</span><span class="p">(</span><span class="n">w</span><span class="p">)]</span>
@@ -338,6 +351,7 @@
                 <span class="c1"># Checks if the prefix is in NUMERIC_ONLY_PREFIXES</span>
                 <span class="c1"># and ensures that the next word is a digit.</span>
                 <span class="k">elif</span> <span class="p">(</span><span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_ONLY_PREFIXES</span> <span class="ow">and</span>
+                      <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">num_tokens</span> <span class="ow">and</span>
                       <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;^[0-9]+&#39;</span><span class="p">,</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])):</span>
                     <span class="k">pass</span> <span class="c1"># No change to the token.</span>
                 <span class="k">else</span><span class="p">:</span> <span class="c1"># Otherwise, adds a space after the tokens before a dot.</span>
@@ -367,7 +381,7 @@
             <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div>
 
-<div class="viewcode-block" id="MosesTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">agressive_dash_splits</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="MosesTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">agressive_dash_splits</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">escape</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Python port of the Moses tokenizer.</span>
 
@@ -426,8 +440,9 @@
         <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span><span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="c1"># Restore multidots.</span>
         <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">restore_multidots</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
-        <span class="c1"># Escape XML symbols.</span>
-        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">escape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">escape</span><span class="p">:</span>
+            <span class="c1"># Escape XML symbols.</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">escape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div></div>
 
@@ -460,6 +475,11 @@
 <span class="sd">    &gt;&gt;&gt; detokens = d.detokenize(tokens)</span>
 <span class="sd">    &gt;&gt;&gt; &quot; &quot;.join(detokens) == expected_detokens</span>
 <span class="sd">    True</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; d.detokenize(expected_tokens, unescape=True)</span>
+<span class="sd">    [&#39;This&#39;, &quot;ain&#39;t&quot;, &#39;funny.&#39;, &quot;It&#39;s&quot;, &#39;actually&#39;, &#39;hillarious,&#39;, &#39;yet&#39;, &#39;double&#39;, &#39;Ls.&#39;, &#39;|&#39;, &#39;[]&#39;, &#39;&lt;&#39;, &#39;&gt;&#39;, &#39;[]&#39;, &#39;&amp;&#39;, &quot;You&#39;re&quot;, &#39;gonna&#39;, &#39;shake&#39;, &#39;it&#39;, &#39;off?&#39;, &quot;Don&#39;t?&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; d.detokenize(expected_tokens, unescape=False)</span>
+<span class="sd">    [&#39;This&#39;, &#39;ain&#39;, &#39;&amp;apos;t&#39;, &#39;funny.&#39;, &#39;It&#39;, &#39;&amp;apos;s&#39;, &#39;actually&#39;, &#39;hillarious,&#39;, &#39;yet&#39;, &#39;double&#39;, &#39;Ls.&#39;, &#39;&amp;#124;&#39;, &#39;&amp;#91;&#39;, &#39;&amp;#93;&#39;, &#39;&amp;lt;&#39;, &#39;&amp;gt;&#39;, &#39;&amp;#91;&#39;, &#39;&amp;#93;&#39;, &#39;&amp;amp;&#39;, &#39;You&#39;, &#39;&amp;apos;re&#39;, &#39;gonna&#39;, &#39;shake&#39;, &#39;it&#39;, &#39;off?&#39;, &#39;Don&#39;, &#39;&amp;apos;t?&#39;]</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Currency Symbols.</span>
     <span class="n">IsAlnum</span> <span class="o">=</span> <span class="n">text_type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">perluniprops</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="s1">&#39;IsAlnum&#39;</span><span class="p">)))</span>
@@ -526,7 +546,7 @@
         <span class="k">return</span> <span class="n">text</span></div>
 
 
-<div class="viewcode-block" id="MosesDetokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="MosesDetokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">unescape</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Python port of the Moses detokenizer.</span>
 
@@ -541,8 +561,9 @@
         <span class="c1"># Detokenize the agressive hyphen split.</span>
         <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">AGGRESSIVE_HYPHEN_SPLIT</span>
         <span class="n">text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
-        <span class="c1"># Unescape the XML symbols.</span>
-        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unescape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">unescape</span><span class="p">:</span>
+            <span class="c1"># Unescape the XML symbols.</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unescape_xml</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
         <span class="c1"># Keep track of no. of quotation marks.</span>
         <span class="n">quote_counts</span> <span class="o">=</span> <span class="p">{</span><span class="sa">u</span><span class="s2">&quot;&#39;&quot;</span><span class="p">:</span><span class="mi">0</span> <span class="p">,</span> <span class="sa">u</span><span class="s1">&#39;&quot;&#39;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="sa">u</span><span class="s2">&quot;``&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="sa">u</span><span class="s2">&quot;`&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span> <span class="sa">u</span><span class="s2">&quot;&#39;&#39;&quot;</span><span class="p">:</span><span class="mi">0</span><span class="p">}</span>
 
@@ -660,9 +681,9 @@
 
         <span class="k">return</span> <span class="n">detokenized_text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">detokenized_text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div>
 
-<div class="viewcode-block" id="MosesDetokenizer.detokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.detokenize">[docs]</a>    <span class="k">def</span> <span class="nf">detokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="MosesDetokenizer.detokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.moses.MosesDetokenizer.detokenize">[docs]</a>    <span class="k">def</span> <span class="nf">detokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">unescape</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot; Duck-typing the abstract *tokenize()*.&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">return_str</span><span class="p">,</span> <span class="n">unescape</span><span class="p">)</span></div></div>
 </pre></div>
 
           </div>
@@ -713,7 +734,7 @@
           
     <div class="footer" role="contentinfo">
         &#169; Copyright 2017, NLTK Project.
-      Last updated on May 21, 2017.
+      Last updated on Sep 24, 2017.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.5.
     </div>
         </div>
