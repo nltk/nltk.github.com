@@ -1,37 +1,25 @@
+
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 
-
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    
-    <title>nltk.classify.maxent &#8212; NLTK 3.2.5 documentation</title>
-    
+    <title>nltk.classify.maxent &#8212; NLTK 3.3 documentation</title>
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
-    
-    <script type="text/javascript">
-      var DOCUMENTATION_OPTIONS = {
-        URL_ROOT:    '../../../',
-        VERSION:     '3.2.5',
-        COLLAPSE_INDEX: false,
-        FILE_SUFFIX: '.html',
-        HAS_SOURCE:  true,
-        SOURCELINK_SUFFIX: '.txt'
-      };
-    </script>
+    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
     <script type="text/javascript" src="../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
-  </head>
-  <body role="document">
+  </head><body>
     <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
-          href="../../../index.html">NLTK 3.2.5 documentation</a></div>
+          href="../../../index.html">NLTK 3.3 documentation</a></div>
         <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -52,7 +40,7 @@
   <h1>Source code for nltk.classify.maxent</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: Maximum Entropy Classifiers</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2017 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2018 NLTK Project</span>
 <span class="c1"># Author: Edward Loper &lt;edloper@gmail.com&gt;</span>
 <span class="c1">#         Dmitry Chichkov &lt;dchichkov@gmail.com&gt; (TypedMaxentFeatureEncoding)</span>
 <span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
@@ -112,6 +100,7 @@
 
 <span class="kn">import</span> <span class="nn">tempfile</span>
 <span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
 
 <span class="kn">from</span> <span class="nn">six</span> <span class="k">import</span> <span class="n">integer_types</span>
@@ -133,8 +122,8 @@
 <span class="c1">#{ Classifier Model</span>
 <span class="c1">######################################################################</span>
 
-<span class="nd">@compat</span><span class="o">.</span><span class="n">python_2_unicode_compatible</span>
-<div class="viewcode-block" id="MaxentClassifier"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier">[docs]</a><span class="k">class</span> <span class="nc">MaxentClassifier</span><span class="p">(</span><span class="n">ClassifierI</span><span class="p">):</span>
+<div class="viewcode-block" id="MaxentClassifier"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier">[docs]</a><span class="nd">@compat</span><span class="o">.</span><span class="n">python_2_unicode_compatible</span>
+<span class="k">class</span> <span class="nc">MaxentClassifier</span><span class="p">(</span><span class="n">ClassifierI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A maximum entropy classifier (also known as a &quot;conditional</span>
 <span class="sd">    exponential classifier&quot;).  This classifier is parameterized by a</span>
@@ -255,13 +244,27 @@
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  PROBS:&#39;</span><span class="o">.</span><span class="n">ljust</span><span class="p">(</span><span class="n">descr_width</span><span class="p">)</span><span class="o">+</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
             <span class="s1">&#39;</span><span class="si">%8.3f</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">pdist</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">))</span></div>
 
+<div class="viewcode-block" id="MaxentClassifier.most_informative_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.most_informative_features">[docs]</a>    <span class="k">def</span> <span class="nf">most_informative_features</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates the ranked list of informative features from most to least.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_most_informative_features&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_most_informative_features</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_most_informative_features</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">))),</span>
+                                                <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">fid</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">[</span><span class="n">fid</span><span class="p">]),</span>
+                                                <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_most_informative_features</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span></div>
+
 <div class="viewcode-block" id="MaxentClassifier.show_most_informative_features"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.show_most_informative_features">[docs]</a>    <span class="k">def</span> <span class="nf">show_most_informative_features</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="s1">&#39;all&#39;</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :param show: all, neg, or pos (for negative-only or positive-only)</span>
+<span class="sd">        :type show: str</span>
+<span class="sd">        :param n: The no. of top features</span>
+<span class="sd">        :type n: int</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">fids</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">))),</span>
-                      <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">fid</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">[</span><span class="n">fid</span><span class="p">]),</span>
-                      <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># Use None the full list of ranked features.</span>
+        <span class="n">fids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_informative_features</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">show</span> <span class="o">==</span> <span class="s1">&#39;pos&#39;</span><span class="p">:</span>
             <span class="n">fids</span> <span class="o">=</span> <span class="p">[</span><span class="n">fid</span> <span class="k">for</span> <span class="n">fid</span> <span class="ow">in</span> <span class="n">fids</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weights</span><span class="p">[</span><span class="n">fid</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
         <span class="k">elif</span> <span class="n">show</span> <span class="o">==</span> <span class="s1">&#39;neg&#39;</span><span class="p">:</span>
@@ -278,8 +281,8 @@
     <span class="c1">#: ``train()`` method&#39;s ``algorithm`` parameter.</span>
     <span class="n">ALGORITHMS</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;GIS&#39;</span><span class="p">,</span> <span class="s1">&#39;IIS&#39;</span><span class="p">,</span> <span class="s1">&#39;MEGAM&#39;</span><span class="p">,</span> <span class="s1">&#39;TADM&#39;</span><span class="p">]</span>
 
-    <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="MaxentClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<div class="viewcode-block" id="MaxentClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.MaxentClassifier.train">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trace</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
               <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gaussian_prior_sigma</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="o">**</span><span class="n">cutoffs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Train a new maxent classifier based on the given corpus of</span>
@@ -633,8 +636,8 @@
         <span class="c1"># Inherit docs.</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_length</span></div>
 
-    <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="BinaryMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.BinaryMaxentFeatureEncoding.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+<div class="viewcode-block" id="BinaryMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.BinaryMaxentFeatureEncoding.train">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Construct and return new feature encoding, based on a given</span>
 <span class="sd">        training corpus ``train_toks``.  See the class description</span>
@@ -777,8 +780,8 @@
 <div class="viewcode-block" id="TadmEventMaxentFeatureEncoding.length"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmEventMaxentFeatureEncoding.length">[docs]</a>    <span class="k">def</span> <span class="nf">length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mapping</span><span class="p">)</span></div>
 
-    <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="TadmEventMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmEventMaxentFeatureEncoding.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+<div class="viewcode-block" id="TadmEventMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmEventMaxentFeatureEncoding.train">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
         <span class="n">mapping</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">labels</span><span class="p">:</span>
             <span class="n">labels</span> <span class="o">=</span> <span class="p">[]</span>
@@ -970,8 +973,8 @@
         <span class="c1"># Inherit docs.</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_length</span></div>
 
-    <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="TypedMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TypedMaxentFeatureEncoding.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+<div class="viewcode-block" id="TypedMaxentFeatureEncoding.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TypedMaxentFeatureEncoding.train">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="n">count_cutoff</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Construct and return new feature encoding, based on a given</span>
 <span class="sd">        training corpus ``train_toks``.  See the class description</span>
@@ -1480,8 +1483,8 @@
 <span class="c1">######################################################################</span>
 
 <div class="viewcode-block" id="TadmMaxentClassifier"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmMaxentClassifier">[docs]</a><span class="k">class</span> <span class="nc">TadmMaxentClassifier</span><span class="p">(</span><span class="n">MaxentClassifier</span><span class="p">):</span>
-    <span class="nd">@classmethod</span>
-<div class="viewcode-block" id="TadmMaxentClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmMaxentClassifier.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="TadmMaxentClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.maxent.TadmMaxentClassifier.train">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">train_toks</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="n">algorithm</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;algorithm&#39;</span><span class="p">,</span> <span class="s1">&#39;tao_lmvm&#39;</span><span class="p">)</span>
         <span class="n">trace</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;trace&#39;</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
         <span class="n">encoding</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;encoding&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
@@ -1595,8 +1598,8 @@
           
     <div class="footer" role="contentinfo">
         &#169; Copyright 2017, NLTK Project.
-      Last updated on Sep 24, 2017.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.5.
+      Last updated on May 06, 2018.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
     </div>
         </div>
         <div class="clearer"></div>
