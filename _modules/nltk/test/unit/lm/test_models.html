@@ -1,0 +1,542 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>nltk.test.unit.lm.test_models &#8212; NLTK 3.4 documentation</title>
+    <link rel="stylesheet" href="../../../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../../" src="../../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+  </head><body>
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../../../index.html">NLTK 3.4 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.test.unit.lm.test_models</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="c1"># Natural Language Toolkit: Language Model Unit Tests</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2019 NLTK Project</span>
+<span class="c1"># Author: Ilia Kurenkov &lt;ilia.kurenkov@gmail.com&gt;</span>
+<span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">unittest</span>
+
+<span class="kn">from</span> <span class="nn">six</span> <span class="k">import</span> <span class="n">add_metaclass</span>
+
+<span class="kn">from</span> <span class="nn">nltk.lm</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">Vocabulary</span><span class="p">,</span>
+    <span class="n">MLE</span><span class="p">,</span>
+    <span class="n">Lidstone</span><span class="p">,</span>
+    <span class="n">Laplace</span><span class="p">,</span>
+    <span class="n">WittenBellInterpolated</span><span class="p">,</span>
+    <span class="n">KneserNeyInterpolated</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">nltk.lm.preprocessing</span> <span class="k">import</span> <span class="n">padded_everygrams</span>
+
+
+<span class="k">def</span> <span class="nf">_prepare_test_data</span><span class="p">(</span><span class="n">ngram_order</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">Vocabulary</span><span class="p">([</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">],</span> <span class="n">unk_cutoff</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+        <span class="p">[</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">padded_everygrams</span><span class="p">(</span><span class="n">ngram_order</span><span class="p">,</span> <span class="n">sent</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="s2">&quot;abcd&quot;</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="s2">&quot;egadbe&quot;</span><span class="p">))</span>
+        <span class="p">],</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="ParametrizeTestsMeta"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.ParametrizeTestsMeta">[docs]</a><span class="k">class</span> <span class="nc">ParametrizeTestsMeta</span><span class="p">(</span><span class="nb">type</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Metaclass for generating parametrized tests.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">dct</span><span class="p">):</span>
+        <span class="n">contexts</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="sa">u</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="sa">u</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;e&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;r&quot;</span><span class="p">,),</span>
+            <span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">,),</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">contexts</span><span class="p">):</span>
+            <span class="n">dct</span><span class="p">[</span><span class="s2">&quot;test_sumto1_</span><span class="si">{0}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">add_sum_to_1_test</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+        <span class="n">scores</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score_tests&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">expected_score</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">scores</span><span class="p">):</span>
+            <span class="n">dct</span><span class="p">[</span><span class="s2">&quot;test_score_</span><span class="si">{0}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">add_score_test</span><span class="p">(</span>
+                <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">expected_score</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">,</span> <span class="bp">cls</span><span class="p">)</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">bases</span><span class="p">,</span> <span class="n">dct</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ParametrizeTestsMeta.add_score_test"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.ParametrizeTestsMeta.add_score_test">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">add_score_test</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">expected_score</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&gt;</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="s2">&quot;word=&#39;</span><span class="si">{word}</span><span class="s2">&#39;, context=</span><span class="si">{context}</span><span class="s2">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Python 2 doesn&#39;t report the mismatched values if we pass a custom</span>
+            <span class="c1"># message, so we have to report them manually.</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">{score}</span><span class="s2"> != </span><span class="si">{expected_score}</span><span class="s2"> within 4 places, &quot;</span>
+                <span class="s2">&quot;word=&#39;</span><span class="si">{word}</span><span class="s2">&#39;, context=</span><span class="si">{context}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">test_method</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">score</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span>
+                <span class="n">score</span><span class="p">,</span> <span class="n">expected_score</span><span class="p">,</span> <span class="n">msg</span><span class="o">=</span><span class="n">message</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="o">**</span><span class="nb">locals</span><span class="p">()),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">test_method</span></div>
+
+<div class="viewcode-block" id="ParametrizeTestsMeta.add_sum_to_1_test"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.ParametrizeTestsMeta.add_sum_to_1_test">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">add_sum_to_1_test</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">test</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vocab</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">msg</span><span class="o">=</span><span class="s2">&quot;The context is </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">context</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">test</span></div></div>
+
+
+<div class="viewcode-block" id="MleBigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">MleBigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;unit tests for MLENgramModel class&quot;&quot;&quot;</span>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="c1"># Unseen ngrams should yield 0</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;e&quot;</span><span class="p">],</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="c1"># Unigrams should also be 0</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="c1"># N unigrams = 14</span>
+        <span class="c1"># count(&#39;a&#39;) = 2</span>
+        <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">2.0</span> <span class="o">/</span> <span class="mi">14</span><span class="p">),</span>
+        <span class="c1"># count(&#39;y&#39;) = 3</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mi">14</span><span class="p">),</span>
+    <span class="p">]</span>
+
+<div class="viewcode-block" id="MleBigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">MLE</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MleBigramTests.test_logscore_zero_score"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests.test_logscore_zero_score">[docs]</a>    <span class="k">def</span> <span class="nf">test_logscore_zero_score</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># logscore of unseen ngrams should be -inf</span>
+        <span class="n">logscore</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">logscore</span><span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;e&quot;</span><span class="p">])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertTrue</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">logscore</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="MleBigramTests.test_entropy_perplexity_seen"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests.test_entropy_perplexity_seen">[docs]</a>    <span class="k">def</span> <span class="nf">test_entropy_perplexity_seen</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># ngrams seen during training</span>
+        <span class="n">trained</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">),</span>
+        <span class="p">]</span>
+        <span class="c1"># Ngram = Log score</span>
+        <span class="c1"># &lt;s&gt;, a    = -1</span>
+        <span class="c1"># a, b      = -1</span>
+        <span class="c1"># b, UNK    = -1</span>
+        <span class="c1"># UNK, a    = -1.585</span>
+        <span class="c1"># a, d      = -1</span>
+        <span class="c1"># d, &lt;/s&gt;   = -1</span>
+        <span class="c1"># TOTAL logscores   = -6.585</span>
+        <span class="c1"># - AVG logscores   = 1.0975</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="mf">1.0975</span>
+        <span class="n">perplexity</span> <span class="o">=</span> <span class="mf">2.1398</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">trained</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">perplexity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">perplexity</span><span class="p">(</span><span class="n">trained</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MleBigramTests.test_entropy_perplexity_unseen"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests.test_entropy_perplexity_unseen">[docs]</a>    <span class="k">def</span> <span class="nf">test_entropy_perplexity_unseen</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># In MLE, even one unseen ngram should make entropy and perplexity infinite</span>
+        <span class="n">untrained</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">)]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertTrue</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">untrained</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertTrue</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">perplexity</span><span class="p">(</span><span class="n">untrained</span><span class="p">)))</span></div>
+
+<div class="viewcode-block" id="MleBigramTests.test_entropy_perplexity_unigrams"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleBigramTests.test_entropy_perplexity_unigrams">[docs]</a>    <span class="k">def</span> <span class="nf">test_entropy_perplexity_unigrams</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># word = score, log score</span>
+        <span class="c1"># &lt;s&gt;   = 0.1429, -2.8074</span>
+        <span class="c1"># a     = 0.1429, -2.8074</span>
+        <span class="c1"># c     = 0.0714, -3.8073</span>
+        <span class="c1"># UNK   = 0.2143, -2.2224</span>
+        <span class="c1"># d     = 0.1429, -2.8074</span>
+        <span class="c1"># c     = 0.0714, -3.8073</span>
+        <span class="c1"># &lt;/s&gt;  = 0.1429, -2.8074</span>
+        <span class="c1"># TOTAL logscores = -21.6243</span>
+        <span class="c1"># - AVG logscores = 3.0095</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="mf">3.0095</span>
+        <span class="n">perplexity</span> <span class="o">=</span> <span class="mf">8.0529</span>
+
+        <span class="n">text</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,),</span> <span class="p">(</span><span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">,)]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">perplexity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">perplexity</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="MleTrigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleTrigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">MleTrigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;MLE trigram model tests&quot;&quot;&quot;</span>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># count(d | b, c) = 1</span>
+        <span class="c1"># count(b, c) = 1</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="c1"># count(d | c) = 1</span>
+        <span class="c1"># count(c) = 1</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="c1"># total number of tokens is 18, of which &quot;a&quot; occured 2 times</span>
+        <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">2.0</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+        <span class="c1"># in vocabulary but unseen</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="c1"># out of vocabulary should use &quot;UNK&quot; score</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+    <span class="p">]</span>
+
+<div class="viewcode-block" id="MleTrigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.MleTrigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">MLE</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="LidstoneBigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneBigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">LidstoneBigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;unit tests for Lidstone class&quot;&quot;&quot;</span>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># count(d | c) = 1</span>
+        <span class="c1"># *count(d | c) = 1.1</span>
+        <span class="c1"># Count(w | c for w in vocab) = 1</span>
+        <span class="c1"># *Count(w | c for w in vocab) = 1.8</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">1.1</span> <span class="o">/</span> <span class="mf">1.8</span><span class="p">),</span>
+        <span class="c1"># Total unigrams: 14</span>
+        <span class="c1"># Vocab size: 8</span>
+        <span class="c1"># Denominator: 14 + 0.8 = 14.8</span>
+        <span class="c1"># count(&quot;a&quot;) = 2</span>
+        <span class="c1"># *count(&quot;a&quot;) = 2.1</span>
+        <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">2.1</span> <span class="o">/</span> <span class="mf">14.8</span><span class="p">),</span>
+        <span class="c1"># in vocabulary but unseen</span>
+        <span class="c1"># count(&quot;z&quot;) = 0</span>
+        <span class="c1"># *count(&quot;z&quot;) = 0.1</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">/</span> <span class="mf">14.8</span><span class="p">),</span>
+        <span class="c1"># out of vocabulary should use &quot;UNK&quot; score</span>
+        <span class="c1"># count(&quot;&lt;UNK&gt;&quot;) = 3</span>
+        <span class="c1"># *count(&quot;&lt;UNK&gt;&quot;) = 3.1</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">3.1</span> <span class="o">/</span> <span class="mf">14.8</span><span class="p">),</span>
+    <span class="p">]</span>
+
+<div class="viewcode-block" id="LidstoneBigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneBigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">Lidstone</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="LidstoneBigramTests.test_gamma"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneBigramTests.test_gamma">[docs]</a>    <span class="k">def</span> <span class="nf">test_gamma</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="LidstoneBigramTests.test_entropy_perplexity"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneBigramTests.test_entropy_perplexity">[docs]</a>    <span class="k">def</span> <span class="nf">test_entropy_perplexity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">),</span>
+        <span class="p">]</span>
+        <span class="c1"># Unlike MLE this should be able to handle completely novel ngrams</span>
+        <span class="c1"># Ngram = score, log score</span>
+        <span class="c1"># &lt;s&gt;, a    = 0.3929, -1.3479</span>
+        <span class="c1"># a, c      = 0.0357, -4.8074</span>
+        <span class="c1"># c, UNK    = 0.0(5), -4.1699</span>
+        <span class="c1"># UNK, d    = 0.0263,  -5.2479</span>
+        <span class="c1"># d, c      = 0.0357, -4.8074</span>
+        <span class="c1"># c, &lt;/s&gt;   = 0.0(5), -4.1699</span>
+        <span class="c1"># TOTAL logscore: −24.5504</span>
+        <span class="c1"># - AVG logscore: 4.0917</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="mf">4.0917</span>
+        <span class="n">perplexity</span> <span class="o">=</span> <span class="mf">17.0504</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">perplexity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">perplexity</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="LidstoneTrigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneTrigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">LidstoneTrigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># Logic behind this is the same as for bigram model</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">1.1</span> <span class="o">/</span> <span class="mf">1.8</span><span class="p">),</span>
+        <span class="c1"># if we choose a word that hasn&#39;t appeared after (b, c)</span>
+        <span class="p">(</span><span class="s2">&quot;e&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">0.1</span> <span class="o">/</span> <span class="mf">1.8</span><span class="p">),</span>
+        <span class="c1"># Trigram score now</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">1.1</span> <span class="o">/</span> <span class="mf">1.8</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;e&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">0.1</span> <span class="o">/</span> <span class="mf">1.8</span><span class="p">),</span>
+    <span class="p">]</span>
+
+<div class="viewcode-block" id="LidstoneTrigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LidstoneTrigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">Lidstone</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="LaplaceBigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LaplaceBigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">LaplaceBigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;unit tests for Laplace class&quot;&quot;&quot;</span>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># basic sanity-check:</span>
+        <span class="c1"># count(d | c) = 1</span>
+        <span class="c1"># *count(d | c) = 2</span>
+        <span class="c1"># Count(w | c for w in vocab) = 1</span>
+        <span class="c1"># *Count(w | c for w in vocab) = 9</span>
+        <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">],</span> <span class="mf">2.0</span> <span class="o">/</span> <span class="mi">9</span><span class="p">),</span>
+        <span class="c1"># Total unigrams: 14</span>
+        <span class="c1"># Vocab size: 8</span>
+        <span class="c1"># Denominator: 14 + 8 = 22</span>
+        <span class="c1"># count(&quot;a&quot;) = 2</span>
+        <span class="c1"># *count(&quot;a&quot;) = 3</span>
+        <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mi">22</span><span class="p">),</span>
+        <span class="c1"># in vocabulary but unseen</span>
+        <span class="c1"># count(&quot;z&quot;) = 0</span>
+        <span class="c1"># *count(&quot;z&quot;) = 1</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="mi">22</span><span class="p">),</span>
+        <span class="c1"># out of vocabulary should use &quot;UNK&quot; score</span>
+        <span class="c1"># count(&quot;&lt;UNK&gt;&quot;) = 3</span>
+        <span class="c1"># *count(&quot;&lt;UNK&gt;&quot;) = 4</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">4.0</span> <span class="o">/</span> <span class="mi">22</span><span class="p">),</span>
+    <span class="p">]</span>
+
+<div class="viewcode-block" id="LaplaceBigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LaplaceBigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">Laplace</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="LaplaceBigramTests.test_gamma"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LaplaceBigramTests.test_gamma">[docs]</a>    <span class="k">def</span> <span class="nf">test_gamma</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Make sure the gamma is set to 1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="LaplaceBigramTests.test_entropy_perplexity"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.LaplaceBigramTests.test_entropy_perplexity">[docs]</a>    <span class="k">def</span> <span class="nf">test_entropy_perplexity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">),</span>
+        <span class="p">]</span>
+        <span class="c1"># Unlike MLE this should be able to handle completely novel ngrams</span>
+        <span class="c1"># Ngram = score, log score</span>
+        <span class="c1"># &lt;s&gt;, a    = 0.2, -2.3219</span>
+        <span class="c1"># a, c      = 0.1, -3.3219</span>
+        <span class="c1"># c, UNK    = 0.(1), -3.1699</span>
+        <span class="c1"># UNK, d    = 0.(09), 3.4594</span>
+        <span class="c1"># d, c      = 0.1 -3.3219</span>
+        <span class="c1"># c, &lt;/s&gt;   = 0.(1), -3.1699</span>
+        <span class="c1"># Total logscores: −18.7651</span>
+        <span class="c1"># - AVG logscores: 3.1275</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="mf">3.1275</span>
+        <span class="n">perplexity</span> <span class="o">=</span> <span class="mf">8.7393</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">entropy</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span><span class="n">perplexity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">perplexity</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">places</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="WittenBellInterpolatedTrigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.WittenBellInterpolatedTrigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">WittenBellInterpolatedTrigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+<div class="viewcode-block" id="WittenBellInterpolatedTrigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.WittenBellInterpolatedTrigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">WittenBellInterpolated</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># For unigram scores by default revert to MLE</span>
+        <span class="c1"># Total unigrams: 18</span>
+        <span class="c1"># count(&#39;c&#39;): 1</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+        <span class="c1"># in vocabulary but unseen</span>
+        <span class="c1"># count(&quot;z&quot;) = 0</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">0.0</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+        <span class="c1"># out of vocabulary should use &quot;UNK&quot; score</span>
+        <span class="c1"># count(&quot;&lt;UNK&gt;&quot;) = 3</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+        <span class="c1"># gamma([&#39;b&#39;]) = 0.1111</span>
+        <span class="c1"># mle.score(&#39;c&#39;, [&#39;b&#39;]) = 0.5</span>
+        <span class="c1"># (1 - gamma) * mle + gamma * mle(&#39;c&#39;) ~= 0.45 + .3 / 18</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;b&quot;</span><span class="p">],</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.1111</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.1111</span> <span class="o">*</span> <span class="mi">1</span> <span class="o">/</span> <span class="mi">18</span><span class="p">),</span>
+        <span class="c1"># building on that, let&#39;s try &#39;a b c&#39; as the trigram</span>
+        <span class="c1"># gamma([&#39;a&#39;, &#39;b&#39;]) = 0.0667</span>
+        <span class="c1"># mle(&quot;c&quot;, [&quot;a&quot;, &quot;b&quot;]) = 1</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">],</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.0667</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.0667</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.1111</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.1111</span> <span class="o">/</span> <span class="mi">18</span><span class="p">)),</span>
+    <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="KneserNeyInterpolatedTrigramTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.KneserNeyInterpolatedTrigramTests">[docs]</a><span class="nd">@add_metaclass</span><span class="p">(</span><span class="n">ParametrizeTestsMeta</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">KneserNeyInterpolatedTrigramTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+<div class="viewcode-block" id="KneserNeyInterpolatedTrigramTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.KneserNeyInterpolatedTrigramTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">KneserNeyInterpolated</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+    <span class="n">score_tests</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># For unigram scores revert to uniform</span>
+        <span class="c1"># Vocab size: 8</span>
+        <span class="c1"># count(&#39;c&#39;): 1</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="mi">8</span><span class="p">),</span>
+        <span class="c1"># in vocabulary but unseen, still uses uniform</span>
+        <span class="p">(</span><span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="mi">8</span><span class="p">),</span>
+        <span class="c1"># out of vocabulary should use &quot;UNK&quot; score, i.e. again uniform</span>
+        <span class="p">(</span><span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="mi">8</span><span class="p">),</span>
+        <span class="c1"># alpha = count(&#39;bc&#39;) - discount = 1 - 0.1 = 0.9</span>
+        <span class="c1"># gamma([&#39;b&#39;]) = discount * number of unique words that follow [&#39;b&#39;] = 0.1 * 2</span>
+        <span class="c1"># normalizer = total number of bigrams with this context = 2</span>
+        <span class="c1"># the final should be: (alpha + gamma * unigram_score(&quot;c&quot;))</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;b&quot;</span><span class="p">],</span> <span class="p">(</span><span class="mf">0.9</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">8</span><span class="p">))</span> <span class="o">/</span> <span class="mi">2</span><span class="p">),</span>
+        <span class="c1"># building on that, let&#39;s try &#39;a b c&#39; as the trigram</span>
+        <span class="c1"># alpha = count(&#39;abc&#39;) - discount = 1 - 0.1 = 0.9</span>
+        <span class="c1"># gamma([&#39;a&#39;, &#39;b&#39;]) = 0.1 * 1</span>
+        <span class="c1"># normalizer = total number of trigrams with prefix &quot;ab&quot; = 1 =&gt; we can ignore it!</span>
+        <span class="p">(</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">],</span> <span class="mf">0.9</span> <span class="o">+</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="p">((</span><span class="mf">0.9</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">8</span><span class="p">))</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)),</span>
+    <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests">[docs]</a><span class="k">class</span> <span class="nc">NgramModelTextGenerationTests</span><span class="p">(</span><span class="n">unittest</span><span class="o">.</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Using MLE estimator, generate some text.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.setUp"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.setUp">[docs]</a>    <span class="k">def</span> <span class="nf">setUp</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">vocab</span><span class="p">,</span> <span class="n">training_text</span> <span class="o">=</span> <span class="n">_prepare_test_data</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">MLE</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">vocabulary</span><span class="o">=</span><span class="n">vocab</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">training_text</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_one_no_context"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_one_no_context">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_one_no_context</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_one_limiting_context"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_one_limiting_context">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_one_limiting_context</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># We don&#39;t need random_seed for contexts with only one continuation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]),</span> <span class="s2">&quot;d&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">]),</span> <span class="s2">&quot;d&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">]),</span> <span class="s2">&quot;d&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_one_varied_context"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_one_varied_context">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_one_varied_context</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># When context doesn&#39;t limit our options enough, seed the random choice</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">),</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span> <span class="s2">&quot;a&quot;</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_no_seed_unigrams"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_no_seed_unigrams">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_no_seed_unigrams</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+            <span class="p">[</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;/s&gt;&quot;</span><span class="p">],</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_with_text_seed"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_with_text_seed">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_with_text_seed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">text_seed</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;&lt;s&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">),</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+            <span class="p">[</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">],</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_oov_text_seed"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_oov_text_seed">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_oov_text_seed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;aliens&quot;</span><span class="p">,),</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;&lt;UNK&gt;&quot;</span><span class="p">,),</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="NgramModelTextGenerationTests.test_generate_None_text_seed"><a class="viewcode-back" href="../../../../../api/nltk.test.unit.lm.html#nltk.test.unit.lm.test_models.NgramModelTextGenerationTests.test_generate_None_text_seed">[docs]</a>    <span class="k">def</span> <span class="nf">test_generate_None_text_seed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># should crash with type error when we try to look it up in vocabulary</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">assertRaises</span><span class="p">(</span><span class="ne">TypeError</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="p">(</span><span class="kc">None</span><span class="p">,))</span>
+
+        <span class="c1"># This will work</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">assertEqual</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">text_seed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">random_seed</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+        <span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table Of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+                <input type="hidden" name="check_keywords" value="yes" />
+                <input type="hidden" name="area" value="default" />
+            </form>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2019, NLTK Project.
+      Last updated on Nov 17, 2018.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.9.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>

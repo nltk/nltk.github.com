@@ -6,10 +6,10 @@
   <head>
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>nltk.translate.chrf_score &#8212; NLTK 3.3 documentation</title>
+    <title>nltk.translate.chrf_score &#8212; NLTK 3.4 documentation</title>
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
-    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
     <script type="text/javascript" src="../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
@@ -19,7 +19,7 @@
     <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
-          href="../../../index.html">NLTK 3.3 documentation</a></div>
+          href="../../../index.html">NLTK 3.4 documentation</a></div>
         <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -41,19 +41,23 @@
 <span></span><span class="c1"># -*- coding: utf-8 -*-</span>
 <span class="c1"># Natural Language Toolkit: ChrF score</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2018 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2019 NLTK Project</span>
 <span class="c1"># Authors: Maja Popovic</span>
-<span class="c1"># Contributors: Liling Tan</span>
+<span class="c1"># Contributors: Liling Tan, Aleš Tamchyna (Memsource)</span>
 <span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
 
 <span class="sd">&quot;&quot;&quot; ChrF score implementation &quot;&quot;&quot;</span>
 <span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
-<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">Counter</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">Counter</span><span class="p">,</span> <span class="n">defaultdict</span>
+<span class="kn">import</span> <span class="nn">re</span>
 
-<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="k">import</span> <span class="n">ngrams</span><span class="p">,</span> <span class="n">everygrams</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="k">import</span> <span class="n">ngrams</span>
 
-<div class="viewcode-block" id="sentence_chrf"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.chrf_score.sentence_chrf">[docs]</a><span class="k">def</span> <span class="nf">sentence_chrf</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">min_len</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">3.0</span><span class="p">):</span>
+
+<div class="viewcode-block" id="sentence_chrf"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.chrf_score.sentence_chrf">[docs]</a><span class="k">def</span> <span class="nf">sentence_chrf</span><span class="p">(</span>
+    <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">min_len</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">ignore_whitespace</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculates the sentence level CHRF (Character n-gram F-score) described in</span>
 <span class="sd">     - Maja Popovic. 2015. CHRF: Character n-gram F-score for Automatic MT Evaluation.</span>
@@ -63,7 +67,13 @@
 <span class="sd">       In Proceedings of the 1st Conference on Machine Translation.</span>
 <span class="sd">       http://www.statmt.org/wmt16/pdf/W16-2341.pdf</span>
 
-<span class="sd">    Unlike multi-reference BLEU, CHRF only supports a single reference.</span>
+<span class="sd">    This implementation of CHRF only supports a single reference at the moment.</span>
+
+<span class="sd">    For details not reported in the paper, consult Maja Popovic&#39;s original</span>
+<span class="sd">    implementation: https://github.com/m-popovic/chrF</span>
+
+<span class="sd">    The code should output results equivalent to running CHRF++ with the</span>
+<span class="sd">    following options: -nw 0 -b 3</span>
 
 <span class="sd">    An example from the original BLEU paper</span>
 <span class="sd">    http://www.aclweb.org/anthology/P02-1040.pdf</span>
@@ -75,16 +85,16 @@
 <span class="sd">        &gt;&gt;&gt; hyp2 = str(&#39;It is to insure the troops forever hearing the activity &#39;</span>
 <span class="sd">        ...            &#39;guidebook that party direct&#39;).split()</span>
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref1, hyp1) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.6768...</span>
+<span class="sd">        0.6349...</span>
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref1, hyp2) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.4201...</span>
+<span class="sd">        0.3330...</span>
 
 <span class="sd">    The infamous &quot;the the the ... &quot; example</span>
 
 <span class="sd">        &gt;&gt;&gt; ref = &#39;the cat is on the mat&#39;.split()</span>
 <span class="sd">        &gt;&gt;&gt; hyp = &#39;the the the the the the the&#39;.split()</span>
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref, hyp)  # doctest: +ELLIPSIS</span>
-<span class="sd">        0.2530...</span>
+<span class="sd">        0.1468...</span>
 
 <span class="sd">    An example to show that this function allows users to use strings instead of</span>
 <span class="sd">    tokens, i.e. list(str) as inputs.</span>
@@ -94,16 +104,16 @@
 <span class="sd">        &gt;&gt;&gt; hyp1 = str(&#39;It is a guide to action which ensures that the military &#39;</span>
 <span class="sd">        ...            &#39;always obeys the commands of the party&#39;)</span>
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref1, hyp1) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.6768...</span>
+<span class="sd">        0.6349...</span>
 <span class="sd">        &gt;&gt;&gt; type(ref1) == type(hyp1) == str</span>
 <span class="sd">        True</span>
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref1.split(), hyp1.split()) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.6768...</span>
+<span class="sd">        0.6349...</span>
 
 <span class="sd">    To skip the unigrams and only use 2- to 3-grams:</span>
 
 <span class="sd">        &gt;&gt;&gt; sentence_chrf(ref1, hyp1, min_len=2, max_len=3) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.7018...</span>
+<span class="sd">        0.6617...</span>
 
 <span class="sd">    :param references: reference sentence</span>
 <span class="sd">    :type references: list(str) / str</span>
@@ -115,18 +125,82 @@
 <span class="sd">    :type max_len: int</span>
 <span class="sd">    :param beta: the parameter to assign more importance to recall over precision</span>
 <span class="sd">    :type beta: float</span>
+<span class="sd">    :param ignore_whitespace: ignore whitespace characters in scoring</span>
+<span class="sd">    :type ignore_whitespace: bool</span>
 <span class="sd">    :return: the sentence level CHRF score.</span>
 <span class="sd">    :rtype: float</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">corpus_chrf</span><span class="p">([</span><span class="n">reference</span><span class="p">],</span> <span class="p">[</span><span class="n">hypothesis</span><span class="p">],</span> <span class="n">min_len</span><span class="p">,</span> <span class="n">max_len</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">corpus_chrf</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">reference</span><span class="p">],</span>
+        <span class="p">[</span><span class="n">hypothesis</span><span class="p">],</span>
+        <span class="n">min_len</span><span class="p">,</span>
+        <span class="n">max_len</span><span class="p">,</span>
+        <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">,</span>
+        <span class="n">ignore_whitespace</span><span class="o">=</span><span class="n">ignore_whitespace</span><span class="p">,</span>
+    <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="corpus_chrf"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.chrf_score.corpus_chrf">[docs]</a><span class="k">def</span> <span class="nf">corpus_chrf</span><span class="p">(</span><span class="n">list_of_references</span><span class="p">,</span> <span class="n">hypotheses</span><span class="p">,</span> <span class="n">min_len</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">3.0</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">_preprocess</span><span class="p">(</span><span class="n">sent</span><span class="p">,</span> <span class="n">ignore_whitespace</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># turn list of tokens into a string</span>
+        <span class="n">sent</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ignore_whitespace</span><span class="p">:</span>
+        <span class="n">sent</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s+&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">sent</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">sent</span>
+
+
+<div class="viewcode-block" id="chrf_precision_recall_fscore_support"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.chrf_score.chrf_precision_recall_fscore_support">[docs]</a><span class="k">def</span> <span class="nf">chrf_precision_recall_fscore_support</span><span class="p">(</span>
+    <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1e-16</span>
+<span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This function computes the precision, recall and fscore from the ngram</span>
+<span class="sd">    overlaps. It returns the `support` which is the true positive score.</span>
+
+<span class="sd">    By underspecifying the input type, the function will be agnostic as to how</span>
+<span class="sd">    it computes the ngrams and simply take the whichever element in the list;</span>
+<span class="sd">    it could be either token or character.</span>
+
+<span class="sd">    :param reference: The reference sentence.</span>
+<span class="sd">    :type reference: list</span>
+<span class="sd">    :param hypothesis: The hypothesis sentence.</span>
+<span class="sd">    :type hypothesis: list</span>
+<span class="sd">    :param n: Extract up to the n-th order ngrams</span>
+<span class="sd">    :type n: int</span>
+<span class="sd">    :param beta: The parameter to assign more importance to recall over precision.</span>
+<span class="sd">    :type beta: float</span>
+<span class="sd">    :param epsilon: The fallback value if the hypothesis or reference is empty.</span>
+<span class="sd">    :type epsilon: float</span>
+<span class="sd">    :return: Returns the precision, recall and f-score and support (true positive).</span>
+<span class="sd">    :rtype: tuple(float)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ref_ngrams</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">hyp_ngrams</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">ngrams</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+
+    <span class="c1"># calculate the number of ngram matches</span>
+    <span class="n">overlap_ngrams</span> <span class="o">=</span> <span class="n">ref_ngrams</span> <span class="o">&amp;</span> <span class="n">hyp_ngrams</span>
+    <span class="n">tp</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">overlap_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>  <span class="c1"># True positives.</span>
+    <span class="n">tpfp</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">hyp_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>  <span class="c1"># True positives + False positives.</span>
+    <span class="n">tpfn</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">ref_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>  <span class="c1"># True positives + False negatives.</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">prec</span> <span class="o">=</span> <span class="n">tp</span> <span class="o">/</span> <span class="n">tpfp</span>  <span class="c1"># precision</span>
+        <span class="n">rec</span> <span class="o">=</span> <span class="n">tp</span> <span class="o">/</span> <span class="n">tpfn</span>  <span class="c1"># recall</span>
+        <span class="n">factor</span> <span class="o">=</span> <span class="n">beta</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="n">fscore</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">factor</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">prec</span> <span class="o">*</span> <span class="n">rec</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">factor</span> <span class="o">*</span> <span class="n">prec</span> <span class="o">+</span> <span class="n">rec</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ZeroDivisionError</span><span class="p">:</span>
+        <span class="n">prec</span> <span class="o">=</span> <span class="n">rec</span> <span class="o">=</span> <span class="n">fscore</span> <span class="o">=</span> <span class="n">epsilon</span>
+    <span class="k">return</span> <span class="n">prec</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">fscore</span><span class="p">,</span> <span class="n">tp</span></div>
+
+
+<div class="viewcode-block" id="corpus_chrf"><a class="viewcode-back" href="../../../api/nltk.translate.html#nltk.translate.chrf_score.corpus_chrf">[docs]</a><span class="k">def</span> <span class="nf">corpus_chrf</span><span class="p">(</span>
+    <span class="n">references</span><span class="p">,</span> <span class="n">hypotheses</span><span class="p">,</span> <span class="n">min_len</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">ignore_whitespace</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculates the corpus level CHRF (Character n-gram F-score), it is the</span>
-<span class="sd">    micro-averaged value of the sentence/segment level CHRF score.</span>
+<span class="sd">    macro-averaged value of the sentence/segment level CHRF score.</span>
 
-<span class="sd">    CHRF only supports a single reference.</span>
+<span class="sd">    This implementation of CHRF only supports a single reference at the moment.</span>
 
 <span class="sd">        &gt;&gt;&gt; ref1 = str(&#39;It is a guide to action that ensures that the military &#39;</span>
 <span class="sd">        ...            &#39;will forever heed Party commands&#39;).split()</span>
@@ -138,43 +212,56 @@
 <span class="sd">        &gt;&gt;&gt; hyp2 = str(&#39;It is to insure the troops forever hearing the activity &#39;</span>
 <span class="sd">        ...            &#39;guidebook that party direct&#39;)</span>
 <span class="sd">        &gt;&gt;&gt; corpus_chrf([ref1, ref2, ref1, ref2], [hyp1, hyp2, hyp2, hyp1]) # doctest: +ELLIPSIS</span>
-<span class="sd">        0.4915...</span>
+<span class="sd">        0.3910...</span>
 
 <span class="sd">    :param references: a corpus of list of reference sentences, w.r.t. hypotheses</span>
-<span class="sd">    :type references: list(list(str)) / list(str)</span>
+<span class="sd">    :type references: list(list(str))</span>
 <span class="sd">    :param hypotheses: a list of hypothesis sentences</span>
-<span class="sd">    :type hypotheses: list(list(str)) / list(str)</span>
+<span class="sd">    :type hypotheses: list(list(str))</span>
 <span class="sd">    :param min_len: The minimum order of n-gram this function should extract.</span>
 <span class="sd">    :type min_len: int</span>
 <span class="sd">    :param max_len: The maximum order of n-gram this function should extract.</span>
 <span class="sd">    :type max_len: int</span>
 <span class="sd">    :param beta: the parameter to assign more importance to recall over precision</span>
 <span class="sd">    :type beta: float</span>
+<span class="sd">    :param ignore_whitespace: ignore whitespace characters in scoring</span>
+<span class="sd">    :type ignore_whitespace: bool</span>
 <span class="sd">    :return: the sentence level CHRF score.</span>
 <span class="sd">    :rtype: float</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">list_of_references</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">),</span> <span class="s2">&quot;The number of hypotheses and their references should be the same&quot;</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">references</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span>
+        <span class="n">hypotheses</span>
+    <span class="p">),</span> <span class="s2">&quot;The number of hypotheses and their references should be the same&quot;</span>
+    <span class="n">num_sents</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">)</span>
+
+    <span class="c1"># Keep f-scores for each n-gram order separate</span>
+    <span class="n">ngram_fscores</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">list</span><span class="p">())</span>
 
     <span class="c1"># Iterate through each hypothesis and their corresponding references.</span>
-    <span class="k">for</span> <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">list_of_references</span><span class="p">,</span> <span class="n">hypotheses</span><span class="p">):</span>
-        <span class="c1"># Cheating condition to allow users to input strings instead of tokens.</span>
-        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">type</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">str</span><span class="p">:</span>
-            <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reference</span><span class="p">),</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
-        <span class="c1"># For each order of ngram, calculate the no. of ngram matches and</span>
-        <span class="c1"># keep track of no. of ngram in references.</span>
-        <span class="n">ref_ngrams</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">everygrams</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">min_len</span><span class="p">,</span> <span class="n">max_len</span><span class="p">))</span>
-        <span class="n">hyp_ngrams</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">everygrams</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">min_len</span><span class="p">,</span> <span class="n">max_len</span><span class="p">))</span>
-        <span class="n">overlap_ngrams</span> <span class="o">=</span> <span class="n">ref_ngrams</span> <span class="o">&amp;</span> <span class="n">hyp_ngrams</span>
-        <span class="n">tp</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">overlap_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="c1"># True positives.</span>
-        <span class="n">tpfp</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">hyp_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="c1"># True positives + False positives.</span>
-        <span class="n">tffn</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">ref_ngrams</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="c1"># True posities + False negatives.</span>
+    <span class="k">for</span> <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypotheses</span><span class="p">):</span>
 
-    <span class="n">precision</span> <span class="o">=</span> <span class="n">tp</span> <span class="o">/</span> <span class="n">tpfp</span>
-    <span class="n">recall</span> <span class="o">=</span> <span class="n">tp</span> <span class="o">/</span> <span class="n">tffn</span>
-    <span class="n">factor</span> <span class="o">=</span> <span class="n">beta</span><span class="o">**</span><span class="mi">2</span>
-    <span class="n">score</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span><span class="o">+</span> <span class="n">factor</span> <span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">precision</span> <span class="o">*</span> <span class="n">recall</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span> <span class="n">factor</span> <span class="o">*</span> <span class="n">precision</span> <span class="o">+</span> <span class="n">recall</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">score</span></div>
+        <span class="c1"># preprocess both reference and hypothesis</span>
+        <span class="n">reference</span> <span class="o">=</span> <span class="n">_preprocess</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">ignore_whitespace</span><span class="p">)</span>
+        <span class="n">hypothesis</span> <span class="o">=</span> <span class="n">_preprocess</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">,</span> <span class="n">ignore_whitespace</span><span class="p">)</span>
+
+        <span class="c1"># Calculate f-scores for each sentence and for each n-gram order</span>
+        <span class="c1"># separately.</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">min_len</span><span class="p">,</span> <span class="n">max_len</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="c1"># Compute the precision, recall, fscore and support.</span>
+            <span class="n">prec</span><span class="p">,</span> <span class="n">rec</span><span class="p">,</span> <span class="n">fscore</span><span class="p">,</span> <span class="n">tp</span> <span class="o">=</span> <span class="n">chrf_precision_recall_fscore_support</span><span class="p">(</span>
+                <span class="n">reference</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span>
+            <span class="p">)</span>
+            <span class="n">ngram_fscores</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fscore</span><span class="p">)</span>
+
+    <span class="c1"># how many n-gram sizes</span>
+    <span class="n">num_ngram_sizes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ngram_fscores</span><span class="p">)</span>
+
+    <span class="c1"># sum of f-scores over all sentences for each n-gram order</span>
+    <span class="n">total_scores</span> <span class="o">=</span> <span class="p">[</span><span class="nb">sum</span><span class="p">(</span><span class="n">fscores</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">fscores</span> <span class="ow">in</span> <span class="n">ngram_fscores</span><span class="o">.</span><span class="n">items</span><span class="p">()]</span>
+
+    <span class="c1"># macro-average over n-gram orders and over all sentences</span>
+    <span class="k">return</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">total_scores</span><span class="p">)</span> <span class="o">/</span> <span class="n">num_ngram_sizes</span><span class="p">)</span> <span class="o">/</span> <span class="n">num_sents</span></div>
 </pre></div>
 
           </div>
@@ -224,9 +311,9 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &#169; Copyright 2017, NLTK Project.
-      Last updated on May 06, 2018.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+        &#169; Copyright 2019, NLTK Project.
+      Last updated on Nov 17, 2018.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.9.
     </div>
         </div>
         <div class="clearer"></div>
