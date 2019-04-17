@@ -1,6 +1,7 @@
 # Natural Language Toolkit: code_brill_demo
 
- >>> nltk.tag.brill.demo()
+ >>> from nltk.tbl import demo as brill_demo
+ >>> brill_demo.demo()
  Training Brill tagger on 80 sentences...
  Finding initial useful rules...
      Found 6555 useful rules.

@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 def freq_words(url, freqdist, n):
     html = request.urlopen(url).read().decode('utf8')
-    raw = BeautifulSoup(html).get_text()
+    raw = BeautifulSoup(html, 'html.parser').get_text()
     for word in word_tokenize(raw):
         freqdist[word.lower()] += 1
     result = []
