@@ -1,0 +1,284 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>nltk.tokenize.sonority_sequencing &#8212; NLTK 3.4.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+  </head><body>
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.4.2 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.tokenize.sonority_sequencing</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Natural Language Toolkit: Tokenizers</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2019 NLTK Project</span>
+<span class="c1"># Author: Christopher Hench &lt;chris.l.hench@gmail.com&gt;</span>
+<span class="c1">#         Alex Estes</span>
+<span class="c1"># URL: &lt;http://nltk.sourceforge.net&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">The Sonority Sequencing Principle (SSP) is a language agnostic algorithm proposed</span>
+<span class="sd">by Otto Jesperson in 1904. The sonorous quality of a phoneme is judged by the</span>
+<span class="sd">openness of the lips. Syllable breaks occur before troughs in sonority. For more</span>
+<span class="sd">on the SSP see Selkirk (1984).</span>
+
+<span class="sd">The default implementation uses the English alphabet, but the `sonority_hiearchy`</span>
+<span class="sd">can be modified to IPA or any other alphabet for the use-case. The SSP is a</span>
+<span class="sd">universal syllabification algorithm, but that does not mean it performs equally</span>
+<span class="sd">across languages. Bartlett et al. (2009) is a good benchmark for English accuracy</span>
+<span class="sd">if utilizing IPA (pg. 311).</span>
+
+<span class="sd">Importantly, if a custom hiearchy is supplied and vowels span across more than</span>
+<span class="sd">one level, they should be given separately to the `vowels` class attribute.</span>
+
+<span class="sd">References:</span>
+<span class="sd">- Otto Jespersen. 1904. Lehrbuch der Phonetik.</span>
+<span class="sd">  Leipzig, Teubner. Chapter 13, Silbe, pp. 185-203.</span>
+<span class="sd">- Elisabeth Selkirk. 1984. On the major class features and syllable theory.</span>
+<span class="sd">  In Aronoff &amp; Oehrle (eds.) Language Sound Structure: Studies in Phonology.</span>
+<span class="sd">  Cambridge, MIT Press. pp. 107-136.</span>
+<span class="sd">- Susan Bartlett, et al. 2009. On the Syllabification of Phonemes.</span>
+<span class="sd">  In HLT-NAACL. pp. 308-316.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">unicode_literals</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">string</span> <span class="k">import</span> <span class="n">punctuation</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tokenize.api</span> <span class="k">import</span> <span class="n">TokenizerI</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="k">import</span> <span class="n">ngrams</span>
+
+
+<div class="viewcode-block" id="SyllableTokenizer"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.sonority_sequencing.SyllableTokenizer">[docs]</a><span class="k">class</span> <span class="nc">SyllableTokenizer</span><span class="p">(</span><span class="n">TokenizerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Syllabifies words based on the Sonority Sequencing Principle (SSP).</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk import word_tokenize</span>
+<span class="sd">        &gt;&gt;&gt; SSP = SyllableTokenizer()</span>
+<span class="sd">        &gt;&gt;&gt; SSP.tokenize(&#39;justification&#39;)</span>
+<span class="sd">        [&#39;jus&#39;, &#39;ti&#39;, &#39;fi&#39;, &#39;ca&#39;, &#39;tion&#39;]</span>
+<span class="sd">        &gt;&gt;&gt; text = &quot;This is a foobar-like sentence.&quot;</span>
+<span class="sd">        &gt;&gt;&gt; [SSP.tokenize(token) for token in word_tokenize(text)]</span>
+<span class="sd">        [[&#39;This&#39;], [&#39;is&#39;], [&#39;a&#39;], [&#39;foo&#39;, &#39;bar&#39;, &#39;-&#39;, &#39;li&#39;, &#39;ke&#39;], [&#39;sen&#39;, &#39;ten&#39;, &#39;ce&#39;], [&#39;.&#39;]]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">,</span> <span class="n">sonority_hierarchy</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param lang: Language parameter, default is English, &#39;en&#39;</span>
+<span class="sd">        :type lang: str</span>
+<span class="sd">        :param sonority_hierarchy: Sonority hierarchy according to the</span>
+<span class="sd">                                   Sonority Sequencing Principle.</span>
+<span class="sd">        :type sonority_hierarchy: list(str)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Sonority hierarchy should be provided in descending order.</span>
+        <span class="c1"># If vowels are spread across multiple levels, they should be</span>
+        <span class="c1"># passed assigned self.vowels var together, otherwise should be</span>
+        <span class="c1"># placed in first index of hierarchy.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sonority_hierarchy</span> <span class="ow">and</span> <span class="n">lang</span> <span class="o">==</span> <span class="s1">&#39;en&#39;</span><span class="p">:</span>
+            <span class="n">sonority_hierarchy</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;aeiouy&#39;</span><span class="p">,</span>  <span class="c1"># vowels.</span>
+                                  <span class="s1">&#39;lmnrw&#39;</span><span class="p">,</span>  <span class="c1"># nasals.</span>
+                                  <span class="s1">&#39;zvsf&#39;</span><span class="p">,</span>  <span class="c1"># fricatives.</span>
+                                  <span class="s1">&#39;bcdgtkpqxhj&#39;</span>  <span class="c1"># stops.</span>
+                                  <span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span> <span class="o">=</span> <span class="n">sonority_hierarchy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phoneme_map</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">level</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sonority_hierarchy</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">level</span><span class="p">:</span>
+                <span class="n">sonority_level</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sonority_hierarchy</span><span class="p">)</span> <span class="o">-</span> <span class="n">i</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">phoneme_map</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">sonority_level</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">phoneme_map</span><span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">upper</span><span class="p">()]</span> <span class="o">=</span> <span class="n">sonority_level</span>
+
+<div class="viewcode-block" id="SyllableTokenizer.assign_values"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.sonority_sequencing.SyllableTokenizer.assign_values">[docs]</a>    <span class="k">def</span> <span class="nf">assign_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Assigns each phoneme its value from the sonority hierarchy.</span>
+<span class="sd">        Note: Sentence/text has to be tokenized first.</span>
+
+<span class="sd">        :param token: Single word or token</span>
+<span class="sd">        :type token: str</span>
+<span class="sd">        :return: List of tuples, first element is character/phoneme and</span>
+<span class="sd">                 second is the soronity value.</span>
+<span class="sd">        :rtype: list(tuple(str, int))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">syllables_values</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">token</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">syllables_values</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">c</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">phoneme_map</span><span class="p">[</span><span class="n">c</span><span class="p">]))</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">punctuation</span><span class="p">:</span>
+                    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Character not defined in sonority_hierarchy,&quot;</span>
+                                  <span class="s2">&quot; assigning as vowel: &#39;</span><span class="si">{}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>
+                    <span class="n">syllables_values</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">c</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">phoneme_map</span><span class="o">.</span><span class="n">values</span><span class="p">())))</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span> <span class="o">+=</span> <span class="n">c</span>
+                <span class="k">else</span><span class="p">:</span> <span class="c1"># If it&#39;s a punctuation, assing -1.</span>
+                    <span class="n">syllables_values</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">c</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">syllables_values</span></div>
+
+<div class="viewcode-block" id="SyllableTokenizer.validate_syllables"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.sonority_sequencing.SyllableTokenizer.validate_syllables">[docs]</a>    <span class="k">def</span> <span class="nf">validate_syllables</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">syllable_list</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensures each syllable has at least one vowel.</span>
+<span class="sd">        If the following syllable doesn&#39;t have vowel, add it to the current one.</span>
+
+<span class="sd">        :param syllable_list: Single word or token broken up into syllables.</span>
+<span class="sd">        :type syllable_list: list(str)</span>
+<span class="sd">        :return: Single word or token broken up into syllables</span>
+<span class="sd">                 (with added syllables if necessary)</span>
+<span class="sd">        :rtype: list(str)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">valid_syllables</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">front</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">syllable</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">syllable_list</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">syllable</span> <span class="ow">in</span> <span class="n">punctuation</span><span class="p">:</span>
+                <span class="n">valid_syllables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vowels</span><span class="p">),</span> <span class="n">syllable</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_syllables</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">front</span> <span class="o">+=</span> <span class="n">syllable</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">valid_syllables</span> <span class="o">=</span> <span class="n">valid_syllables</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">valid_syllables</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">syllable</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_syllables</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">valid_syllables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">front</span> <span class="o">+</span> <span class="n">syllable</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">valid_syllables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">valid_syllables</span></div>
+
+<div class="viewcode-block" id="SyllableTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.sonority_sequencing.SyllableTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply the SSP to return a list of syllables.</span>
+<span class="sd">        Note: Sentence/text has to be tokenized first.</span>
+
+<span class="sd">        :param token: Single word or token</span>
+<span class="sd">        :type token: str</span>
+<span class="sd">        :return syllable_list: Single word or token broken up into syllables.</span>
+<span class="sd">        :rtype: list(str)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># assign values from hierarchy</span>
+        <span class="n">syllables_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">assign_values</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+
+        <span class="c1"># if only one vowel return word</span>
+        <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">token</span><span class="p">]</span>
+
+        <span class="n">syllable_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">syllable</span> <span class="o">=</span> <span class="n">syllables_values</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># start syllable with first phoneme</span>
+        <span class="k">for</span> <span class="n">trigram</span> <span class="ow">in</span> <span class="n">ngrams</span><span class="p">(</span><span class="n">syllables_values</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+            <span class="n">phonemes</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">trigram</span><span class="p">)</span>
+            <span class="c1"># Sonority of previous, focal and following phoneme</span>
+            <span class="n">prev_value</span><span class="p">,</span> <span class="n">focal_value</span><span class="p">,</span> <span class="n">next_value</span> <span class="o">=</span> <span class="n">values</span>
+            <span class="c1"># Focal phoneme.</span>
+            <span class="n">focal_phoneme</span> <span class="o">=</span> <span class="n">phonemes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+            <span class="c1"># These cases trigger syllable break.</span>
+            <span class="k">if</span> <span class="n">focal_value</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="c1"># If it&#39;s a punctuation, just break.</span>
+                <span class="n">syllable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+                <span class="n">syllable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">focal_phoneme</span><span class="p">)</span>
+                <span class="n">syllable</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">elif</span> <span class="n">prev_value</span> <span class="o">&gt;=</span> <span class="n">focal_value</span> <span class="o">==</span> <span class="n">next_value</span><span class="p">:</span>
+                <span class="n">syllable</span> <span class="o">+=</span> <span class="n">focal_phoneme</span>
+                <span class="n">syllable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+                <span class="n">syllable</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+            <span class="k">elif</span> <span class="n">prev_value</span> <span class="o">&gt;</span> <span class="n">focal_value</span> <span class="o">&lt;</span> <span class="n">next_value</span><span class="p">:</span>
+                <span class="n">syllable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+                <span class="n">syllable</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+                <span class="n">syllable</span> <span class="o">+=</span> <span class="n">focal_phoneme</span>
+
+            <span class="c1"># no syllable break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">syllable</span> <span class="o">+=</span> <span class="n">focal_phoneme</span>
+
+        <span class="n">syllable</span> <span class="o">+=</span> <span class="n">syllables_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># append last phoneme</span>
+        <span class="n">syllable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">validate_syllables</span><span class="p">(</span><span class="n">syllable_list</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          <h3>Table of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+            </form>
+          </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2019, NLTK Project.
+      Last updated on Jun 06, 2019.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.0.1.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
