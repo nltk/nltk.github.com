@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="utf-8" />
-    <title>nltk.sem.relextract &#8212; NLTK 3.4.5 documentation</title>
+    <title>nltk.sem.relextract &#8212; NLTK 3.5b1 documentation</title>
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
     <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
@@ -18,7 +18,7 @@
     <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
-          href="../../../index.html">NLTK 3.4.5 documentation</a></div>
+          href="../../../index.html">NLTK 3.5b1 documentation</a></div>
         <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -39,7 +39,7 @@
   <h1>Source code for nltk.sem.relextract</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: Relation Extraction</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2019 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2020 NLTK Project</span>
 <span class="c1"># Author: Ewan Klein &lt;ewan@inf.ed.ac.uk&gt;</span>
 <span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
@@ -58,47 +58,45 @@
 <span class="sd">- A clause is an atom of the form ``relsym(subjsym, objsym)``,</span>
 <span class="sd">  where the relation, subject and object have been canonicalized to single strings.</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
 
 <span class="c1"># todo: get a more general solution to canonicalized symbols for clauses -- maybe use xmlcharrefs?</span>
 
-<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">import</span> <span class="nn">html</span>
 <span class="kn">import</span> <span class="nn">re</span>
-
-<span class="kn">from</span> <span class="nn">six.moves</span> <span class="k">import</span> <span class="n">html_entities</span>
 
 <span class="c1"># Dictionary that associates corpora with NE classes</span>
 <span class="n">NE_CLASSES</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;ieer&#39;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="s1">&#39;LOCATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;ORGANIZATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;PERSON&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;DURATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;DATE&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;CARDINAL&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;PERCENT&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;MONEY&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;MEASURE&#39;</span><span class="p">,</span>
+    <span class="s2">&quot;ieer&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;LOCATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ORGANIZATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PERSON&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DURATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DATE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CARDINAL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PERCENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MONEY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MEASURE&quot;</span><span class="p">,</span>
     <span class="p">],</span>
-    <span class="s1">&#39;conll2002&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;LOC&#39;</span><span class="p">,</span> <span class="s1">&#39;PER&#39;</span><span class="p">,</span> <span class="s1">&#39;ORG&#39;</span><span class="p">],</span>
-    <span class="s1">&#39;ace&#39;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="s1">&#39;LOCATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;ORGANIZATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;PERSON&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;DURATION&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;DATE&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;CARDINAL&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;PERCENT&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;MONEY&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;MEASURE&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;FACILITY&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;GPE&#39;</span><span class="p">,</span>
+    <span class="s2">&quot;conll2002&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;LOC&quot;</span><span class="p">,</span> <span class="s2">&quot;PER&quot;</span><span class="p">,</span> <span class="s2">&quot;ORG&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;ace&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;LOCATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ORGANIZATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PERSON&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DURATION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DATE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CARDINAL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PERCENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MONEY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MEASURE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FACILITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GPE&quot;</span><span class="p">,</span>
     <span class="p">],</span>
 <span class="p">}</span>
 
 <span class="c1"># Allow abbreviated class labels</span>
-<span class="n">short2long</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">LOC</span><span class="o">=</span><span class="s1">&#39;LOCATION&#39;</span><span class="p">,</span> <span class="n">ORG</span><span class="o">=</span><span class="s1">&#39;ORGANIZATION&#39;</span><span class="p">,</span> <span class="n">PER</span><span class="o">=</span><span class="s1">&#39;PERSON&#39;</span><span class="p">)</span>
-<span class="n">long2short</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">LOCATION</span><span class="o">=</span><span class="s1">&#39;LOC&#39;</span><span class="p">,</span> <span class="n">ORGANIZATION</span><span class="o">=</span><span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="n">PERSON</span><span class="o">=</span><span class="s1">&#39;PER&#39;</span><span class="p">)</span>
+<span class="n">short2long</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">LOC</span><span class="o">=</span><span class="s2">&quot;LOCATION&quot;</span><span class="p">,</span> <span class="n">ORG</span><span class="o">=</span><span class="s2">&quot;ORGANIZATION&quot;</span><span class="p">,</span> <span class="n">PER</span><span class="o">=</span><span class="s2">&quot;PERSON&quot;</span><span class="p">)</span>
+<span class="n">long2short</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">LOCATION</span><span class="o">=</span><span class="s2">&quot;LOC&quot;</span><span class="p">,</span> <span class="n">ORGANIZATION</span><span class="o">=</span><span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="n">PERSON</span><span class="o">=</span><span class="s2">&quot;PER&quot;</span><span class="p">)</span>
 
 
 <span class="k">def</span> <span class="nf">_expand</span><span class="p">(</span><span class="nb">type</span><span class="p">):</span>
@@ -125,7 +123,7 @@
         <span class="k">return</span> <span class="nb">type</span></div>
 
 
-<span class="k">def</span> <span class="nf">_join</span><span class="p">(</span><span class="n">lst</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="n">untag</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">_join</span><span class="p">(</span><span class="n">lst</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="n">untag</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Join a list into a string, turning tags tuples into tag strings or just words.</span>
 <span class="sd">    :param untag: if ``True``, omit the tag from tagged input strings.</span>
@@ -137,24 +135,18 @@
     <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">untag</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">sep</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tup</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">tup</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">)</span>
-        <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="k">import</span> <span class="n">tuple2str</span>
+        <span class="kn">from</span> <span class="nn">nltk.tag</span> <span class="kn">import</span> <span class="n">tuple2str</span>
 
         <span class="k">return</span> <span class="n">sep</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tuple2str</span><span class="p">(</span><span class="n">tup</span><span class="p">)</span> <span class="k">for</span> <span class="n">tup</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="descape_entity"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.descape_entity">[docs]</a><span class="k">def</span> <span class="nf">descape_entity</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">defs</span><span class="o">=</span><span class="n">html_entities</span><span class="o">.</span><span class="n">entitydefs</span><span class="p">):</span>
+<div class="viewcode-block" id="descape_entity"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.descape_entity">[docs]</a><span class="k">def</span> <span class="nf">descape_entity</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">defs</span><span class="o">=</span><span class="n">html</span><span class="o">.</span><span class="n">entities</span><span class="o">.</span><span class="n">entitydefs</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Translate one entity to its ISO Latin value.</span>
 <span class="sd">    Inspired by example from effbot.org</span>
 
 
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># s = &#39;mcglashan_&amp;amp;_sarrail&#39;</span>
-    <span class="c1"># l = [&#39;mcglashan&#39;, &#39;&amp;amp;&#39;, &#39;sarrail&#39;]</span>
-    <span class="c1"># pattern = re.compile(&quot;&amp;(\w+?);&quot;)</span>
-    <span class="c1"># new = list2sym(l)</span>
-    <span class="c1"># s = pattern.sub(descape_entity, s)</span>
-    <span class="c1"># print s, new</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">defs</span><span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)]</span>
 
@@ -169,11 +161,11 @@
 <span class="sd">    :return: a Unicode string without whitespace</span>
 <span class="sd">    :rtype: unicode</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">sym</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">lst</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span><span class="p">,</span> <span class="n">untag</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">sym</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">lst</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="n">untag</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">sym</span> <span class="o">=</span> <span class="n">sym</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
     <span class="n">ENT</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;&amp;(\w+?);&quot;</span><span class="p">)</span>
     <span class="n">sym</span> <span class="o">=</span> <span class="n">ENT</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">descape_entity</span><span class="p">,</span> <span class="n">sym</span><span class="p">)</span>
-    <span class="n">sym</span> <span class="o">=</span> <span class="n">sym</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">sym</span> <span class="o">=</span> <span class="n">sym</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">sym</span></div>
 
 
@@ -190,7 +182,7 @@
 <span class="sd">    :rtype: list of tuple</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="k">import</span> <span class="n">Tree</span>
+    <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
 
     <span class="n">semi_rels</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="n">semi_rel</span> <span class="o">=</span> <span class="p">[[],</span> <span class="kc">None</span><span class="p">]</span>
@@ -222,23 +214,23 @@
     <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">pairs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
         <span class="n">reldict</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;lcon&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="n">window</span><span class="p">:])</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjclass&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">()</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjtext&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjsym&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">list2sym</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;filler&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;untagged_filler&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">untag</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objclass&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">()</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objtext&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objsym&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">list2sym</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;rcon&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">][:</span><span class="n">window</span><span class="p">])</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;lcon&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="n">window</span><span class="p">:])</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjclass&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">()</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjtext&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjsym&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">list2sym</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;filler&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;untagged_filler&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">untag</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objclass&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">()</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objtext&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objsym&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">list2sym</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;rcon&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_join</span><span class="p">(</span><span class="n">pairs</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">][:</span><span class="n">window</span><span class="p">])</span>
         <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span>
                 <span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">(</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">)&quot;</span>
                 <span class="o">%</span> <span class="p">(</span>
-                    <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;untagged_filler&#39;</span><span class="p">],</span>
-                    <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjclass&#39;</span><span class="p">],</span>
-                    <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objclass&#39;</span><span class="p">],</span>
+                    <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;untagged_filler&quot;</span><span class="p">],</span>
+                    <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjclass&quot;</span><span class="p">],</span>
+                    <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objclass&quot;</span><span class="p">],</span>
                 <span class="p">)</span>
             <span class="p">)</span>
         <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">reldict</span><span class="p">)</span>
@@ -246,7 +238,7 @@
     <span class="k">return</span> <span class="n">result</span></div>
 
 
-<div class="viewcode-block" id="extract_rels"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.extract_rels">[docs]</a><span class="k">def</span> <span class="nf">extract_rels</span><span class="p">(</span><span class="n">subjclass</span><span class="p">,</span> <span class="n">objclass</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;ace&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<div class="viewcode-block" id="extract_rels"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.extract_rels">[docs]</a><span class="k">def</span> <span class="nf">extract_rels</span><span class="p">(</span><span class="n">subjclass</span><span class="p">,</span> <span class="n">objclass</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;ace&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Filter the output of ``semi_rel2reldict`` according to specified NE classes and a filler pattern.</span>
 
@@ -288,9 +280,9 @@
                 <span class="s2">&quot;your value for the object type has not been recognized: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">objclass</span>
             <span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s1">&#39;ace&#39;</span> <span class="ow">or</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s1">&#39;conll2002&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s2">&quot;ace&quot;</span> <span class="ow">or</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s2">&quot;conll2002&quot;</span><span class="p">:</span>
         <span class="n">pairs</span> <span class="o">=</span> <span class="n">tree2semi_rel</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
-    <span class="k">elif</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s1">&#39;ieer&#39;</span><span class="p">:</span>
+    <span class="k">elif</span> <span class="n">corpus</span> <span class="o">==</span> <span class="s2">&quot;ieer&quot;</span><span class="p">:</span>
         <span class="n">pairs</span> <span class="o">=</span> <span class="n">tree2semi_rel</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">text</span><span class="p">)</span> <span class="o">+</span> <span class="n">tree2semi_rel</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">headline</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;corpus type not recognized&quot;</span><span class="p">)</span>
@@ -298,10 +290,10 @@
     <span class="n">reldicts</span> <span class="o">=</span> <span class="n">semi_rel2reldict</span><span class="p">(</span><span class="n">pairs</span><span class="p">)</span>
 
     <span class="n">relfilter</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">(</span>
-        <span class="n">x</span><span class="p">[</span><span class="s1">&#39;subjclass&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">subjclass</span>
-        <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="s1">&#39;filler&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">())</span> <span class="o">&lt;=</span> <span class="n">window</span>
-        <span class="ow">and</span> <span class="n">pattern</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="s1">&#39;filler&#39;</span><span class="p">])</span>
-        <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s1">&#39;objclass&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">objclass</span>
+        <span class="n">x</span><span class="p">[</span><span class="s2">&quot;subjclass&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">subjclass</span>
+        <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="s2">&quot;filler&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">())</span> <span class="o">&lt;=</span> <span class="n">window</span>
+        <span class="ow">and</span> <span class="n">pattern</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="s2">&quot;filler&quot;</span><span class="p">])</span>
+        <span class="ow">and</span> <span class="n">x</span><span class="p">[</span><span class="s2">&quot;objclass&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">objclass</span>
     <span class="p">)</span>
 
     <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="n">relfilter</span><span class="p">,</span> <span class="n">reldicts</span><span class="p">))</span></div>
@@ -314,19 +306,19 @@
 <span class="sd">    :type reldict: defaultdict</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">items</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="n">class_abbrev</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjclass&#39;</span><span class="p">]),</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjtext&#39;</span><span class="p">],</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;filler&#39;</span><span class="p">],</span>
-        <span class="n">class_abbrev</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objclass&#39;</span><span class="p">]),</span>
-        <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objtext&#39;</span><span class="p">],</span>
+        <span class="n">class_abbrev</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjclass&quot;</span><span class="p">]),</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjtext&quot;</span><span class="p">],</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;filler&quot;</span><span class="p">],</span>
+        <span class="n">class_abbrev</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objclass&quot;</span><span class="p">]),</span>
+        <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objtext&quot;</span><span class="p">],</span>
     <span class="p">]</span>
-    <span class="nb">format</span> <span class="o">=</span> <span class="s1">&#39;[</span><span class="si">%s</span><span class="s1">: </span><span class="si">%r</span><span class="s1">] </span><span class="si">%r</span><span class="s1"> [</span><span class="si">%s</span><span class="s1">: </span><span class="si">%r</span><span class="s1">]&#39;</span>
+    <span class="nb">format</span> <span class="o">=</span> <span class="s2">&quot;[</span><span class="si">%s</span><span class="s2">: </span><span class="si">%r</span><span class="s2">] </span><span class="si">%r</span><span class="s2"> [</span><span class="si">%s</span><span class="s2">: </span><span class="si">%r</span><span class="s2">]&quot;</span>
     <span class="k">if</span> <span class="n">lcon</span><span class="p">:</span>
-        <span class="n">items</span> <span class="o">=</span> <span class="p">[</span><span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;lcon&#39;</span><span class="p">]]</span> <span class="o">+</span> <span class="n">items</span>
-        <span class="nb">format</span> <span class="o">=</span> <span class="s1">&#39;...</span><span class="si">%r</span><span class="s1">)&#39;</span> <span class="o">+</span> <span class="nb">format</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="p">[</span><span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;lcon&quot;</span><span class="p">]]</span> <span class="o">+</span> <span class="n">items</span>
+        <span class="nb">format</span> <span class="o">=</span> <span class="s2">&quot;...</span><span class="si">%r</span><span class="s2">)&quot;</span> <span class="o">+</span> <span class="nb">format</span>
     <span class="k">if</span> <span class="n">rcon</span><span class="p">:</span>
-        <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;rcon&#39;</span><span class="p">])</span>
-        <span class="nb">format</span> <span class="o">=</span> <span class="nb">format</span> <span class="o">+</span> <span class="s1">&#39;(</span><span class="si">%r</span><span class="s1">...&#39;</span>
+        <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;rcon&quot;</span><span class="p">])</span>
+        <span class="nb">format</span> <span class="o">=</span> <span class="nb">format</span> <span class="o">+</span> <span class="s2">&quot;(</span><span class="si">%r</span><span class="s2">...&quot;</span>
     <span class="n">printargs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>
     <span class="k">return</span> <span class="nb">format</span> <span class="o">%</span> <span class="n">printargs</span></div>
 
@@ -339,7 +331,7 @@
 <span class="sd">    :param relsym: a label for the relation</span>
 <span class="sd">    :type relsym: str</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">items</span> <span class="o">=</span> <span class="p">(</span><span class="n">relsym</span><span class="p">,</span> <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;subjsym&#39;</span><span class="p">],</span> <span class="n">reldict</span><span class="p">[</span><span class="s1">&#39;objsym&#39;</span><span class="p">])</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="p">(</span><span class="n">relsym</span><span class="p">,</span> <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;subjsym&quot;</span><span class="p">],</span> <span class="n">reldict</span><span class="p">[</span><span class="s2">&quot;objsym&quot;</span><span class="p">])</span>
     <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">(</span><span class="si">%r</span><span class="s2">, </span><span class="si">%r</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">items</span></div>
 
 
@@ -359,7 +351,7 @@
 <span class="sd">    an in-memory database, and subsequently pulled out using an SQL &quot;SELECT&quot;</span>
 <span class="sd">    query.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">ieer</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">ieer</span>
 
     <span class="k">if</span> <span class="n">sql</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
@@ -377,7 +369,7 @@
 
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Cannot import sqlite; sql flag will be ignored.&quot;</span><span class="p">)</span>
 
-    <span class="n">IN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;.*\bin\b(?!\b.+ing)&#39;</span><span class="p">)</span>
+    <span class="n">IN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;.*\bin\b(?!\b.+ing)&quot;</span><span class="p">)</span>
 
     <span class="nb">print</span><span class="p">()</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;IEER: in(ORG, LOC) -- just the clauses:&quot;</span><span class="p">)</span>
@@ -388,11 +380,11 @@
             <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
                 <span class="nb">print</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">docno</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">15</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="s1">&#39;LOC&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;ieer&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">IN</span><span class="p">):</span>
-                <span class="nb">print</span><span class="p">(</span><span class="n">clause</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">relsym</span><span class="o">=</span><span class="s1">&#39;IN&#39;</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="s2">&quot;LOC&quot;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;ieer&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">IN</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">clause</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">relsym</span><span class="o">=</span><span class="s2">&quot;IN&quot;</span><span class="p">))</span>
                 <span class="k">if</span> <span class="n">sql</span><span class="p">:</span>
                     <span class="k">try</span><span class="p">:</span>
-                        <span class="n">rtuple</span> <span class="o">=</span> <span class="p">(</span><span class="n">rel</span><span class="p">[</span><span class="s1">&#39;subjtext&#39;</span><span class="p">],</span> <span class="n">rel</span><span class="p">[</span><span class="s1">&#39;objtext&#39;</span><span class="p">],</span> <span class="n">doc</span><span class="o">.</span><span class="n">docno</span><span class="p">)</span>
+                        <span class="n">rtuple</span> <span class="o">=</span> <span class="p">(</span><span class="n">rel</span><span class="p">[</span><span class="s2">&quot;subjtext&quot;</span><span class="p">],</span> <span class="n">rel</span><span class="p">[</span><span class="s2">&quot;objtext&quot;</span><span class="p">],</span> <span class="n">doc</span><span class="o">.</span><span class="n">docno</span><span class="p">)</span>
                         <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
                             <span class="sd">&quot;&quot;&quot;insert into Locations</span>
 <span class="sd">                                    values (?, ?, ?)&quot;&quot;&quot;</span><span class="p">,</span>
@@ -423,7 +415,7 @@
 
 
 <div class="viewcode-block" id="roles_demo"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.roles_demo">[docs]</a><span class="k">def</span> <span class="nf">roles_demo</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">ieer</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">ieer</span>
 
     <span class="n">roles</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
 <span class="s2">    (.*(                   # assorted roles</span>
@@ -464,7 +456,7 @@
                 <span class="nb">print</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">docno</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">15</span><span class="p">)</span>
                 <span class="n">lcon</span> <span class="o">=</span> <span class="n">rcon</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s1">&#39;PER&#39;</span><span class="p">,</span> <span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;ieer&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">ROLES</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s2">&quot;PER&quot;</span><span class="p">,</span> <span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;ieer&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">ROLES</span><span class="p">):</span>
                 <span class="nb">print</span><span class="p">(</span><span class="n">rtuple</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">lcon</span><span class="o">=</span><span class="n">lcon</span><span class="p">,</span> <span class="n">rcon</span><span class="o">=</span><span class="n">rcon</span><span class="p">))</span></div>
 
 
@@ -475,8 +467,8 @@
 
 <div class="viewcode-block" id="ieer_headlines"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.ieer_headlines">[docs]</a><span class="k">def</span> <span class="nf">ieer_headlines</span><span class="p">():</span>
 
-    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">ieer</span>
-    <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="k">import</span> <span class="n">Tree</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">ieer</span>
+    <span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
 
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;IEER: First 20 Headlines&quot;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">45</span><span class="p">)</span>
@@ -502,7 +494,7 @@
 <span class="sd">    from CoNLL 2002.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">conll2002</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">conll2002</span>
 
     <span class="n">vnv</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
 <span class="s2">    (</span>
@@ -520,12 +512,12 @@
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Dutch CoNLL2002: van(PER, ORG) -- raw rtuples with context:&quot;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">45</span><span class="p">)</span>
 
-    <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">conll2002</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s1">&#39;ned.train&#39;</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">conll2002</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s2">&quot;ned.train&quot;</span><span class="p">):</span>
         <span class="n">lcon</span> <span class="o">=</span> <span class="n">rcon</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="k">if</span> <span class="n">trace</span><span class="p">:</span>
             <span class="n">lcon</span> <span class="o">=</span> <span class="n">rcon</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span>
-            <span class="s1">&#39;PER&#39;</span><span class="p">,</span> <span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;conll2002&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">VAN</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">10</span>
+            <span class="s2">&quot;PER&quot;</span><span class="p">,</span> <span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;conll2002&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">VAN</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">10</span>
         <span class="p">):</span>
             <span class="nb">print</span><span class="p">(</span><span class="n">rtuple</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">lcon</span><span class="o">=</span><span class="n">lcon</span><span class="p">,</span> <span class="n">rcon</span><span class="o">=</span><span class="n">rcon</span><span class="p">))</span></div>
 
@@ -536,7 +528,7 @@
 
 
 <div class="viewcode-block" id="conllesp"><a class="viewcode-back" href="../../../api/nltk.sem.html#nltk.sem.relextract.conllesp">[docs]</a><span class="k">def</span> <span class="nf">conllesp</span><span class="p">():</span>
-    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="k">import</span> <span class="n">conll2002</span>
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">conll2002</span>
 
     <span class="n">de</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
 <span class="s2">    .*</span>
@@ -552,11 +544,11 @@
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">45</span><span class="p">)</span>
     <span class="n">rels</span> <span class="o">=</span> <span class="p">[</span>
         <span class="n">rel</span>
-        <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">conll2002</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s1">&#39;esp.train&#39;</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="s1">&#39;LOC&#39;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;conll2002&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">DE</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">conll2002</span><span class="o">.</span><span class="n">chunked_sents</span><span class="p">(</span><span class="s2">&quot;esp.train&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="s2">&quot;LOC&quot;</span><span class="p">,</span> <span class="n">doc</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;conll2002&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">DE</span><span class="p">)</span>
     <span class="p">]</span>
     <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rels</span><span class="p">[:</span><span class="mi">10</span><span class="p">]:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="n">clause</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">relsym</span><span class="o">=</span><span class="s1">&#39;DE&#39;</span><span class="p">))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">clause</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">relsym</span><span class="o">=</span><span class="s2">&quot;DE&quot;</span><span class="p">))</span>
     <span class="nb">print</span><span class="p">()</span></div>
 
 
@@ -565,19 +557,19 @@
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;1500 Sentences from Penn Treebank, as processed by NLTK NE Chunker&quot;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">45</span><span class="p">)</span>
     <span class="n">ROLE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
-        <span class="sa">r</span><span class="s1">&#39;.*(chairman|president|trader|scientist|economist|analyst|partner).*&#39;</span>
+        <span class="sa">r</span><span class="s2">&quot;.*(chairman|president|trader|scientist|economist|analyst|partner).*&quot;</span>
     <span class="p">)</span>
     <span class="n">rels</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">nltk</span><span class="o">.</span><span class="n">corpus</span><span class="o">.</span><span class="n">treebank</span><span class="o">.</span><span class="n">tagged_sents</span><span class="p">()[:</span><span class="mi">1500</span><span class="p">]):</span>
         <span class="n">sent</span> <span class="o">=</span> <span class="n">nltk</span><span class="o">.</span><span class="n">ne_chunk</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span>
-        <span class="n">rels</span> <span class="o">=</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s1">&#39;PER&#39;</span><span class="p">,</span> <span class="s1">&#39;ORG&#39;</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s1">&#39;ace&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">ROLE</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+        <span class="n">rels</span> <span class="o">=</span> <span class="n">extract_rels</span><span class="p">(</span><span class="s2">&quot;PER&quot;</span><span class="p">,</span> <span class="s2">&quot;ORG&quot;</span><span class="p">,</span> <span class="n">sent</span><span class="p">,</span> <span class="n">corpus</span><span class="o">=</span><span class="s2">&quot;ace&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="n">ROLE</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">rels</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{0:&lt;5}{1}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">rtuple</span><span class="p">(</span><span class="n">rel</span><span class="p">)))</span></div>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0:&lt;5}{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">rtuple</span><span class="p">(</span><span class="n">rel</span><span class="p">)))</span></div>
 
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
     <span class="kn">import</span> <span class="nn">nltk</span>
-    <span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="k">import</span> <span class="n">relextract</span>
+    <span class="kn">from</span> <span class="nn">nltk.sem</span> <span class="kn">import</span> <span class="n">relextract</span>
 
     <span class="n">in_demo</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">roles_demo</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
@@ -632,8 +624,8 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &#169; Copyright 2019, NLTK Project.
-      Last updated on Aug 20, 2019.
+        &#169; Copyright 2020, NLTK Project.
+      Last updated on Mar 08, 2020.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
     </div>
         </div>

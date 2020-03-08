@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="utf-8" />
-    <title>nltk.classify.weka &#8212; NLTK 3.4.5 documentation</title>
+    <title>nltk.classify.weka &#8212; NLTK 3.5b1 documentation</title>
     <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
     <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
@@ -18,7 +18,7 @@
     <div class="header-wrapper" role="banner">
       <div class="header">
         <div class="headertitle"><a
-          href="../../../index.html">NLTK 3.4.5 documentation</a></div>
+          href="../../../index.html">NLTK 3.5b1 documentation</a></div>
         <div class="rel" role="navigation" aria-label="related navigation">
           <a href="../../../py-modindex.html" title="Python Module Index"
              >modules</a> |
@@ -39,7 +39,7 @@
   <h1>Source code for nltk.classify.weka</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: Interface to Weka Classsifiers</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2019 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2020 NLTK Project</span>
 <span class="c1"># Author: Edward Loper &lt;edloper@gmail.com&gt;</span>
 <span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
@@ -47,29 +47,27 @@
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Classifiers that make use of the external &#39;Weka&#39; package.</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+
 <span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">import</span> <span class="nn">tempfile</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">subprocess</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">zipfile</span>
-<span class="kn">from</span> <span class="nn">sys</span> <span class="k">import</span> <span class="n">stdin</span>
+<span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">stdin</span>
 
-<span class="kn">from</span> <span class="nn">six</span> <span class="k">import</span> <span class="n">integer_types</span><span class="p">,</span> <span class="n">string_types</span>
+<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">DictionaryProbDist</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">java</span><span class="p">,</span> <span class="n">config_java</span>
 
-<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="k">import</span> <span class="n">DictionaryProbDist</span>
-<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="k">import</span> <span class="n">java</span><span class="p">,</span> <span class="n">config_java</span>
-
-<span class="kn">from</span> <span class="nn">nltk.classify.api</span> <span class="k">import</span> <span class="n">ClassifierI</span>
+<span class="kn">from</span> <span class="nn">nltk.classify.api</span> <span class="kn">import</span> <span class="n">ClassifierI</span>
 
 <span class="n">_weka_classpath</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="n">_weka_search</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s1">&#39;.&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;/usr/share/weka&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;/usr/local/share/weka&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;/usr/lib/weka&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;/usr/local/lib/weka&#39;</span><span class="p">,</span>
+    <span class="s2">&quot;.&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;/usr/share/weka&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;/usr/local/share/weka&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;/usr/lib/weka&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;/usr/local/lib/weka&quot;</span><span class="p">,</span>
 <span class="p">]</span>
 
 
@@ -84,27 +82,27 @@
 
     <span class="k">if</span> <span class="n">_weka_classpath</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">searchpath</span> <span class="o">=</span> <span class="n">_weka_search</span>
-        <span class="k">if</span> <span class="s1">&#39;WEKAHOME&#39;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
-            <span class="n">searchpath</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;WEKAHOME&#39;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="s2">&quot;WEKAHOME&quot;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="n">searchpath</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;WEKAHOME&quot;</span><span class="p">])</span>
 
         <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;weka.jar&#39;</span><span class="p">)):</span>
-                <span class="n">_weka_classpath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;weka.jar&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;weka.jar&quot;</span><span class="p">)):</span>
+                <span class="n">_weka_classpath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;weka.jar&quot;</span><span class="p">)</span>
                 <span class="n">version</span> <span class="o">=</span> <span class="n">_check_weka_version</span><span class="p">(</span><span class="n">_weka_classpath</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">version</span><span class="p">:</span>
                     <span class="nb">print</span><span class="p">(</span>
-                        <span class="p">(</span><span class="s1">&#39;[Found Weka: </span><span class="si">%s</span><span class="s1"> (version </span><span class="si">%s</span><span class="s1">)]&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">_weka_classpath</span><span class="p">,</span> <span class="n">version</span><span class="p">))</span>
+                        <span class="p">(</span><span class="s2">&quot;[Found Weka: </span><span class="si">%s</span><span class="s2"> (version </span><span class="si">%s</span><span class="s2">)]&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">_weka_classpath</span><span class="p">,</span> <span class="n">version</span><span class="p">))</span>
                     <span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;[Found Weka: </span><span class="si">%s</span><span class="s1">]&#39;</span> <span class="o">%</span> <span class="n">_weka_classpath</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Found Weka: </span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">_weka_classpath</span><span class="p">)</span>
                 <span class="n">_check_weka_version</span><span class="p">(</span><span class="n">_weka_classpath</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">_weka_classpath</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">LookupError</span><span class="p">(</span>
-            <span class="s1">&#39;Unable to find weka.jar!  Use config_weka() &#39;</span>
-            <span class="s1">&#39;or set the WEKAHOME environment variable. &#39;</span>
-            <span class="s1">&#39;For more information about Weka, please see &#39;</span>
-            <span class="s1">&#39;http://www.cs.waikato.ac.nz/ml/weka/&#39;</span>
+            <span class="s2">&quot;Unable to find weka.jar!  Use config_weka() &quot;</span>
+            <span class="s2">&quot;or set the WEKAHOME environment variable. &quot;</span>
+            <span class="s2">&quot;For more information about Weka, please see &quot;</span>
+            <span class="s2">&quot;http://www.cs.waikato.ac.nz/ml/weka/&quot;</span>
         <span class="p">)</span></div>
 
 
@@ -117,7 +115,7 @@
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">zf</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s1">&#39;weka/core/version.txt&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">zf</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;weka/core/version.txt&quot;</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
     <span class="k">finally</span><span class="p">:</span>
@@ -125,15 +123,15 @@
 
 
 <div class="viewcode-block" id="WekaClassifier"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.WekaClassifier">[docs]</a><span class="k">class</span> <span class="nc">WekaClassifier</span><span class="p">(</span><span class="n">ClassifierI</span><span class="p">):</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">formatter</span><span class="p">,</span> <span class="n">model_filename</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">formatter</span><span class="p">,</span> <span class="n">model_filename</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_formatter</span> <span class="o">=</span> <span class="n">formatter</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">model_filename</span>
 
 <div class="viewcode-block" id="WekaClassifier.prob_classify_many"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.WekaClassifier.prob_classify_many">[docs]</a>    <span class="k">def</span> <span class="nf">prob_classify_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_classify_many</span><span class="p">(</span><span class="n">featuresets</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;-p&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="s1">&#39;-distribution&#39;</span><span class="p">])</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_classify_many</span><span class="p">(</span><span class="n">featuresets</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;-p&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span> <span class="s2">&quot;-distribution&quot;</span><span class="p">])</span></div>
 
 <div class="viewcode-block" id="WekaClassifier.classify_many"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.WekaClassifier.classify_many">[docs]</a>    <span class="k">def</span> <span class="nf">classify_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_classify_many</span><span class="p">(</span><span class="n">featuresets</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;-p&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">])</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_classify_many</span><span class="p">(</span><span class="n">featuresets</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;-p&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">])</span></div>
 
     <span class="k">def</span> <span class="nf">_classify_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
         <span class="c1"># Make sure we can find java &amp; weka.</span>
@@ -142,15 +140,15 @@
         <span class="n">temp_dir</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">()</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="c1"># Write the test data file.</span>
-            <span class="n">test_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">,</span> <span class="s1">&#39;test.arff&#39;</span><span class="p">)</span>
+            <span class="n">test_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">,</span> <span class="s2">&quot;test.arff&quot;</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_formatter</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">test_filename</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">)</span>
 
             <span class="c1"># Call weka to classify the data.</span>
             <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="s1">&#39;weka.classifiers.bayes.NaiveBayes&#39;</span><span class="p">,</span>
-                <span class="s1">&#39;-l&#39;</span><span class="p">,</span>
+                <span class="s2">&quot;weka.classifiers.bayes.NaiveBayes&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;-l&quot;</span><span class="p">,</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span>
-                <span class="s1">&#39;-T&#39;</span><span class="p">,</span>
+                <span class="s2">&quot;-T&quot;</span><span class="p">,</span>
                 <span class="n">test_filename</span><span class="p">,</span>
             <span class="p">]</span> <span class="o">+</span> <span class="n">options</span>
             <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span> <span class="o">=</span> <span class="n">java</span><span class="p">(</span>
@@ -162,17 +160,17 @@
 
             <span class="c1"># Check if something went wrong:</span>
             <span class="k">if</span> <span class="n">stderr</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">stdout</span><span class="p">:</span>
-                <span class="k">if</span> <span class="s1">&#39;Illegal options: -distribution&#39;</span> <span class="ow">in</span> <span class="n">stderr</span><span class="p">:</span>
+                <span class="k">if</span> <span class="s2">&quot;Illegal options: -distribution&quot;</span> <span class="ow">in</span> <span class="n">stderr</span><span class="p">:</span>
                     <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="s1">&#39;The installed version of weka does &#39;</span>
-                        <span class="s1">&#39;not support probability distribution &#39;</span>
-                        <span class="s1">&#39;output.&#39;</span>
+                        <span class="s2">&quot;The installed version of weka does &quot;</span>
+                        <span class="s2">&quot;not support probability distribution &quot;</span>
+                        <span class="s2">&quot;output.&quot;</span>
                     <span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Weka failed to generate output:</span><span class="se">\n</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">stderr</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Weka failed to generate output:</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">stderr</span><span class="p">)</span>
 
             <span class="c1"># Parse weka&#39;s output.</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_weka_output</span><span class="p">(</span><span class="n">stdout</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">stdin</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_weka_output</span><span class="p">(</span><span class="n">stdout</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">stdin</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">))</span>
 
         <span class="k">finally</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">):</span>
@@ -180,7 +178,7 @@
             <span class="n">os</span><span class="o">.</span><span class="n">rmdir</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">)</span>
 
 <div class="viewcode-block" id="WekaClassifier.parse_weka_distribution"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.WekaClassifier.parse_weka_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">parse_weka_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
-        <span class="n">probs</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;[*,]+&#39;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+        <span class="n">probs</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;[*,]+&quot;</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
         <span class="n">probs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_formatter</span><span class="o">.</span><span class="n">labels</span><span class="p">(),</span> <span class="n">probs</span><span class="p">))</span>
         <span class="k">return</span> <span class="n">DictionaryProbDist</span><span class="p">(</span><span class="n">probs</span><span class="p">)</span></div>
 
@@ -191,14 +189,14 @@
                 <span class="n">lines</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">i</span><span class="p">:]</span>
                 <span class="k">break</span>
 
-        <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="s1">&#39;inst#&#39;</span><span class="p">,</span> <span class="s1">&#39;actual&#39;</span><span class="p">,</span> <span class="s1">&#39;predicted&#39;</span><span class="p">,</span> <span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="s1">&#39;prediction&#39;</span><span class="p">]:</span>
-            <span class="k">return</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+        <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="s2">&quot;inst#&quot;</span><span class="p">,</span> <span class="s2">&quot;actual&quot;</span><span class="p">,</span> <span class="s2">&quot;predicted&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span> <span class="s2">&quot;prediction&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
         <span class="k">elif</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span>
-            <span class="s1">&#39;inst#&#39;</span><span class="p">,</span>
-            <span class="s1">&#39;actual&#39;</span><span class="p">,</span>
-            <span class="s1">&#39;predicted&#39;</span><span class="p">,</span>
-            <span class="s1">&#39;error&#39;</span><span class="p">,</span>
-            <span class="s1">&#39;distribution&#39;</span><span class="p">,</span>
+            <span class="s2">&quot;inst#&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;actual&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;predicted&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;distribution&quot;</span><span class="p">,</span>
         <span class="p">]:</span>
             <span class="k">return</span> <span class="p">[</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">parse_weka_distribution</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
@@ -207,16 +205,16 @@
             <span class="p">]</span>
 
         <span class="c1"># is this safe:?</span>
-        <span class="k">elif</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;^0 \w+ [01]\.[0-9]* \?\s*$&#39;</span><span class="p">,</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+        <span class="k">elif</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^0 \w+ [01]\.[0-9]* \?\s*$&quot;</span><span class="p">,</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
             <span class="k">return</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
 
         <span class="k">else</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[:</span><span class="mi">10</span><span class="p">]:</span>
                 <span class="nb">print</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s1">&#39;Unhandled output format -- your version &#39;</span>
-                <span class="s1">&#39;of weka may not be supported.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                <span class="s1">&#39;  Header: </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="s2">&quot;Unhandled output format -- your version &quot;</span>
+                <span class="s2">&quot;of weka may not be supported.</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="s2">&quot;  Header: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="p">)</span></div>
 
     <span class="c1"># [xx] full list of classifiers (some may be abstract?):</span>
@@ -233,12 +231,12 @@
     <span class="c1"># VotedPerceptron, Winnow, ZeroR</span>
 
     <span class="n">_CLASSIFIER_CLASS</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s1">&#39;naivebayes&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.bayes.NaiveBayes&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;C4.5&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.trees.J48&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;log_regression&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.functions.Logistic&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;svm&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.functions.SMO&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;kstar&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.lazy.KStar&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;ripper&#39;</span><span class="p">:</span> <span class="s1">&#39;weka.classifiers.rules.JRip&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;naivebayes&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.bayes.NaiveBayes&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;C4.5&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.trees.J48&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;log_regression&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.functions.Logistic&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;svm&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.functions.SMO&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;kstar&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.lazy.KStar&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ripper&quot;</span><span class="p">:</span> <span class="s2">&quot;weka.classifiers.rules.JRip&quot;</span><span class="p">,</span>
     <span class="p">}</span>
 
 <div class="viewcode-block" id="WekaClassifier.train"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.WekaClassifier.train">[docs]</a>    <span class="nd">@classmethod</span>
@@ -246,7 +244,7 @@
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">model_filename</span><span class="p">,</span>
         <span class="n">featuresets</span><span class="p">,</span>
-        <span class="n">classifier</span><span class="o">=</span><span class="s1">&#39;naivebayes&#39;</span><span class="p">,</span>
+        <span class="n">classifier</span><span class="o">=</span><span class="s2">&quot;naivebayes&quot;</span><span class="p">,</span>
         <span class="n">options</span><span class="o">=</span><span class="p">[],</span>
         <span class="n">quiet</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="p">):</span>
@@ -259,7 +257,7 @@
         <span class="n">temp_dir</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">()</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="c1"># Write the training data file.</span>
-            <span class="n">train_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">,</span> <span class="s1">&#39;train.arff&#39;</span><span class="p">)</span>
+            <span class="n">train_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">,</span> <span class="s2">&quot;train.arff&quot;</span><span class="p">)</span>
             <span class="n">formatter</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">train_filename</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">classifier</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_CLASSIFIER_CLASS</span><span class="p">:</span>
@@ -267,10 +265,10 @@
             <span class="k">elif</span> <span class="n">classifier</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_CLASSIFIER_CLASS</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
                 <span class="n">javaclass</span> <span class="o">=</span> <span class="n">classifier</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Unknown classifier </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">classifier</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Unknown classifier </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">classifier</span><span class="p">)</span>
 
             <span class="c1"># Train the weka model.</span>
-            <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">javaclass</span><span class="p">,</span> <span class="s1">&#39;-d&#39;</span><span class="p">,</span> <span class="n">model_filename</span><span class="p">,</span> <span class="s1">&#39;-t&#39;</span><span class="p">,</span> <span class="n">train_filename</span><span class="p">]</span>
+            <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">javaclass</span><span class="p">,</span> <span class="s2">&quot;-d&quot;</span><span class="p">,</span> <span class="n">model_filename</span><span class="p">,</span> <span class="s2">&quot;-t&quot;</span><span class="p">,</span> <span class="n">train_filename</span><span class="p">]</span>
             <span class="n">cmd</span> <span class="o">+=</span> <span class="nb">list</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">quiet</span><span class="p">:</span>
                 <span class="n">stdout</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span>
@@ -296,7 +294,7 @@
 <span class="sd">    be determined from data using ``from_train``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">features</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">features</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :param labels: A list of all class labels that can be generated.</span>
 <span class="sd">        :param features: A list of feature specifications, where</span>
@@ -317,8 +315,8 @@
 
 <div class="viewcode-block" id="ARFF_Formatter.write"><a class="viewcode-back" href="../../../api/nltk.classify.html#nltk.classify.weka.ARFF_Formatter.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">outfile</span><span class="p">,</span> <span class="n">tokens</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Writes ARFF data to a file for the given data.&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="s1">&#39;write&#39;</span><span class="p">):</span>
-            <span class="n">outfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="s2">&quot;write&quot;</span><span class="p">):</span>
+            <span class="n">outfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span>
         <span class="n">outfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
         <span class="n">outfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
 
@@ -337,18 +335,18 @@
         <span class="k">for</span> <span class="n">tok</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
             <span class="k">for</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">fval</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tok</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                 <span class="k">if</span> <span class="nb">issubclass</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fval</span><span class="p">),</span> <span class="nb">bool</span><span class="p">):</span>
-                    <span class="n">ftype</span> <span class="o">=</span> <span class="s1">&#39;{True, False}&#39;</span>
-                <span class="k">elif</span> <span class="nb">issubclass</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fval</span><span class="p">),</span> <span class="p">(</span><span class="n">integer_types</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)):</span>
-                    <span class="n">ftype</span> <span class="o">=</span> <span class="s1">&#39;NUMERIC&#39;</span>
-                <span class="k">elif</span> <span class="nb">issubclass</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fval</span><span class="p">),</span> <span class="n">string_types</span><span class="p">):</span>
-                    <span class="n">ftype</span> <span class="o">=</span> <span class="s1">&#39;STRING&#39;</span>
+                    <span class="n">ftype</span> <span class="o">=</span> <span class="s2">&quot;{True, False}&quot;</span>
+                <span class="k">elif</span> <span class="nb">issubclass</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fval</span><span class="p">),</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)):</span>
+                    <span class="n">ftype</span> <span class="o">=</span> <span class="s2">&quot;NUMERIC&quot;</span>
+                <span class="k">elif</span> <span class="nb">issubclass</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">fval</span><span class="p">),</span> <span class="nb">str</span><span class="p">):</span>
+                    <span class="n">ftype</span> <span class="o">=</span> <span class="s2">&quot;STRING&quot;</span>
                 <span class="k">elif</span> <span class="n">fval</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="k">continue</span>  <span class="c1"># can&#39;t tell the type.</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Unsupported value type </span><span class="si">%r</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">ftype</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Unsupported value type </span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">ftype</span><span class="p">)</span>
 
                 <span class="k">if</span> <span class="n">features</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">ftype</span><span class="p">)</span> <span class="o">!=</span> <span class="n">ftype</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Inconsistent type for </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">fname</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Inconsistent type for </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fname</span><span class="p">)</span>
                 <span class="n">features</span><span class="p">[</span><span class="n">fname</span><span class="p">]</span> <span class="o">=</span> <span class="n">ftype</span>
         <span class="n">features</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">features</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
 
@@ -358,20 +356,20 @@
         <span class="sd">&quot;&quot;&quot;Returns an ARFF header as a string.&quot;&quot;&quot;</span>
         <span class="c1"># Header comment.</span>
         <span class="n">s</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="s1">&#39;% Weka ARFF file</span><span class="se">\n</span><span class="s1">&#39;</span>
-            <span class="o">+</span> <span class="s1">&#39;</span><span class="si">% G</span><span class="s1">enerated automatically by NLTK</span><span class="se">\n</span><span class="s1">&#39;</span>
-            <span class="o">+</span> <span class="s1">&#39;</span><span class="si">%%</span><span class="s1"> </span><span class="si">%s</span><span class="se">\n\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">time</span><span class="o">.</span><span class="n">ctime</span><span class="p">()</span>
+            <span class="s2">&quot;% Weka ARFF file</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="si">% G</span><span class="s2">enerated automatically by NLTK</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="si">%%</span><span class="s2"> </span><span class="si">%s</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">time</span><span class="o">.</span><span class="n">ctime</span><span class="p">()</span>
         <span class="p">)</span>
 
         <span class="c1"># Relation name</span>
-        <span class="n">s</span> <span class="o">+=</span> <span class="s1">&#39;@RELATION rel</span><span class="se">\n\n</span><span class="s1">&#39;</span>
+        <span class="n">s</span> <span class="o">+=</span> <span class="s2">&quot;@RELATION rel</span><span class="se">\n\n</span><span class="s2">&quot;</span>
 
         <span class="c1"># Input attribute specifications</span>
         <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">ftype</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_features</span><span class="p">:</span>
-            <span class="n">s</span> <span class="o">+=</span> <span class="s1">&#39;@ATTRIBUTE </span><span class="si">%-30r</span><span class="s1"> </span><span class="si">%s</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">ftype</span><span class="p">)</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s2">&quot;@ATTRIBUTE </span><span class="si">%-30r</span><span class="s2"> </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">ftype</span><span class="p">)</span>
 
         <span class="c1"># Label attribute specification</span>
-        <span class="n">s</span> <span class="o">+=</span> <span class="s1">&#39;@ATTRIBUTE </span><span class="si">%-30r</span><span class="s1"> {</span><span class="si">%s</span><span class="s1">}</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;-label-&#39;</span><span class="p">,</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_labels</span><span class="p">))</span>
+        <span class="n">s</span> <span class="o">+=</span> <span class="s2">&quot;@ATTRIBUTE </span><span class="si">%-30r</span><span class="s2"> {</span><span class="si">%s</span><span class="s2">}</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;-label-&quot;</span><span class="p">,</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_labels</span><span class="p">))</span>
 
         <span class="k">return</span> <span class="n">s</span></div>
 
@@ -393,30 +391,30 @@
             <span class="n">tokens</span> <span class="o">=</span> <span class="p">[(</span><span class="n">tok</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">]</span>
 
         <span class="c1"># Data section</span>
-        <span class="n">s</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">@DATA</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">@DATA</span><span class="se">\n</span><span class="s2">&quot;</span>
         <span class="k">for</span> <span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">ftype</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_features</span><span class="p">:</span>
-                <span class="n">s</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1">,&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fmt_arff_val</span><span class="p">(</span><span class="n">tok</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span>
-            <span class="n">s</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fmt_arff_val</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="n">s</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">,&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fmt_arff_val</span><span class="p">(</span><span class="n">tok</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fmt_arff_val</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">s</span></div>
 
     <span class="k">def</span> <span class="nf">_fmt_arff_val</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fval</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">fval</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">return</span> <span class="s1">&#39;?&#39;</span>
-        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fval</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">integer_types</span><span class="p">)):</span>
-            <span class="k">return</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">fval</span>
+            <span class="k">return</span> <span class="s2">&quot;?&quot;</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fval</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fval</span>
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fval</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
-            <span class="k">return</span> <span class="s1">&#39;</span><span class="si">%r</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">fval</span>
+            <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fval</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="s1">&#39;</span><span class="si">%r</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">fval</span></div>
+            <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fval</span></div>
 
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">nltk.classify.util</span> <span class="k">import</span> <span class="n">names_demo</span><span class="p">,</span> <span class="n">binary_names_demo_features</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">nltk.classify.util</span> <span class="kn">import</span> <span class="n">names_demo</span><span class="p">,</span> <span class="n">binary_names_demo_features</span>
 
     <span class="k">def</span> <span class="nf">make_classifier</span><span class="p">(</span><span class="n">featuresets</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">WekaClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="s1">&#39;/tmp/name.model&#39;</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">,</span> <span class="s1">&#39;C4.5&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">WekaClassifier</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="s2">&quot;/tmp/name.model&quot;</span><span class="p">,</span> <span class="n">featuresets</span><span class="p">,</span> <span class="s2">&quot;C4.5&quot;</span><span class="p">)</span>
 
     <span class="n">classifier</span> <span class="o">=</span> <span class="n">names_demo</span><span class="p">(</span><span class="n">make_classifier</span><span class="p">,</span> <span class="n">binary_names_demo_features</span><span class="p">)</span>
 </pre></div>
@@ -466,8 +464,8 @@
         <div class="right">
           
     <div class="footer" role="contentinfo">
-        &#169; Copyright 2019, NLTK Project.
-      Last updated on Aug 20, 2019.
+        &#169; Copyright 2020, NLTK Project.
+      Last updated on Mar 08, 2020.
       Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
     </div>
         </div>
