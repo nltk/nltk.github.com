@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nltk.tokenize.legality_principle &#8212; NLTK 3.6 documentation</title>
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/agogo.css" type="text/css" />
+    <script id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+  </head><body>
+    <div class="header-wrapper" role="banner">
+      <div class="header">
+        <div class="headertitle"><a
+          href="../../../index.html">NLTK 3.6 documentation</a></div>
+        <div class="rel" role="navigation" aria-label="related navigation">
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a>
+        </div>
+       </div>
+    </div>
+
+    <div class="content-wrapper">
+      <div class="content">
+        <div class="document">
+            
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for nltk.tokenize.legality_principle</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Natural Language Toolkit: Tokenizers</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2021 NLTK Project</span>
+<span class="c1"># Author: Christopher Hench &lt;chris.l.hench@gmail.com&gt;</span>
+<span class="c1">#         Alex Estes</span>
+<span class="c1"># URL: &lt;http://nltk.sourceforge.net&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">The Legality Principle is a language agnostic principle maintaining that syllable</span>
+<span class="sd">onsets and codas (the beginning and ends of syllables not including the vowel)</span>
+<span class="sd">are only legal if they are found as word onsets or codas in the language. The English</span>
+<span class="sd">word ``admit&#39;&#39; must then be syllabified as ``ad-mit&#39;&#39; since ``dm&#39;&#39; is not found</span>
+<span class="sd">word-initially in the English language (Bartlett et al.). This principle was first proposed</span>
+<span class="sd">in Daniel Kahn&#39;s 1976 dissertation, ``Syllable-based generalizations in English phonology&#39;&#39;.</span>
+
+<span class="sd">Kahn further argues that there is a ``strong tendency to syllabify in such a way that</span>
+<span class="sd">initial clusters are of maximal length, consistent with the general constraints on</span>
+<span class="sd">word-initial consonant clusters.&#39;&#39; Consequently, in addition to being legal onsets,</span>
+<span class="sd">the longest legal onset is preferable---``Onset Maximization&#39;&#39;.</span>
+
+<span class="sd">The default implementation assumes an English vowel set, but the `vowels` attribute</span>
+<span class="sd">can be set to IPA or any other alphabet&#39;s vowel set for the use-case.</span>
+<span class="sd">Both a valid set of vowels as well as a text corpus of words in the language</span>
+<span class="sd">are necessary to determine legal onsets and subsequently syllabify words. </span>
+
+<span class="sd">The legality principle with onset maximization is a universal syllabification algorithm,</span>
+<span class="sd">but that does not mean it performs equally across languages. Bartlett et al. (2009) </span>
+<span class="sd">is a good benchmark for English accuracy if utilizing IPA (pg. 311).</span>
+
+<span class="sd">References:</span>
+<span class="sd">- Otto Jespersen. 1904. Lehrbuch der Phonetik.</span>
+<span class="sd">  Leipzig, Teubner. Chapter 13, Silbe, pp. 185-203.</span>
+<span class="sd">- Theo Vennemann, ``On the Theory of Syllabic Phonology,&#39;&#39; 1972, p. 11.</span>
+<span class="sd">- Daniel Kahn, ``Syllable-based generalizations in English phonology&#39;&#39;, (PhD diss., MIT, 1976).</span>
+<span class="sd">- Elisabeth Selkirk. 1984. On the major class features and syllable theory.</span>
+<span class="sd">  In Aronoff &amp; Oehrle (eds.) Language Sound Structure: Studies in Phonology.</span>
+<span class="sd">  Cambridge, MIT Press. pp. 107-136.</span>
+<span class="sd">- Jeremy Goslin and Ulrich Frauenfelder. 2001. A comparison of theoretical and human syllabification. Language and Speech, 44:409–436.</span>
+<span class="sd">- Susan Bartlett, et al. 2009. On the Syllabification of Phonemes.</span>
+<span class="sd">  In HLT-NAACL. pp. 308-316.</span>
+<span class="sd">- Christopher Hench. 2017. Resonances in Middle High German: New Methodologies in Prosody. UC Berkeley.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tokenize.api</span> <span class="kn">import</span> <span class="n">TokenizerI</span>
+
+
+<div class="viewcode-block" id="LegalitySyllableTokenizer"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.legality_principle.LegalitySyllableTokenizer">[docs]</a><span class="k">class</span> <span class="nc">LegalitySyllableTokenizer</span><span class="p">(</span><span class="n">TokenizerI</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Syllabifies words based on the Legality Principle and Onset Maximization.</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tokenize import LegalitySyllableTokenizer</span>
+<span class="sd">        &gt;&gt;&gt; from nltk import word_tokenize</span>
+<span class="sd">        &gt;&gt;&gt; from nltk.corpus import words</span>
+<span class="sd">        &gt;&gt;&gt; text = &quot;This is a wonderful sentence.&quot;</span>
+<span class="sd">        &gt;&gt;&gt; text_words = word_tokenize(text)</span>
+<span class="sd">        &gt;&gt;&gt; LP = LegalitySyllableTokenizer(words.words())</span>
+<span class="sd">        &gt;&gt;&gt; [LP.tokenize(word) for word in text_words]</span>
+<span class="sd">        [[&#39;This&#39;], [&#39;is&#39;], [&#39;a&#39;], [&#39;won&#39;, &#39;der&#39;, &#39;ful&#39;], [&#39;sen&#39;, &#39;ten&#39;, &#39;ce&#39;], [&#39;.&#39;]]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokenized_source_text</span><span class="p">,</span> <span class="n">vowels</span><span class="o">=</span><span class="s2">&quot;aeiouy&quot;</span><span class="p">,</span> <span class="n">legal_frequency_threshold</span><span class="o">=.</span><span class="mi">001</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param tokenized_source_text: List of valid tokens in the language</span>
+<span class="sd">        :type tokenized_source_text: list(str)</span>
+<span class="sd">        :param vowels: Valid vowels in language or IPA represenation</span>
+<span class="sd">        :type vowels: str</span>
+<span class="sd">        :param legal_frequency_threshold: Lowest frequency of all onsets to be considered a legal onset</span>
+<span class="sd">        :type legal_frequency_threshold: float</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">legal_frequency_threshold</span> <span class="o">=</span> <span class="n">legal_frequency_threshold</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span> <span class="o">=</span> <span class="n">vowels</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">legal_onsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_legal_onsets</span><span class="p">(</span><span class="n">tokenized_source_text</span><span class="p">)</span>
+
+<div class="viewcode-block" id="LegalitySyllableTokenizer.find_legal_onsets"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.legality_principle.LegalitySyllableTokenizer.find_legal_onsets">[docs]</a>    <span class="k">def</span> <span class="nf">find_legal_onsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">words</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Gathers all onsets and then return only those above the frequency threshold</span>
+
+<span class="sd">        :param words: List of words in a language</span>
+<span class="sd">        :type words: list(str)</span>
+<span class="sd">        :return: Set of legal onsets</span>
+<span class="sd">        :rtype: set(str)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">onsets</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">onset</span><span class="p">(</span><span class="n">word</span><span class="p">)</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">words</span><span class="p">]</span>
+        <span class="n">legal_onsets</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> 
+                        <span class="ow">in</span> <span class="n">Counter</span><span class="p">(</span><span class="n">onsets</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="n">v</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">onsets</span><span class="p">))</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">legal_frequency_threshold</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">legal_onsets</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="LegalitySyllableTokenizer.onset"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.legality_principle.LegalitySyllableTokenizer.onset">[docs]</a>    <span class="k">def</span> <span class="nf">onset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns consonant cluster of word, i.e. all characters until the first vowel.</span>
+
+<span class="sd">        :param word: Single word or token</span>
+<span class="sd">        :type word: str</span>
+<span class="sd">        :return: String of characters of onset</span>
+<span class="sd">        :rtype: str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">onset</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">onset</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">onset</span> <span class="o">+=</span> <span class="n">c</span>
+        <span class="k">return</span> <span class="n">onset</span></div>
+
+<div class="viewcode-block" id="LegalitySyllableTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.html#nltk.tokenize.legality_principle.LegalitySyllableTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply the Legality Principle in combination with</span>
+<span class="sd">        Onset Maximization to return a list of syllables.</span>
+
+<span class="sd">        :param token: Single word or token</span>
+<span class="sd">        :type token: str</span>
+<span class="sd">        :return syllable_list: Single word or token broken up into syllables.</span>
+<span class="sd">        :rtype: list(str)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">syllables</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">syllable</span><span class="p">,</span> <span class="n">current_onset</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">vowel</span><span class="p">,</span> <span class="n">onset</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">char</span> <span class="ow">in</span> <span class="n">token</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">char_lower</span> <span class="o">=</span> <span class="n">char</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">vowel</span><span class="p">:</span>
+                <span class="n">syllable</span> <span class="o">+=</span> <span class="n">char</span>
+                <span class="n">vowel</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">char_lower</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">char_lower</span> <span class="o">+</span> <span class="n">current_onset</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">legal_onsets</span><span class="p">:</span>
+                    <span class="n">syllable</span> <span class="o">+=</span> <span class="n">char</span>
+                    <span class="n">current_onset</span> <span class="o">+=</span> <span class="n">char_lower</span>
+                    <span class="n">onset</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">elif</span> <span class="n">char_lower</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">onset</span><span class="p">:</span>
+                    <span class="n">syllable</span> <span class="o">+=</span> <span class="n">char</span>
+                    <span class="n">current_onset</span> <span class="o">+=</span> <span class="n">char_lower</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">syllables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+                    <span class="n">syllable</span> <span class="o">=</span> <span class="n">char</span>
+                    <span class="n">current_onset</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+                    <span class="n">vowel</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">char_lower</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vowels</span><span class="p">)</span>
+        <span class="n">syllables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">syllable</span><span class="p">)</span>
+        <span class="n">syllables_ordered</span> <span class="o">=</span> <span class="p">[</span><span class="n">syllable</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">syllable</span> <span class="ow">in</span> <span class="n">syllables</span><span class="p">][::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">syllables_ordered</span></div></div>
+</pre></div>
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+        </div>
+        <div class="sidebar">
+          
+          <h3>Table of Contents</h3>
+          <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../news.html">NLTK News</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../data.html">Installing NLTK Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute to NLTK</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/nltk.html">API</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">HOWTO</a></li>
+</ul>
+
+          <div role="search">
+            <h3 style="margin-top: 1.5em;">Search</h3>
+            <form class="search" action="../../../search.html" method="get">
+                <input type="text" name="q" />
+                <input type="submit" value="Go" />
+            </form>
+          </div>
+
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+    <div class="footer-wrapper">
+      <div class="footer">
+        <div class="left">
+          <div role="navigation" aria-label="related navigaton">
+            <a href="../../../py-modindex.html" title="Python Module Index"
+              >modules</a> |
+            <a href="../../../genindex.html" title="General Index"
+              >index</a>
+          </div>
+          <div role="note" aria-label="source link">
+          </div>
+        </div>
+
+        <div class="right">
+          
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020, NLTK Project.
+      Last updated on Apr 07, 2021.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 3.5.2.
+    </div>
+        </div>
+        <div class="clearer"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
