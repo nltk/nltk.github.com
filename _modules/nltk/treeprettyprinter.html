@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2D2D2D" />
+  
+  <title>NLTK :: nltk.treeprettyprinter</title>
+  
+
+  <link rel="stylesheet" href="../../_static/css/nltk_theme.css"/>
+  <link rel="stylesheet" href="../../_static/css/custom.css"/>
+
+  <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+      <script type="text/javascript" src="../../_static/documentation_options.js"></script>
+      <script type="text/javascript" src="../../_static/jquery.js"></script>
+      <script type="text/javascript" src="../../_static/underscore.js"></script>
+      <script type="text/javascript" src="../../_static/doctools.js"></script>
+  
+
+  <script src="https://email.tl.fortawesome.com/c/eJxNjUEOgyAQAF8jR7Kw6wIHDh7sP1Cw2mgxgmn6-3JsMqc5zEQfE8dkxOY1KKMUOI3ACFKRJpSW2AAp7ontYIaxI6i7XPJVwyeVfCQ550Os3jLrGSNOLgbdAy6s0PBk2TFNjEbsfq31LB0OnX407pJa5v2faRadwSW63mn5KuLyR9j2tgx3zecanl-55R_-jjPs"></script> 
+</head>
+
+<body>
+  <div id="nltk-theme-container">
+    <header>
+      <div id="logo-container">
+          
+          <h1>
+            <a href="../../index.html">NLTK</a>
+          </h1>
+          
+      </div>
+      <div id="project-container">
+        
+        <h1>Documentation</h1>
+        
+      </div>
+    </header>
+
+    <div id="content-container">
+
+      <div id="main-content-container">
+        <div id="main-content" role="main">
+          
+  <h1>Source code for nltk.treeprettyprinter</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Natural Language Toolkit: ASCII visualization of NLTK trees</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright (C) 2001-2021 NLTK Project</span>
+<span class="c1"># Author: Andreas van Cranenburgh &lt;A.W.vanCranenburgh@uva.nl&gt;</span>
+<span class="c1">#         Peter Ljunglöf &lt;peter.ljunglof@gu.se&gt;</span>
+<span class="c1"># URL: &lt;http://nltk.org/&gt;</span>
+<span class="c1"># For license information, see LICENSE.TXT</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Pretty-printing of discontinuous trees.</span>
+<span class="sd">Adapted from the disco-dop project, by Andreas van Cranenburgh.</span>
+<span class="sd">https://github.com/andreasvc/disco-dop</span>
+
+<span class="sd">Interesting reference (not used for this code):</span>
+<span class="sd">T. Eschbach et al., Orth. Hypergraph Drawing, Journal of</span>
+<span class="sd">Graph Algorithms and Applications, 10(2) 141--157 (2006)149.</span>
+<span class="sd">http://jgaa.info/accepted/2006/EschbachGuentherBecker2006.10.2.pdf</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">html</span> <span class="kn">import</span> <span class="n">escape</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">cgi</span> <span class="kn">import</span> <span class="n">escape</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">itemgetter</span>
+
+<span class="kn">from</span> <span class="nn">nltk.tree</span> <span class="kn">import</span> <span class="n">Tree</span>
+<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">OrderedDict</span>
+
+<span class="n">ANSICOLOR</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;black&quot;</span><span class="p">:</span> <span class="mi">30</span><span class="p">,</span>
+    <span class="s2">&quot;red&quot;</span><span class="p">:</span> <span class="mi">31</span><span class="p">,</span>
+    <span class="s2">&quot;green&quot;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+    <span class="s2">&quot;yellow&quot;</span><span class="p">:</span> <span class="mi">33</span><span class="p">,</span>
+    <span class="s2">&quot;blue&quot;</span><span class="p">:</span> <span class="mi">34</span><span class="p">,</span>
+    <span class="s2">&quot;magenta&quot;</span><span class="p">:</span> <span class="mi">35</span><span class="p">,</span>
+    <span class="s2">&quot;cyan&quot;</span><span class="p">:</span> <span class="mi">36</span><span class="p">,</span>
+    <span class="s2">&quot;white&quot;</span><span class="p">:</span> <span class="mi">37</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="TreePrettyPrinter"><a class="viewcode-back" href="../../api/nltk.treeprettyprinter.html#nltk.treeprettyprinter.TreePrettyPrinter">[docs]</a><span class="k">class</span> <span class="nc">TreePrettyPrinter</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pretty-print a tree in text format, either as ASCII or Unicode.</span>
+<span class="sd">    The tree can be a normal tree, or discontinuous.</span>
+
+<span class="sd">    ``TreePrettyPrinter(tree, sentence=None, highlight=())``</span>
+<span class="sd">    creates an object from which different visualizations can be created.</span>
+
+<span class="sd">    :param tree: a Tree object.</span>
+<span class="sd">    :param sentence: a list of words (strings). If `sentence` is given,</span>
+<span class="sd">        `tree` must contain integers as leaves, which are taken as indices</span>
+<span class="sd">        in `sentence`. Using this you can display a discontinuous tree.</span>
+<span class="sd">    :param highlight: Optionally, a sequence of Tree objects in `tree` which</span>
+<span class="sd">        should be highlighted. Has the effect of only applying colors to nodes</span>
+<span class="sd">        in this sequence (nodes should be given as Tree objects, terminals as</span>
+<span class="sd">        indices).</span>
+
+<span class="sd">    &gt;&gt;&gt; from nltk.tree import Tree</span>
+<span class="sd">    &gt;&gt;&gt; tree = Tree.fromstring(&#39;(S (NP Mary) (VP walks))&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; print(TreePrettyPrinter(tree).text())</span>
+<span class="sd">    ... # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">          S</span>
+<span class="sd">      ____|____</span>
+<span class="sd">     NP        VP</span>
+<span class="sd">     |         |</span>
+<span class="sd">    Mary     walks</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="TreePrettyPrinter.__init__"><a class="viewcode-back" href="../../api/nltk.treeprettyprinter.html#nltk.treeprettyprinter.TreePrettyPrinter.__init__">[docs]</a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">highlight</span><span class="o">=</span><span class="p">()):</span>
+        <span class="k">if</span> <span class="n">sentence</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">leaves</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">leaves</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">tree</span><span class="o">.</span><span class="n">subtrees</span><span class="p">())</span>
+                <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">leaves</span><span class="p">)</span>
+            <span class="p">):</span>
+                <span class="n">sentence</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">leaves</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># this deals with empty nodes (frontier non-terminals)</span>
+                <span class="c1"># and multiple/mixed terminals under non-terminals.</span>
+                <span class="n">tree</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">sentence</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">tree</span><span class="o">.</span><span class="n">subtrees</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">a</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">))</span>
+                        <span class="n">sentence</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">a</span><span class="p">):</span>
+                        <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+                            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+                                <span class="n">a</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">:</span>
+                                    <span class="n">b</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+                                <span class="n">sentence</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">b</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">highlight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodecoords</span><span class="p">(</span>
+            <span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">highlight</span>
+        <span class="p">)</span></div>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">text</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&lt;TreePrettyPrinter with </span><span class="si">%d</span><span class="s2"> nodes&gt;&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TreePrettyPrinter.nodecoords"><a class="viewcode-back" href="../../api/nltk.treeprettyprinter.html#nltk.treeprettyprinter.TreePrettyPrinter.nodecoords">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">nodecoords</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">highlight</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Produce coordinates of nodes on a grid.</span>
+
+<span class="sd">        Objective:</span>
+
+<span class="sd">        - Produce coordinates for a non-overlapping placement of nodes and</span>
+<span class="sd">            horizontal lines.</span>
+<span class="sd">        - Order edges so that crossing edges cross a minimal number of previous</span>
+<span class="sd">            horizontal lines (never vertical lines).</span>
+
+<span class="sd">        Approach:</span>
+
+<span class="sd">        - bottom up level order traversal (start at terminals)</span>
+<span class="sd">        - at each level, identify nodes which cannot be on the same row</span>
+<span class="sd">        - identify nodes which cannot be in the same column</span>
+<span class="sd">        - place nodes into a grid at (row, column)</span>
+<span class="sd">        - order child-parent edges with crossing edges last</span>
+
+<span class="sd">        Coordinates are (row, column); the origin (0, 0) is at the top left;</span>
+<span class="sd">        the root node is on row 0. Coordinates do not consider the size of a</span>
+<span class="sd">        node (which depends on font, &amp;c), so the width of a column of the grid</span>
+<span class="sd">        should be automatically determined by the element with the greatest</span>
+<span class="sd">        width in that column. Alternatively, the integer coordinates could be</span>
+<span class="sd">        converted to coordinates in which the distances between adjacent nodes</span>
+<span class="sd">        are non-uniform.</span>
+
+<span class="sd">        Produces tuple (nodes, coords, edges, highlighted) where:</span>
+
+<span class="sd">        - nodes[id]: Tree object for the node with this integer id</span>
+<span class="sd">        - coords[id]: (n, m) coordinate where to draw node with id in the grid</span>
+<span class="sd">        - edges[id]: parent id of node with this id (ordered dictionary)</span>
+<span class="sd">        - highlighted: set of ids that should be highlighted</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">def</span> <span class="nf">findcell</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">matrix</span><span class="p">,</span> <span class="n">startoflevel</span><span class="p">,</span> <span class="n">children</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Find vacant row, column index for node ``m``.</span>
+<span class="sd">            Iterate over current rows for this level (try lowest first)</span>
+<span class="sd">            and look for cell between first and last child of this node,</span>
+<span class="sd">            add new row to level if no free row available.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">children</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span>
+            <span class="n">minidx</span><span class="p">,</span> <span class="n">maxidx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">candidates</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+            <span class="n">leaves</span> <span class="o">=</span> <span class="n">tree</span><span class="p">[</span><span class="n">m</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+            <span class="n">center</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="nb">sum</span><span class="p">(</span><span class="n">leaves</span><span class="p">)</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">leaves</span><span class="p">)</span>  <span class="c1"># center of gravity</span>
+            <span class="k">if</span> <span class="n">minidx</span> <span class="o">&lt;</span> <span class="n">maxidx</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">minidx</span> <span class="o">&lt;</span> <span class="n">center</span> <span class="o">&lt;</span> <span class="n">maxidx</span><span class="p">:</span>
+                <span class="n">center</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">max</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">scale</span><span class="p">:</span>
+                <span class="n">center</span> <span class="o">-=</span> <span class="n">center</span> <span class="o">%</span> <span class="n">scale</span>  <span class="c1"># round to unscaled coordinate</span>
+                <span class="k">if</span> <span class="n">minidx</span> <span class="o">&lt;</span> <span class="n">maxidx</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">minidx</span> <span class="o">&lt;</span> <span class="n">center</span> <span class="o">&lt;</span> <span class="n">maxidx</span><span class="p">:</span>
+                    <span class="n">center</span> <span class="o">+=</span> <span class="n">scale</span>
+            <span class="k">if</span> <span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">startoflevel</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">rowidx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">startoflevel</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">rowidx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">matrix</span><span class="p">):</span>  <span class="c1"># need to add a new row</span>
+                    <span class="n">matrix</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">[</span>
+                            <span class="n">vertline</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="n">corner</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+                            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="p">]</span>
+                    <span class="p">)</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[</span><span class="n">rowidx</span><span class="p">]</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="n">j</span> <span class="o">=</span> <span class="n">center</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">children</span><span class="p">[</span><span class="n">m</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>  <span class="c1"># place unaries directly above child</span>
+                    <span class="k">return</span> <span class="n">rowidx</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">children</span><span class="p">[</span><span class="n">m</span><span class="p">]))[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="nb">all</span><span class="p">(</span>
+                    <span class="n">a</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">a</span> <span class="o">==</span> <span class="n">vertline</span>
+                    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">row</span><span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                <span class="p">):</span>
+                    <span class="c1"># find free column</span>
+                    <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scale</span><span class="p">):</span>
+                        <span class="n">i</span> <span class="o">=</span> <span class="n">j</span> <span class="o">=</span> <span class="n">center</span> <span class="o">+</span> <span class="n">n</span>
+                        <span class="k">while</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="n">minidx</span> <span class="ow">or</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">maxidx</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">maxidx</span> <span class="ow">and</span> <span class="p">(</span>
+                                <span class="n">matrix</span><span class="p">[</span><span class="n">rowidx</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">candidates</span>
+                            <span class="p">):</span>
+                                <span class="k">return</span> <span class="n">rowidx</span><span class="p">,</span> <span class="n">i</span>
+                            <span class="k">elif</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="n">minidx</span> <span class="ow">and</span> <span class="p">(</span>
+                                <span class="n">matrix</span><span class="p">[</span><span class="n">rowidx</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">candidates</span>
+                            <span class="p">):</span>
+                                <span class="k">return</span> <span class="n">rowidx</span><span class="p">,</span> <span class="n">j</span>
+                            <span class="n">i</span> <span class="o">+=</span> <span class="n">scale</span>
+                            <span class="n">j</span> <span class="o">-=</span> <span class="n">scale</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;could not find a free cell for:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span>
+                <span class="s2">&quot;min=</span><span class="si">%d</span><span class="s2">; max=</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">minidx</span><span class="p">,</span> <span class="n">maxidx</span><span class="p">,</span> <span class="n">dumpmatrix</span><span class="p">())</span>
+            <span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">dumpmatrix</span><span class="p">():</span>
+            <span class="sd">&quot;&quot;&quot;Dump matrix contents for debugging purposes.&quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%2d</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s2">&quot;</span><span class="si">%2r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">i</span><span class="p">)[:</span><span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">row</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="n">leaves</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">leaves</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;All leaves must be integer indices.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">leaves</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">leaves</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Indices must occur at most once.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">leaves</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;All leaves must be in the interval 0..n &quot;</span>
+                <span class="s2">&quot;with n=len(sentence)</span><span class="se">\n</span><span class="s2">tokens: </span><span class="si">%d</span><span class="s2"> indices: &quot;</span>
+                <span class="s2">&quot;</span><span class="si">%r</span><span class="se">\n</span><span class="s2">sentence: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">),</span> <span class="n">tree</span><span class="o">.</span><span class="n">leaves</span><span class="p">(),</span> <span class="n">sentence</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">vertline</span><span class="p">,</span> <span class="n">corner</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span>  <span class="c1"># constants</span>
+        <span class="n">tree</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">tree</span><span class="o">.</span><span class="n">subtrees</span><span class="p">():</span>
+            <span class="n">a</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="k">else</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="n">crossed</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="c1"># internal nodes and lexical nodes (no frontiers)</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">treepositions</span><span class="p">()</span>
+        <span class="n">maxdepth</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="n">positions</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">childcols</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="p">[[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span><span class="p">)]</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="p">{</span><span class="n">a</span><span class="p">:</span> <span class="n">n</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">positions</span><span class="p">)}</span>
+        <span class="n">highlighted_nodes</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">n</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ids</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">highlight</span> <span class="ow">or</span> <span class="n">tree</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="ow">in</span> <span class="n">highlight</span>
+        <span class="p">}</span>
+        <span class="n">levels</span> <span class="o">=</span> <span class="p">{</span><span class="n">n</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxdepth</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)}</span>
+        <span class="n">terminals</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">positions</span><span class="p">:</span>
+            <span class="n">node</span> <span class="o">=</span> <span class="n">tree</span><span class="p">[</span><span class="n">a</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+                <span class="n">levels</span><span class="p">[</span><span class="n">maxdepth</span> <span class="o">-</span> <span class="n">node</span><span class="o">.</span><span class="n">height</span><span class="p">()]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">terminals</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">levels</span><span class="p">:</span>
+            <span class="n">levels</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">())</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">leaves</span><span class="p">()))</span>
+        <span class="n">terminals</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">positions</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">terminals</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="n">m</span><span class="p">])</span> <span class="o">*</span> <span class="n">scale</span>
+            <span class="k">assert</span> <span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span> <span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="n">m</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
+            <span class="n">nodes</span><span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span> <span class="o">=</span> <span class="n">sentence</span><span class="p">[</span><span class="n">tree</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="n">nodes</span><span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">nodes</span><span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span> <span class="o">=</span> <span class="s2">&quot;...&quot;</span>
+                <span class="n">highlighted_nodes</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">])</span>
+            <span class="n">positions</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="n">childcols</span><span class="p">[</span><span class="n">m</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+
+        <span class="c1"># add other nodes centered on their children,</span>
+        <span class="c1"># if the center is already taken, back off</span>
+        <span class="c1"># to the left and right alternately, until an empty cell is found.</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">levels</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">nodesatdepth</span> <span class="o">=</span> <span class="n">levels</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+            <span class="n">startoflevel</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span>
+            <span class="n">matrix</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">vertline</span> <span class="k">if</span> <span class="n">a</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="n">corner</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">nodesatdepth</span><span class="p">:</span>  <span class="c1"># [::-1]:</span>
+                <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="n">maxdepth</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">childcols</span><span class="p">[</span><span class="n">m</span><span class="p">]:</span>
+                    <span class="n">_</span><span class="p">,</span> <span class="n">pivot</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">childcols</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">key</span><span class="o">=</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="p">{</span>
+                        <span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">row</span><span class="p">[:</span><span class="n">pivot</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span>
+                    <span class="p">}</span> <span class="o">&amp;</span> <span class="p">{</span>
+                        <span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">row</span><span class="p">[</span><span class="n">pivot</span><span class="p">:]</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span>
+                    <span class="p">}:</span>
+                        <span class="n">crossed</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+
+                <span class="n">rowidx</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="n">findcell</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">matrix</span><span class="p">,</span> <span class="n">startoflevel</span><span class="p">,</span> <span class="n">childcols</span><span class="p">)</span>
+                <span class="n">positions</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+
+                <span class="c1"># block positions where children of this node branch out</span>
+                <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">childcols</span><span class="p">[</span><span class="n">m</span><span class="p">]:</span>
+                    <span class="n">matrix</span><span class="p">[</span><span class="n">rowidx</span><span class="p">][</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">corner</span>
+                <span class="c1"># assert m == () or matrix[rowidx][i] in (None, corner), (</span>
+                <span class="c1">#         matrix[rowidx][i], m, str(tree), &#39; &#39;.join(sentence))</span>
+                <span class="c1"># node itself</span>
+                <span class="n">matrix</span><span class="p">[</span><span class="n">rowidx</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
+                <span class="n">nodes</span><span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">m</span><span class="p">]]</span> <span class="o">=</span> <span class="n">tree</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
+                <span class="c1"># add column to the set of children for its parent</span>
+                <span class="k">if</span> <span class="n">m</span> <span class="o">!=</span> <span class="p">():</span>
+                    <span class="n">childcols</span><span class="p">[</span><span class="n">m</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">rowidx</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">positions</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+
+        <span class="c1"># remove unused columns, right to left</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scale</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">sentence</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="p">(</span><span class="n">Tree</span><span class="p">,</span> <span class="nb">int</span><span class="p">))</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">:</span>
+                    <span class="k">del</span> <span class="n">row</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
+
+        <span class="c1"># remove unused rows, reverse</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">row</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">a</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">a</span> <span class="o">==</span> <span class="n">vertline</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">row</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># collect coordinates of nodes</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matrix</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="n">n</span><span class="p">]):</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">coords</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">n</span><span class="p">,</span> <span class="n">m</span>
+
+        <span class="c1"># move crossed edges last</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">a</span> <span class="k">for</span> <span class="n">level</span> <span class="ow">in</span> <span class="n">levels</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">level</span><span class="p">),</span>
+            <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="n">crossed</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># collect edges from node to node</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">positions</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tree</span><span class="p">[</span><span class="n">i</span><span class="p">]):</span>
+                <span class="n">edges</span><span class="p">[</span><span class="n">ids</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="p">(</span><span class="n">j</span><span class="p">,)]]</span> <span class="o">=</span> <span class="n">ids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">nodes</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">edges</span><span class="p">,</span> <span class="n">highlighted_nodes</span></div>
+
+<div class="viewcode-block" id="TreePrettyPrinter.text"><a class="viewcode-back" href="../../api/nltk.treeprettyprinter.html#nltk.treeprettyprinter.TreePrettyPrinter.text">[docs]</a>    <span class="k">def</span> <span class="nf">text</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">nodedist</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">unicodelines</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">html</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">ansi</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">nodecolor</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span>
+        <span class="n">leafcolor</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+        <span class="n">funccolor</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+        <span class="n">abbreviate</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">maxwidth</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: ASCII art for a discontinuous tree.</span>
+
+<span class="sd">        :param unicodelines: whether to use Unicode line drawing characters</span>
+<span class="sd">            instead of plain (7-bit) ASCII.</span>
+<span class="sd">        :param html: whether to wrap output in html code (default plain text).</span>
+<span class="sd">        :param ansi: whether to produce colors with ANSI escape sequences</span>
+<span class="sd">            (only effective when html==False).</span>
+<span class="sd">        :param leafcolor, nodecolor: specify colors of leaves and phrasal</span>
+<span class="sd">            nodes; effective when either html or ansi is True.</span>
+<span class="sd">        :param abbreviate: if True, abbreviate labels longer than 5 characters.</span>
+<span class="sd">            If integer, abbreviate labels longer than `abbr` characters.</span>
+<span class="sd">        :param maxwidth: maximum number of characters before a label starts to</span>
+<span class="sd">            wrap; pass None to disable.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">abbreviate</span> <span class="o">==</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">abbreviate</span> <span class="o">=</span> <span class="mi">5</span>
+        <span class="k">if</span> <span class="n">unicodelines</span><span class="p">:</span>
+            <span class="n">horzline</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\u2500</span><span class="s2">&quot;</span>
+            <span class="n">leftcorner</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\u250c</span><span class="s2">&quot;</span>
+            <span class="n">rightcorner</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\u2510</span><span class="s2">&quot;</span>
+            <span class="n">vertline</span> <span class="o">=</span> <span class="s2">&quot; </span><span class="se">\u2502</span><span class="s2"> &quot;</span>
+            <span class="n">tee</span> <span class="o">=</span> <span class="n">horzline</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\u252C</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">horzline</span>
+            <span class="n">bottom</span> <span class="o">=</span> <span class="n">horzline</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\u2534</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">horzline</span>
+            <span class="n">cross</span> <span class="o">=</span> <span class="n">horzline</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\u253c</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">horzline</span>
+            <span class="n">ellipsis</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\u2026</span><span class="s2">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">horzline</span> <span class="o">=</span> <span class="s2">&quot;_&quot;</span>
+            <span class="n">leftcorner</span> <span class="o">=</span> <span class="n">rightcorner</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+            <span class="n">vertline</span> <span class="o">=</span> <span class="s2">&quot; | &quot;</span>
+            <span class="n">tee</span> <span class="o">=</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">horzline</span>
+            <span class="n">cross</span> <span class="o">=</span> <span class="n">bottom</span> <span class="o">=</span> <span class="s2">&quot;_|_&quot;</span>
+            <span class="n">ellipsis</span> <span class="o">=</span> <span class="s2">&quot;.&quot;</span>
+
+        <span class="k">def</span> <span class="nf">crosscell</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">vertline</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Overwrite center of this cell with a vertical branch.&quot;&quot;&quot;</span>
+            <span class="n">splitl</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">cur</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">cur</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">lst</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">cur</span><span class="p">)</span>
+            <span class="n">lst</span><span class="p">[</span><span class="n">splitl</span> <span class="p">:</span> <span class="n">splitl</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+        <span class="n">maxnodewith</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">maxnodeheight</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">maxcol</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">minchildcol</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">maxchildcol</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">childcols</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">wrapre</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="s2">&quot;(.{</span><span class="si">%d</span><span class="s2">,</span><span class="si">%d</span><span class="s2">}</span><span class="se">\\</span><span class="s2">b</span><span class="se">\\</span><span class="s2">W*|.{</span><span class="si">%d</span><span class="s2">})&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">maxwidth</span> <span class="o">-</span> <span class="mi">4</span><span class="p">,</span> <span class="n">maxwidth</span><span class="p">,</span> <span class="n">maxwidth</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="c1"># collect labels and coordinates</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">:</span>
+            <span class="n">row</span><span class="p">,</span> <span class="n">column</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">a</span><span class="p">]</span>
+            <span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span>
+            <span class="n">maxcol</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">maxcol</span><span class="p">,</span> <span class="n">column</span><span class="p">)</span>
+            <span class="n">label</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">a</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">Tree</span><span class="p">)</span>
+                <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">a</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">abbreviate</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">abbreviate</span><span class="p">:</span>
+                <span class="n">label</span> <span class="o">=</span> <span class="n">label</span><span class="p">[:</span><span class="n">abbreviate</span><span class="p">]</span> <span class="o">+</span> <span class="n">ellipsis</span>
+            <span class="k">if</span> <span class="n">maxwidth</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">maxwidth</span><span class="p">:</span>
+                <span class="n">label</span> <span class="o">=</span> <span class="n">wrapre</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\1\n&quot;</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="n">label</span> <span class="o">=</span> <span class="n">label</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">maxnodeheight</span><span class="p">[</span><span class="n">row</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">maxnodeheight</span><span class="p">[</span><span class="n">row</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">label</span><span class="p">))</span>
+            <span class="n">maxnodewith</span><span class="p">[</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">column</span><span class="p">],</span> <span class="nb">max</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="n">label</span><span class="p">)))</span>
+            <span class="n">labels</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">=</span> <span class="n">label</span>
+            <span class="k">if</span> <span class="n">a</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="p">:</span>
+                <span class="k">continue</span>  <span class="c1"># e.g., root</span>
+            <span class="n">parent</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="p">[</span><span class="n">a</span><span class="p">]</span>
+            <span class="n">childcols</span><span class="p">[</span><span class="n">parent</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">row</span><span class="p">,</span> <span class="n">column</span><span class="p">))</span>
+            <span class="n">minchildcol</span><span class="p">[</span><span class="n">parent</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">minchildcol</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">column</span><span class="p">)</span>
+            <span class="n">maxchildcol</span><span class="p">[</span><span class="n">parent</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">maxchildcol</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">column</span><span class="p">)</span>
+        <span class="c1"># bottom up level order traversal</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">noderows</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxcol</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxnodeheight</span><span class="p">[</span><span class="n">row</span><span class="p">])</span>
+            <span class="p">]</span>
+            <span class="n">branchrow</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxcol</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">]:</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">col</span><span class="p">]</span>
+                <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="n">labels</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">):</span>
+                    <span class="c1"># draw horizontal branch towards children for this node</span>
+                    <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">minchildcol</span> <span class="ow">and</span> <span class="n">minchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">maxchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">]:</span>
+                        <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">minchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">],</span> <span class="n">maxchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+                        <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">maxnodewith</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">//</span> <span class="mi">2</span>
+                        <span class="n">branchrow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="s2">&quot; &quot;</span> <span class="o">*</span> <span class="n">a</span><span class="p">)</span> <span class="o">+</span> <span class="n">leftcorner</span><span class="p">)</span><span class="o">.</span><span class="n">ljust</span><span class="p">(</span>
+                            <span class="n">maxnodewith</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">horzline</span>
+                        <span class="p">)</span>
+                        <span class="n">branchrow</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">rightcorner</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot; &quot;</span> <span class="o">*</span> <span class="n">b</span><span class="p">))</span><span class="o">.</span><span class="n">rjust</span><span class="p">(</span>
+                            <span class="n">maxnodewith</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">horzline</span>
+                        <span class="p">)</span>
+                        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">minchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">maxchildcol</span><span class="p">[</span><span class="n">n</span><span class="p">]):</span>
+                            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">col</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">i</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">childcols</span><span class="p">[</span><span class="n">n</span><span class="p">]):</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="n">cross</span>
+                            <span class="k">elif</span> <span class="n">i</span> <span class="o">==</span> <span class="n">col</span><span class="p">:</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="n">bottom</span>
+                            <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">i</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">childcols</span><span class="p">[</span><span class="n">n</span><span class="p">]):</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="n">tee</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="n">horzline</span>
+                            <span class="n">branchrow</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">horzline</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>  <span class="c1"># if n and n in minchildcol:</span>
+                        <span class="n">branchrow</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">crosscell</span><span class="p">(</span><span class="n">branchrow</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
+                <span class="n">text</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="n">maxnodewith</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">text</span><span class="p">]</span>
+                <span class="n">color</span> <span class="o">=</span> <span class="n">nodecolor</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="k">else</span> <span class="n">leafcolor</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="ow">and</span> <span class="n">node</span><span class="o">.</span><span class="n">label</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">):</span>
+                    <span class="n">color</span> <span class="o">=</span> <span class="n">funccolor</span>
+                <span class="k">if</span> <span class="n">html</span><span class="p">:</span>
+                    <span class="n">text</span> <span class="o">=</span> <span class="p">[</span><span class="n">escape</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">quote</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">text</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">highlight</span><span class="p">:</span>
+                        <span class="n">text</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;&lt;font color=</span><span class="si">{</span><span class="n">color</span><span class="si">}</span><span class="s2">&gt;</span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s2">&lt;/font&gt;&quot;</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">text</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="n">ansi</span> <span class="ow">and</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">highlight</span><span class="p">:</span>
+                    <span class="n">text</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="se">\x1b</span><span class="s2">[</span><span class="si">%d</span><span class="s2">;1m</span><span class="si">%s</span><span class="se">\x1b</span><span class="s2">[0m&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">ANSICOLOR</span><span class="p">[</span><span class="n">color</span><span class="p">],</span> <span class="n">a</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">text</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxnodeheight</span><span class="p">[</span><span class="n">row</span><span class="p">]):</span>
+                    <span class="c1"># draw vertical lines in partially filled multiline node</span>
+                    <span class="c1"># labels, but only if it&#39;s not a frontier node.</span>
+                    <span class="n">noderows</span><span class="p">[</span><span class="n">x</span><span class="p">][</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">text</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                        <span class="k">else</span> <span class="p">(</span><span class="n">vertline</span> <span class="k">if</span> <span class="n">childcols</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">else</span> <span class="s2">&quot; &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">center</span><span class="p">(</span>
+                            <span class="n">maxnodewith</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="s2">&quot; &quot;</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+            <span class="c1"># for each column, if there is a node below us which has a parent</span>
+            <span class="c1"># above us, draw a vertical branch in that column.</span>
+            <span class="k">if</span> <span class="n">row</span> <span class="o">!=</span> <span class="nb">max</span><span class="p">(</span><span class="n">matrix</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="p">(</span><span class="n">childrow</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="p">[</span><span class="n">n</span><span class="p">]][</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">row</span> <span class="o">&lt;</span> <span class="n">childrow</span><span class="p">:</span>
+                        <span class="n">branchrow</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">crosscell</span><span class="p">(</span><span class="n">branchrow</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">]:</span>
+                            <span class="k">for</span> <span class="n">noderow</span> <span class="ow">in</span> <span class="n">noderows</span><span class="p">:</span>
+                                <span class="n">noderow</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">crosscell</span><span class="p">(</span><span class="n">noderow</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
+                <span class="n">branchrow</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">a</span> <span class="o">+</span> <span class="p">((</span><span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot; &quot;</span> <span class="k">else</span> <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">nodedist</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">branchrow</span><span class="p">,</span> <span class="n">branchrow</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot; &quot;</span><span class="p">])</span>
+                <span class="p">]</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">branchrow</span><span class="p">))</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="p">(</span><span class="s2">&quot; &quot;</span> <span class="o">*</span> <span class="n">nodedist</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">noderow</span><span class="p">)</span> <span class="k">for</span> <span class="n">noderow</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">noderows</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">reversed</span><span class="p">(</span><span class="n">result</span><span class="p">))</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span></div>
+
+<div class="viewcode-block" id="TreePrettyPrinter.svg"><a class="viewcode-back" href="../../api/nltk.treeprettyprinter.html#nltk.treeprettyprinter.TreePrettyPrinter.svg">[docs]</a>    <span class="k">def</span> <span class="nf">svg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nodecolor</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">leafcolor</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span> <span class="n">funccolor</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :return: SVG representation of a tree.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fontsize</span> <span class="o">=</span> <span class="mi">12</span>
+        <span class="n">hscale</span> <span class="o">=</span> <span class="mi">40</span>
+        <span class="n">vscale</span> <span class="o">=</span> <span class="mi">25</span>
+        <span class="n">hstart</span> <span class="o">=</span> <span class="n">vstart</span> <span class="o">=</span> <span class="mi">20</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">col</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">col</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">row</span> <span class="k">for</span> <span class="n">row</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s1">&#39;&lt;svg version=&quot;1.1&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot; &#39;</span>
+            <span class="s1">&#39;width=&quot;</span><span class="si">%d</span><span class="s1">em&quot; height=&quot;</span><span class="si">%d</span><span class="s1">em&quot; viewBox=&quot;</span><span class="si">%d</span><span class="s1"> </span><span class="si">%d</span><span class="s1"> </span><span class="si">%d</span><span class="s1"> </span><span class="si">%d</span><span class="s1">&quot;&gt;&#39;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="n">width</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                <span class="n">height</span> <span class="o">*</span> <span class="mf">2.5</span><span class="p">,</span>
+                <span class="o">-</span><span class="n">hstart</span><span class="p">,</span>
+                <span class="o">-</span><span class="n">vstart</span><span class="p">,</span>
+                <span class="n">width</span> <span class="o">*</span> <span class="n">hscale</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">hstart</span><span class="p">,</span>
+                <span class="n">height</span> <span class="o">*</span> <span class="n">vscale</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">vstart</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="n">children</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">n</span><span class="p">:</span>
+                <span class="n">children</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="p">[</span><span class="n">n</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+        <span class="c1"># horizontal branches from nodes to children</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">children</span><span class="p">[</span><span class="n">node</span><span class="p">]:</span>
+                <span class="k">continue</span>
+            <span class="n">y</span><span class="p">,</span> <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">node</span><span class="p">]</span>
+            <span class="n">x</span> <span class="o">*=</span> <span class="n">hscale</span>
+            <span class="n">y</span> <span class="o">*=</span> <span class="n">vscale</span>
+            <span class="n">x</span> <span class="o">+=</span> <span class="n">hstart</span>
+            <span class="n">y</span> <span class="o">+=</span> <span class="n">vstart</span> <span class="o">+</span> <span class="n">fontsize</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">childx</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">c</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">children</span><span class="p">[</span><span class="n">node</span><span class="p">]]</span>
+            <span class="n">xmin</span> <span class="o">=</span> <span class="n">hstart</span> <span class="o">+</span> <span class="n">hscale</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="n">childx</span><span class="p">)</span>
+            <span class="n">xmax</span> <span class="o">=</span> <span class="n">hstart</span> <span class="o">+</span> <span class="n">hscale</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="n">childx</span><span class="p">)</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&lt;polyline style=&quot;stroke:black; stroke-width:1; fill:none;&quot; &#39;</span>
+                <span class="s1">&#39;points=&quot;</span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1"> </span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1">&quot; /&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&lt;polyline style=&quot;stroke:black; stroke-width:1; fill:none;&quot; &#39;</span>
+                <span class="s1">&#39;points=&quot;</span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1"> </span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1">&quot; /&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">fontsize</span> <span class="o">//</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="c1"># vertical branches from children to parents</span>
+        <span class="k">for</span> <span class="n">child</span><span class="p">,</span> <span class="n">parent</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">y</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">parent</span><span class="p">]</span>
+            <span class="n">y</span> <span class="o">*=</span> <span class="n">vscale</span>
+            <span class="n">y</span> <span class="o">+=</span> <span class="n">vstart</span> <span class="o">+</span> <span class="n">fontsize</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">childy</span><span class="p">,</span> <span class="n">childx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="n">child</span><span class="p">]</span>
+            <span class="n">childx</span> <span class="o">*=</span> <span class="n">hscale</span>
+            <span class="n">childy</span> <span class="o">*=</span> <span class="n">vscale</span>
+            <span class="n">childx</span> <span class="o">+=</span> <span class="n">hstart</span>
+            <span class="n">childy</span> <span class="o">+=</span> <span class="n">vstart</span> <span class="o">-</span> <span class="n">fontsize</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="p">[</span>
+                <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&lt;polyline style=&quot;stroke:white; stroke-width:10; fill:none;&quot;&#39;</span>
+                <span class="s1">&#39; points=&quot;</span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1"> </span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1">&quot; /&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">childx</span><span class="p">,</span> <span class="n">childy</span><span class="p">,</span> <span class="n">childx</span><span class="p">,</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">5</span><span class="p">),</span>
+                <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&lt;polyline style=&quot;stroke:black; stroke-width:1; fill:none;&quot;&#39;</span>
+                <span class="s1">&#39; points=&quot;</span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1"> </span><span class="si">%g</span><span class="s1">,</span><span class="si">%g</span><span class="s1">&quot; /&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">childx</span><span class="p">,</span> <span class="n">childy</span><span class="p">,</span> <span class="n">childx</span><span class="p">,</span> <span class="n">y</span><span class="p">),</span>
+            <span class="p">]</span>
+
+        <span class="c1"># write nodes with coordinates</span>
+        <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">column</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">column</span> <span class="o">*</span> <span class="n">hscale</span> <span class="o">+</span> <span class="n">hstart</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">row</span> <span class="o">*</span> <span class="n">vscale</span> <span class="o">+</span> <span class="n">vstart</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">highlight</span><span class="p">:</span>
+                <span class="n">color</span> <span class="o">=</span> <span class="n">nodecolor</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="k">else</span> <span class="n">leafcolor</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="ow">and</span> <span class="n">node</span><span class="o">.</span><span class="n">label</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">):</span>
+                    <span class="n">color</span> <span class="o">=</span> <span class="n">funccolor</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">color</span> <span class="o">=</span> <span class="s2">&quot;black&quot;</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="p">[</span>
+                <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&lt;text style=&quot;text-anchor: middle; fill: </span><span class="si">%s</span><span class="s1">; &#39;</span>
+                <span class="s1">&#39;font-size: </span><span class="si">%d</span><span class="s1">px;&quot; x=&quot;</span><span class="si">%g</span><span class="s1">&quot; y=&quot;</span><span class="si">%g</span><span class="s1">&quot;&gt;</span><span class="si">%s</span><span class="s1">&lt;/text&gt;&#39;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">color</span><span class="p">,</span>
+                    <span class="n">fontsize</span><span class="p">,</span>
+                    <span class="n">x</span><span class="p">,</span>
+                    <span class="n">y</span><span class="p">,</span>
+                    <span class="n">escape</span><span class="p">(</span>
+                        <span class="n">node</span><span class="o">.</span><span class="n">label</span><span class="p">()</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">Tree</span><span class="p">)</span> <span class="k">else</span> <span class="n">node</span><span class="p">,</span> <span class="n">quote</span><span class="o">=</span><span class="kc">False</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+
+        <span class="n">result</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;&lt;/svg&gt;&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">result</span><span class="p">)</span></div></div>
+
+
+<span class="k">def</span> <span class="nf">test</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Do some tree drawing tests.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">print_tree</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ansi</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">xargs</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: &quot;</span><span class="si">{}</span><span class="s1">&quot;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sentence</span> <span class="ow">or</span> <span class="n">tree</span><span class="o">.</span><span class="n">leaves</span><span class="p">())))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+        <span class="n">drawtree</span> <span class="o">=</span> <span class="n">TreePrettyPrinter</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">drawtree</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">unicodelines</span><span class="o">=</span><span class="n">ansi</span><span class="p">,</span> <span class="n">ansi</span><span class="o">=</span><span class="n">ansi</span><span class="p">,</span> <span class="o">**</span><span class="n">xargs</span><span class="p">))</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">UnicodeDecodeError</span><span class="p">,</span> <span class="ne">UnicodeEncodeError</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">drawtree</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">unicodelines</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ansi</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">xargs</span><span class="p">))</span>
+
+    <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">treebank</span>
+
+    <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1440</span><span class="p">,</span> <span class="mi">1591</span><span class="p">,</span> <span class="mi">2771</span><span class="p">,</span> <span class="mi">2170</span><span class="p">]:</span>
+        <span class="n">tree</span> <span class="o">=</span> <span class="n">treebank</span><span class="o">.</span><span class="n">parsed_sents</span><span class="p">()[</span><span class="n">n</span><span class="p">]</span>
+        <span class="n">print_tree</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">tree</span><span class="p">,</span> <span class="n">nodedist</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxwidth</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;ASCII version:&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">TreePrettyPrinter</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">nodedist</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">tree</span> <span class="o">=</span> <span class="n">Tree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span>
+        <span class="s2">&quot;(top (punct 8) (smain (noun 0) (verb 1) (inf (verb 5) (inf (verb 6) &quot;</span>
+        <span class="s2">&quot;(conj (inf (pp (prep 2) (np (det 3) (noun 4))) (verb 7)) (inf (verb 9)) &quot;</span>
+        <span class="s2">&quot;(vg 10) (inf (verb 11)))))) (punct 12))&quot;</span><span class="p">,</span>
+        <span class="n">read_leaf</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sentence</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;Ze had met haar moeder kunnen gaan winkelen ,&quot;</span>
+        <span class="s2">&quot; zwemmen of terrassen .&quot;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">print_tree</span><span class="p">(</span><span class="s2">&quot;Discontinuous tree&quot;</span><span class="p">,</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sentence</span><span class="p">,</span> <span class="n">nodedist</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;TreePrettyPrinter&quot;</span><span class="p">]</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">test</span><span class="p">()</span>
+</pre></div>
+
+        </div>
+      </div>
+
+      <div id="side-menu-container">
+
+        <div id="search" role="search">
+        <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+            <input type="text" name="q" placeholder="Search..." />
+            <input type="hidden" name="check_keywords" value="yes" />
+            <input type="hidden" name="area" value="default" />
+        </form>
+</div>
+
+        <div id="side-menu" role="navigation">
+
+          
+  
+    
+  
+  
+    <p class="caption" role="heading"><span class="caption-text">NLTK Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api/nltk.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="http://www.nltk.org/howto">Example Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../py-modindex.html">Module Index</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki">Wiki</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/nltk/nltk/wiki/FAQ">FAQ</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Installation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../install.html">Installing NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../data.html">Installing NLTK Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../news.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../contribute.html">Contributing to NLTK</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../team.html">NLTK Team</a></li>
+</ul>
+
+  
+
+
+        </div>
+
+        
+
+      </div>
+
+    </div>
+
+<footer>
+    <div id="footer-info">
+        <ul id="build-details">
+            
+
+            
+                <li class="footer-element">
+                    <a href="https://github.com/nltk/nltk/tree/3.6.2">3.6.2</a>
+                </li>
+            
+
+            
+                <li class="footer-element">
+                    Oct 06, 2021
+                </li>
+            
+        </ul>
+
+        
+            <div id="copyright">
+                &copy; 2021, NLTK Project
+            </div>
+        
+
+        <div id="credit">
+            created with <a href="http://sphinx-doc.org/">Sphinx</a> and <a href="https://github.com/tomaarsen/nltk_theme">NLTK Theme</a>
+
+        </div>
+    </div>
+
+    <a id="menu-toggle" class="fa fa-bars" aria-hidden="true"></a>
+
+    <script type="text/javascript">
+      $("#menu-toggle").click(function() {
+        $("#menu-toggle").toggleClass("toggled");
+        $("#side-menu-container").slideToggle(300);
+      });
+    </script>
+
+</footer> 
+
+</div>
+
+</body>
+</html>
