@@ -157,6 +157,12 @@ REGEXPS = (
     r"""(?:\#+[\w_]+[\w\'_\-]*[\w_]+)""",
     # email addresses
     r"""[\w.+-]+@[\w-]+\.(?:[\w-]\.?)+[\w-]""",
+    # Zero-Width-Joiner and Skin tone modifier emojis
+    """.(?:
+        [\U0001F3FB-\U0001F3FF]?(?:\u200d.[\U0001F3FB-\U0001F3FF]?)+
+        |
+        [\U0001F3FB-\U0001F3FF]
+    )""",
     # Remaining word types:
     r"""
     (?:[^\W\d_](?:[^\W\d_]|['\-_])+[^\W\d_]) # Words with apostrophes or dashes.
@@ -193,6 +199,7 @@ HANDLES_RE = regex.compile(
     r"(?<![A-Za-z0-9_!@#\$%&*])@"
     r"(([A-Za-z0-9_]){15}(?!@)|([A-Za-z0-9_]){1,14}(?![A-Za-z0-9_]*@))"
 )
+
 
 ######################################################################
 # Functions for converting html entities
@@ -354,7 +361,7 @@ class TweetTokenizer:
         return words
 
     @property
-    def WORD_RE(self) -> regex.Pattern:
+    def WORD_RE(self) -> "regex.Pattern":
         """Core TweetTokenizer regex"""
         # Compiles the regex for this and all future instantiations of TweetTokenizer.
         if not type(self)._WORD_RE:
@@ -365,7 +372,7 @@ class TweetTokenizer:
         return type(self)._WORD_RE
 
     @property
-    def PHONE_WORD_RE(self) -> regex.Pattern:
+    def PHONE_WORD_RE(self) -> "regex.Pattern":
         """Secondary core TweetTokenizer regex"""
         # Compiles the regex for this and all future instantiations of TweetTokenizer.
         if not type(self)._PHONE_WORD_RE:
