@@ -3,7 +3,7 @@
 # Copyright (C) 2001-2021 NLTK Project
 # Authors: Chin Yee Lee, Hengfeng Li, Ruxin Hou, Calvin Tanujaya Lim
 # Contributors: Björn Mattsson, Dmitrijs Milajevs, Liling Tan
-# URL: <http://nltk.org/>
+# URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 """BLEU score implementation."""
@@ -28,7 +28,7 @@ def sentence_bleu(
     Calculate BLEU score (Bilingual Evaluation Understudy) from
     Papineni, Kishore, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002.
     "BLEU: a method for automatic evaluation of machine translation."
-    In Proceedings of ACL. http://www.aclweb.org/anthology/P02-1040.pdf
+    In Proceedings of ACL. https://www.aclweb.org/anthology/P02-1040.pdf
 
     >>> hypothesis1 = ['It', 'is', 'a', 'guide', 'to', 'action', 'which',
     ...               'ensures', 'that', 'the', 'military', 'always',
@@ -81,18 +81,28 @@ def sentence_bleu(
     >>> sentence_bleu([reference1, reference2, reference3], hypothesis1, weights) # doctest: +ELLIPSIS
     0.3920...
 
+    Multiple BLEU scores can be computed at once, by supplying a list of weights.
+    E.g. for computing BLEU-2, BLEU-3 *and* BLEU-4 in one computation, use:
+    >>> weights = [
+    ...     (1./2., 1./2.),
+    ...     (1./3., 1./3., 1./3.),
+    ...     (1./4., 1./4., 1./4., 1./4.)
+    ... ]
+    >>> sentence_bleu([reference1, reference2, reference3], hypothesis1, weights) # doctest: +ELLIPSIS
+    [0.7453..., 0.6240..., 0.5045...]
+
     :param references: reference sentences
     :type references: list(list(str))
     :param hypothesis: a hypothesis sentence
     :type hypothesis: list(str)
-    :param weights: weights for unigrams, bigrams, trigrams and so on
-    :type weights: list(float)
+    :param weights: weights for unigrams, bigrams, trigrams and so on (one or a list of weights)
+    :type weights: tuple(float) / list(tuple(float))
     :param smoothing_function:
     :type smoothing_function: SmoothingFunction
     :param auto_reweigh: Option to re-normalize the weights uniformly.
     :type auto_reweigh: bool
-    :return: The sentence-level BLEU score.
-    :rtype: float
+    :return: The sentence-level BLEU score. Returns a list if multiple weights were supplied.
+    :rtype: float / list(float)
     """
     return corpus_bleu(
         [references], [hypothesis], weights, smoothing_function, auto_reweigh
@@ -146,12 +156,29 @@ def corpus_bleu(
     >>> (score1 + score2) / 2 # doctest: +ELLIPSIS
     0.6223...
 
+    Custom weights may be supplied to fine-tune the BLEU score further.
+    A tuple of float weights for unigrams, bigrams, trigrams and so on can be given.
+    >>> weights = (0.1, 0.3, 0.5, 0.1)
+    >>> corpus_bleu(list_of_references, hypotheses, weights=weights) # doctest: +ELLIPSIS
+    0.5818...
+
+    This particular weight gave extra value to trigrams.
+    Furthermore, multiple weights can be given, resulting in multiple BLEU scores.
+    >>> weights = [
+    ...     (0.5, 0.5),
+    ...     (0.333, 0.333, 0.334),
+    ...     (0.25, 0.25, 0.25, 0.25),
+    ...     (0.2, 0.2, 0.2, 0.2, 0.2)
+    ... ]
+    >>> corpus_bleu(list_of_references, hypotheses, weights=weights) # doctest: +ELLIPSIS
+    [0.8242..., 0.7067..., 0.5920..., 0.4719...]
+
     :param list_of_references: a corpus of lists of reference sentences, w.r.t. hypotheses
     :type list_of_references: list(list(list(str)))
     :param hypotheses: a list of hypothesis sentences
     :type hypotheses: list(list(str))
-    :param weights: weights for unigrams, bigrams, trigrams and so on
-    :type weights: list(float)
+    :param weights: weights for unigrams, bigrams, trigrams and so on (one or a list of weights)
+    :type weights: tuple(float) / list(tuple(float))
     :param smoothing_function:
     :type smoothing_function: SmoothingFunction
     :param auto_reweigh: Option to re-normalize the weights uniformly.
@@ -169,11 +196,17 @@ def corpus_bleu(
         "The number of hypotheses and their reference(s) should be the " "same "
     )
 
+    try:
+        weights[0][0]
+    except TypeError:
+        weights = [weights]
+    max_weight_length = max(len(weight) for weight in weights)
+
     # Iterate through each hypothesis and their corresponding references.
     for references, hypothesis in zip(list_of_references, hypotheses):
         # For each order of ngram, calculate the numerator and
         # denominator for the corpus-level modified precision.
-        for i, _ in enumerate(weights, start=1):
+        for i in range(1, max_weight_length + 1):
             p_i = modified_precision(references, hypothesis, i)
             p_numerators[i] += p_i.numerator
             p_denominators[i] += p_i.denominator
@@ -187,23 +220,17 @@ def corpus_bleu(
     # Calculate corpus-level brevity penalty.
     bp = brevity_penalty(ref_lengths, hyp_lengths)
 
-    # Uniformly re-weighting based on maximum hypothesis lengths if largest
-    # order of n-grams < 4 and weights is set at default.
-    if auto_reweigh:
-        if hyp_lengths < 4 and weights == (0.25, 0.25, 0.25, 0.25):
-            weights = (1 / hyp_lengths,) * hyp_lengths
-
     # Collects the various precision values for the different ngram orders.
     p_n = [
         Fraction(p_numerators[i], p_denominators[i], _normalize=False)
-        for i, _ in enumerate(weights, start=1)
+        for i in range(1, max_weight_length + 1)
     ]
 
     # Returns 0 if there's no matching n-grams
     # We only need to check for p_numerators[1] == 0, since if there's
     # no unigrams, there won't be any higher order ngrams.
     if p_numerators[1] == 0:
-        return 0
+        return 0 if len(weights) == 1 else [0] * len(weights)
 
     # If there's no smoothing, set use method0 from SmoothinFunction class.
     if not smoothing_function:
@@ -215,9 +242,19 @@ def corpus_bleu(
     p_n = smoothing_function(
         p_n, references=references, hypothesis=hypothesis, hyp_len=hyp_lengths
     )
-    s = (w_i * math.log(p_i) for w_i, p_i in zip(weights, p_n))
-    s = bp * math.exp(math.fsum(s))
-    return s
+
+    bleu_scores = []
+    for weight in weights:
+        # Uniformly re-weighting based on maximum hypothesis lengths if largest
+        # order of n-grams < 4 and weights is set at default.
+        if auto_reweigh:
+            if hyp_lengths < 4 and weight == (0.25, 0.25, 0.25, 0.25):
+                weight = (1 / hyp_lengths,) * hyp_lengths
+
+        s = (w_i * math.log(p_i) for w_i, p_i in zip(weight, p_n) if p_i > 0)
+        s = bp * math.exp(math.fsum(s))
+        bleu_scores.append(s)
+    return bleu_scores[0] if len(weights) == 1 else bleu_scores
 
 
 def modified_precision(references, hypothesis, n):
@@ -362,74 +399,74 @@ def brevity_penalty(closest_ref_len, hyp_len):
     An example from the paper. There are three references with length 12, 15
     and 17. And a concise hypothesis of the length 12. The brevity penalty is 1.
 
-        >>> reference1 = list('aaaaaaaaaaaa')      # i.e. ['a'] * 12
-        >>> reference2 = list('aaaaaaaaaaaaaaa')   # i.e. ['a'] * 15
-        >>> reference3 = list('aaaaaaaaaaaaaaaaa') # i.e. ['a'] * 17
-        >>> hypothesis = list('aaaaaaaaaaaa')      # i.e. ['a'] * 12
-        >>> references = [reference1, reference2, reference3]
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> brevity_penalty(closest_ref_len, hyp_len)
-        1.0
+    >>> reference1 = list('aaaaaaaaaaaa')      # i.e. ['a'] * 12
+    >>> reference2 = list('aaaaaaaaaaaaaaa')   # i.e. ['a'] * 15
+    >>> reference3 = list('aaaaaaaaaaaaaaaaa') # i.e. ['a'] * 17
+    >>> hypothesis = list('aaaaaaaaaaaa')      # i.e. ['a'] * 12
+    >>> references = [reference1, reference2, reference3]
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> brevity_penalty(closest_ref_len, hyp_len)
+    1.0
 
     In case a hypothesis translation is shorter than the references, penalty is
     applied.
 
-        >>> references = [['a'] * 28, ['a'] * 28]
-        >>> hypothesis = ['a'] * 12
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> brevity_penalty(closest_ref_len, hyp_len)
-        0.2635971381157267
+    >>> references = [['a'] * 28, ['a'] * 28]
+    >>> hypothesis = ['a'] * 12
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> brevity_penalty(closest_ref_len, hyp_len)
+    0.2635971381157267
 
     The length of the closest reference is used to compute the penalty. If the
     length of a hypothesis is 12, and the reference lengths are 13 and 2, the
     penalty is applied because the hypothesis length (12) is less then the
     closest reference length (13).
 
-        >>> references = [['a'] * 13, ['a'] * 2]
-        >>> hypothesis = ['a'] * 12
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS
-        0.9200...
+    >>> references = [['a'] * 13, ['a'] * 2]
+    >>> hypothesis = ['a'] * 12
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS
+    0.9200...
 
     The brevity penalty doesn't depend on reference order. More importantly,
     when two reference sentences are at the same distance, the shortest
     reference sentence length is used.
 
-        >>> references = [['a'] * 13, ['a'] * 11]
-        >>> hypothesis = ['a'] * 12
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> bp1 = brevity_penalty(closest_ref_len, hyp_len)
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(reversed(references), hyp_len)
-        >>> bp2 = brevity_penalty(closest_ref_len, hyp_len)
-        >>> bp1 == bp2 == 1
-        True
+    >>> references = [['a'] * 13, ['a'] * 11]
+    >>> hypothesis = ['a'] * 12
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> bp1 = brevity_penalty(closest_ref_len, hyp_len)
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(reversed(references), hyp_len)
+    >>> bp2 = brevity_penalty(closest_ref_len, hyp_len)
+    >>> bp1 == bp2 == 1
+    True
 
     A test example from mteval-v13a.pl (starting from the line 705):
 
-        >>> references = [['a'] * 11, ['a'] * 8]
-        >>> hypothesis = ['a'] * 7
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS
-        0.8668...
+    >>> references = [['a'] * 11, ['a'] * 8]
+    >>> hypothesis = ['a'] * 7
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> brevity_penalty(closest_ref_len, hyp_len) # doctest: +ELLIPSIS
+    0.8668...
 
-        >>> references = [['a'] * 11, ['a'] * 8, ['a'] * 6, ['a'] * 7]
-        >>> hypothesis = ['a'] * 7
-        >>> hyp_len = len(hypothesis)
-        >>> closest_ref_len =  closest_ref_length(references, hyp_len)
-        >>> brevity_penalty(closest_ref_len, hyp_len)
-        1.0
+    >>> references = [['a'] * 11, ['a'] * 8, ['a'] * 6, ['a'] * 7]
+    >>> hypothesis = ['a'] * 7
+    >>> hyp_len = len(hypothesis)
+    >>> closest_ref_len =  closest_ref_length(references, hyp_len)
+    >>> brevity_penalty(closest_ref_len, hyp_len)
+    1.0
 
     :param hyp_len: The length of the hypothesis for a single sentence OR the
-    sum of all the hypotheses' lengths for a corpus
+        sum of all the hypotheses' lengths for a corpus
     :type hyp_len: int
     :param closest_ref_len: The length of the closest reference for a single
-    hypothesis OR the sum of all the closest references for every hypotheses.
+        hypothesis OR the sum of all the closest references for every hypotheses.
     :type closest_ref_len: int
     :return: BLEU's brevity penalty.
     :rtype: float
@@ -473,7 +510,7 @@ class SmoothingFunction:
         >>> print(sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method1)) # doctest: +ELLIPSIS
         0.4118...
         >>> print(sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method2)) # doctest: +ELLIPSIS
-        0.4489...
+        0.4452...
         >>> print(sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method3)) # doctest: +ELLIPSIS
         0.4118...
         >>> print(sentence_bleu([reference1], hypothesis1, smoothing_function=chencherry.method4)) # doctest: +ELLIPSIS
@@ -552,14 +589,18 @@ class SmoothingFunction:
         The smoothing is computed by taking 1 / ( 2^k ), instead of 0, for each
         precision score whose matching n-gram count is null.
         k is 1 for the first 'n' value for which the n-gram match count is null/
+
         For example, if the text contains:
-         - one 2-gram match
-         - and (consequently) two 1-gram matches
+
+        - one 2-gram match
+        - and (consequently) two 1-gram matches
+
         the n-gram count for each individual precision score would be:
-         - n=1  =>  prec_count = 2     (two unigrams)
-         - n=2  =>  prec_count = 1     (one bigram)
-         - n=3  =>  prec_count = 1/2   (no trigram,  taking 'smoothed' value of 1 / ( 2^k ), with k=1)
-         - n=4  =>  prec_count = 1/4   (no fourgram, taking 'smoothed' value of 1 / ( 2^k ), with k=2)
+
+        - n=1  =>  prec_count = 2     (two unigrams)
+        - n=2  =>  prec_count = 1     (one bigram)
+        - n=3  =>  prec_count = 1/2   (no trigram,  taking 'smoothed' value of 1 / ( 2^k ), with k=1)
+        - n=4  =>  prec_count = 1/4   (no fourgram, taking 'smoothed' value of 1 / ( 2^k ), with k=2)
         """
         incvnt = 1  # From the mteval-v13a.pl, it's referred to as k.
         for i, p_i in enumerate(p_n):

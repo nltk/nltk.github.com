@@ -3,7 +3,7 @@
 # Copyright (C) 2001-2021 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
-# URL: <http://nltk.org/>
+# URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 ##//////////////////////////////////////////////////////
@@ -11,6 +11,7 @@
 ##//////////////////////////////////////////////////////
 
 from nltk.chunk.util import ChunkScore
+from nltk.internals import deprecated
 from nltk.parse import ParserI
 
 
@@ -34,7 +35,11 @@ class ChunkParserI(ParserI):
         """
         raise NotImplementedError()
 
+    @deprecated("Use accuracy(gold) instead.")
     def evaluate(self, gold):
+        return self.accuracy(gold)
+
+    def accuracy(self, gold):
         """
         Score the accuracy of the chunker against the gold standard.
         Remove the chunking the gold standard text, rechunk it using

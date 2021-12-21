@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2001-2021 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
-# URL: <http://nltk.org/>
+# URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 # TODO this docstring isn't up-to-date!
@@ -16,7 +16,7 @@ of external corpora.
 Available Corpora
 =================
 
-Please see http://www.nltk.org/nltk_data/ for a complete list.
+Please see https://www.nltk.org/nltk_data/ for a complete list.
 Install corpora using nltk.download().
 
 Corpus Reader Functions
@@ -359,7 +359,17 @@ webtext = LazyCorpusLoader(
 wordnet = LazyCorpusLoader(
     "wordnet",
     WordNetCorpusReader,
-    LazyCorpusLoader("omw", CorpusReader, r".*/wn-data-.*\.tab", encoding="utf8"),
+    LazyCorpusLoader("omw-1.4", CorpusReader, r".*/wn-data-.*\.tab", encoding="utf8"),
+)
+wordnet31 = LazyCorpusLoader(
+    "wordnet31",
+    WordNetCorpusReader,
+    LazyCorpusLoader("omw-1.4", CorpusReader, r".*/wn-data-.*\.tab", encoding="utf8"),
+)
+wordnet2021 = LazyCorpusLoader(
+    "wordnet2021",
+    WordNetCorpusReader,
+    LazyCorpusLoader("omw-1.4", CorpusReader, r".*/wn-data-.*\.tab", encoding="utf8"),
 )
 wordnet_ic = LazyCorpusLoader("wordnet_ic", WordNetICCorpusReader, r".*\.dat")
 words = LazyCorpusLoader(

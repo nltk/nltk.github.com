@@ -3,7 +3,7 @@
 # Copyright (C) 2001-2021 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Eric Kafe <kafe.eric@gmail.com> (acyclic closures)
-# URL: <http://nltk.org/>
+# URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 import bisect
@@ -264,8 +264,8 @@ def edges2dot(edges, shapes=None, attr=None):
     :param edges: the set (or list) of edges of a directed graph.
 
     :return dot_string: a representation of 'edges' as a string in the DOT
-    graph language, which can be converted to an image by the 'dot' program
-    from the Graphviz package, or nltk.parse.dependencygraph.dot2img(dot_string).
+        graph language, which can be converted to an image by the 'dot' program
+        from the Graphviz package, or nltk.parse.dependencygraph.dot2img(dot_string).
 
     :param shapes: dictionary of strings that trigger a specified shape.
     :param attr: dictionary with global graph attributes
@@ -279,7 +279,6 @@ def edges2dot(edges, shapes=None, attr=None):
     "B" -> "C";
     "C" -> "B";
     }
-
     """
     if not shapes:
         shapes = dict()
@@ -586,7 +585,7 @@ def unweighted_minimum_spanning_tree(tree, children=iter):
 # Guess Character Encoding
 ##########################################################################
 
-# adapted from io.py in the docutils extension module (http://docutils.sourceforge.net)
+# adapted from io.py in the docutils extension module (https://docutils.sourceforge.io/)
 # http://www.pyzine.com/Issue008/Section_Articles/article_Encodings.html
 
 
@@ -1126,7 +1125,7 @@ def set_proxy(proxy, user=None, password=""):
 
 
 ######################################################################
-# ElementTree pretty printing from http://www.effbot.org/zone/element-lib.htm
+# ElementTree pretty printing from https://www.effbot.org/zone/element-lib.htm
 ######################################################################
 
 

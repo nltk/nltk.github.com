@@ -3,7 +3,7 @@
 # Author: Dan Garrette <dhgarrette@gmail.com>
 #
 # Copyright (C) 2001-2021 NLTK Project
-# URL: <http://nltk.org/>
+# URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 import operator
@@ -304,7 +304,7 @@ class DRS(DrtExpression, Expression):
     def __init__(self, refs, conds, consequent=None):
         """
         :param refs: list of ``DrtIndividualVariableExpression`` for the
-        discourse referents
+            discourse referents
         :param conds: list of ``Expression`` for the conditions
         """
         self.refs = refs
@@ -898,7 +898,7 @@ class DrtConcatenation(DrtBooleanExpression):
         )
         if self.consequent:
             drs = DrtBinaryExpression._assemble_pretty(
-                drs, DrtTokens.IMP, self._pretty(self.consequent)
+                drs, DrtTokens.IMP, self.consequent._pretty()
             )
         return drs
 
