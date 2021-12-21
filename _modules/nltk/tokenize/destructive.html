@@ -99,14 +99,18 @@
 <span></span><span class="c1"># Natural Language Toolkit: NLTK&#39;s very own tokenizer.</span>
 <span class="c1">#</span>
 <span class="c1"># Copyright (C) 2001-2021 NLTK Project</span>
-<span class="c1"># Author:</span>
+<span class="c1"># Author: Liling Tan</span>
+<span class="c1">#         Tom Aarsen &lt;&gt; (modifications)</span>
 <span class="c1"># URL: &lt;https://www.nltk.org&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
 
 
 <span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span>
 
 <span class="kn">from</span> <span class="nn">nltk.tokenize.api</span> <span class="kn">import</span> <span class="n">TokenizerI</span>
+<span class="kn">from</span> <span class="nn">nltk.tokenize.util</span> <span class="kn">import</span> <span class="n">align_tokens</span>
 
 
 <div class="viewcode-block" id="MacIntyreContractions"><a class="viewcode-back" href="../../../api/nltk.tokenize.destructive.html#nltk.tokenize.destructive.MacIntyreContractions">[docs]</a><span class="k">class</span> <span class="nc">MacIntyreContractions</span><span class="p">:</span>
@@ -122,7 +126,7 @@
         <span class="sa">r</span><span class="s2">&quot;(?i)\b(got)(?#X)(ta)\b&quot;</span><span class="p">,</span>
         <span class="sa">r</span><span class="s2">&quot;(?i)\b(lem)(?#X)(me)\b&quot;</span><span class="p">,</span>
         <span class="sa">r</span><span class="s2">&quot;(?i)\b(more)(?#X)(&#39;n)\b&quot;</span><span class="p">,</span>
-        <span class="sa">r</span><span class="s2">&quot;(?i)\b(wan)(?#X)(na)\s&quot;</span><span class="p">,</span>
+        <span class="sa">r</span><span class="s2">&quot;(?i)\b(wan)(?#X)(na)(?=\s)&quot;</span><span class="p">,</span>
     <span class="p">]</span>
     <span class="n">CONTRACTIONS3</span> <span class="o">=</span> <span class="p">[</span><span class="sa">r</span><span class="s2">&quot;(?i) (&#39;t)(?#X)(is)\b&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;(?i) (&#39;t)(?#X)(was)\b&quot;</span><span class="p">]</span>
     <span class="n">CONTRACTIONS4</span> <span class="o">=</span> <span class="p">[</span><span class="sa">r</span><span class="s2">&quot;(?i)\b(whad)(dd)(ya)\b&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;(?i)\b(wha)(t)(cha)\b&quot;</span><span class="p">]</span></div>
@@ -131,6 +135,9 @@
 <div class="viewcode-block" id="NLTKWordTokenizer"><a class="viewcode-back" href="../../../api/nltk.tokenize.destructive.html#nltk.tokenize.destructive.NLTKWordTokenizer">[docs]</a><span class="k">class</span> <span class="nc">NLTKWordTokenizer</span><span class="p">(</span><span class="n">TokenizerI</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The NLTK tokenizer that has improved upon the TreebankWordTokenizer.</span>
+
+<span class="sd">    This is the method that is invoked by ``word_tokenize()``.  It assumes that the</span>
+<span class="sd">    text has already been segmented into sentences, e.g. using ``sent_tokenize()``.</span>
 
 <span class="sd">    The tokenizer is &quot;destructive&quot; such that the regexes applied will munge the</span>
 <span class="sd">    input string to a state beyond re-construction. It is possible to apply</span>
@@ -151,8 +158,8 @@
     <span class="c1"># Ending quotes.</span>
     <span class="n">ENDING_QUOTES</span> <span class="o">=</span> <span class="p">[</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;([»”’])&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">U</span><span class="p">),</span> <span class="sa">r</span><span class="s2">&quot; \1 &quot;</span><span class="p">),</span>
+        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;&#39;&#39;&quot;</span><span class="p">),</span> <span class="s2">&quot; &#39;&#39; &quot;</span><span class="p">),</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;&quot;&#39;</span><span class="p">),</span> <span class="s2">&quot; &#39;&#39; &quot;</span><span class="p">),</span>
-        <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(\S)(\&#39;\&#39;)&quot;</span><span class="p">),</span> <span class="sa">r</span><span class="s2">&quot;\1 \2 &quot;</span><span class="p">),</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;([^&#39; ])(&#39;[sS]|&#39;[mM]|&#39;[dD]|&#39;) &quot;</span><span class="p">),</span> <span class="sa">r</span><span class="s2">&quot;\1 \2 &quot;</span><span class="p">),</span>
         <span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;([^&#39; ])(&#39;ll|&#39;LL|&#39;re|&#39;RE|&#39;ve|&#39;VE|n&#39;t|N&#39;T) &quot;</span><span class="p">),</span> <span class="sa">r</span><span class="s2">&quot;\1 \2 &quot;</span><span class="p">),</span>
     <span class="p">]</span>
@@ -208,7 +215,43 @@
     <span class="n">CONTRACTIONS2</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">,</span> <span class="n">_contractions</span><span class="o">.</span><span class="n">CONTRACTIONS2</span><span class="p">))</span>
     <span class="n">CONTRACTIONS3</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">,</span> <span class="n">_contractions</span><span class="o">.</span><span class="n">CONTRACTIONS3</span><span class="p">))</span>
 
-<div class="viewcode-block" id="NLTKWordTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.destructive.html#nltk.tokenize.destructive.NLTKWordTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">convert_parentheses</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_str</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="NLTKWordTokenizer.tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.destructive.html#nltk.tokenize.destructive.NLTKWordTokenizer.tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">convert_parentheses</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">return_str</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Return a tokenized copy of `text`.</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tokenize import NLTKWordTokenizer</span>
+<span class="sd">        &gt;&gt;&gt; s = &#39;&#39;&#39;Good muffins cost $3.88 (roughly 3,36 euros)\nin New York.  Please buy me\ntwo of them.\nThanks.&#39;&#39;&#39;</span>
+<span class="sd">        &gt;&gt;&gt; NLTKWordTokenizer().tokenize(s)</span>
+<span class="sd">        [&#39;Good&#39;, &#39;muffins&#39;, &#39;cost&#39;, &#39;$&#39;, &#39;3.88&#39;, &#39;(&#39;, &#39;roughly&#39;, &#39;3,36&#39;,</span>
+<span class="sd">        &#39;euros&#39;, &#39;)&#39;, &#39;in&#39;, &#39;New&#39;, &#39;York.&#39;, &#39;Please&#39;, &#39;buy&#39;, &#39;me&#39;, &#39;two&#39;,</span>
+<span class="sd">        &#39;of&#39;, &#39;them.&#39;, &#39;Thanks&#39;, &#39;.&#39;]</span>
+<span class="sd">        &gt;&gt;&gt; NLTKWordTokenizer().tokenize(s, convert_parentheses=True)</span>
+<span class="sd">        [&#39;Good&#39;, &#39;muffins&#39;, &#39;cost&#39;, &#39;$&#39;, &#39;3.88&#39;, &#39;-LRB-&#39;, &#39;roughly&#39;, &#39;3,36&#39;,</span>
+<span class="sd">        &#39;euros&#39;, &#39;-RRB-&#39;, &#39;in&#39;, &#39;New&#39;, &#39;York.&#39;, &#39;Please&#39;, &#39;buy&#39;, &#39;me&#39;, &#39;two&#39;,</span>
+<span class="sd">        &#39;of&#39;, &#39;them.&#39;, &#39;Thanks&#39;, &#39;.&#39;]</span>
+<span class="sd">        &gt;&gt;&gt; NLTKWordTokenizer().tokenize(s, return_str=True)</span>
+<span class="sd">        &#39; Good muffins cost  $ 3.88  ( roughly 3,36 euros ) \nin New York.  Please buy me\ntwo of them.\nThanks  .  &#39;</span>
+
+<span class="sd">        :param text: A string with a sentence or sentences.</span>
+<span class="sd">        :type text: str</span>
+<span class="sd">        :param convert_parentheses: if True, replace parentheses to PTB symbols,</span>
+<span class="sd">            e.g. `(` to `-LRB-`. Defaults to False.</span>
+<span class="sd">        :type convert_parentheses: bool, optional</span>
+<span class="sd">        :param return_str: If True, return tokens as space-separated string,</span>
+<span class="sd">            defaults to False.</span>
+<span class="sd">        :type return_str: bool, optional</span>
+<span class="sd">        :return: List of tokens from `text`.</span>
+<span class="sd">        :rtype: List[str]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">return_str</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">&quot;Parameter &#39;return_str&#39; has been deprecated and should no &quot;</span>
+                <span class="s2">&quot;longer be used.&quot;</span><span class="p">,</span>
+                <span class="n">category</span><span class="o">=</span><span class="ne">DeprecationWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
+
         <span class="k">for</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">substitution</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">STARTING_QUOTES</span><span class="p">:</span>
             <span class="n">text</span> <span class="o">=</span> <span class="n">regexp</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">substitution</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
 
@@ -243,7 +286,50 @@
         <span class="c1"># for regexp in self._contractions.CONTRACTIONS4:</span>
         <span class="c1">#     text = regexp.sub(r&#39; \1 \2 \3 &#39;, text)</span>
 
-        <span class="k">return</span> <span class="n">text</span> <span class="k">if</span> <span class="n">return_str</span> <span class="k">else</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div></div>
+        <span class="k">return</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="NLTKWordTokenizer.span_tokenize"><a class="viewcode-back" href="../../../api/nltk.tokenize.destructive.html#nltk.tokenize.destructive.NLTKWordTokenizer.span_tokenize">[docs]</a>    <span class="k">def</span> <span class="nf">span_tokenize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the spans of the tokens in ``text``.</span>
+<span class="sd">        Uses the post-hoc nltk.tokens.align_tokens to return the offset spans.</span>
+
+<span class="sd">            &gt;&gt;&gt; from nltk.tokenize import NLTKWordTokenizer</span>
+<span class="sd">            &gt;&gt;&gt; s = &#39;&#39;&#39;Good muffins cost $3.88\nin New (York).  Please (buy) me\ntwo of them.\n(Thanks).&#39;&#39;&#39;</span>
+<span class="sd">            &gt;&gt;&gt; expected = [(0, 4), (5, 12), (13, 17), (18, 19), (19, 23),</span>
+<span class="sd">            ... (24, 26), (27, 30), (31, 32), (32, 36), (36, 37), (37, 38),</span>
+<span class="sd">            ... (40, 46), (47, 48), (48, 51), (51, 52), (53, 55), (56, 59),</span>
+<span class="sd">            ... (60, 62), (63, 68), (69, 70), (70, 76), (76, 77), (77, 78)]</span>
+<span class="sd">            &gt;&gt;&gt; list(NLTKWordTokenizer().span_tokenize(s)) == expected</span>
+<span class="sd">            True</span>
+<span class="sd">            &gt;&gt;&gt; expected = [&#39;Good&#39;, &#39;muffins&#39;, &#39;cost&#39;, &#39;$&#39;, &#39;3.88&#39;, &#39;in&#39;,</span>
+<span class="sd">            ... &#39;New&#39;, &#39;(&#39;, &#39;York&#39;, &#39;)&#39;, &#39;.&#39;, &#39;Please&#39;, &#39;(&#39;, &#39;buy&#39;, &#39;)&#39;,</span>
+<span class="sd">            ... &#39;me&#39;, &#39;two&#39;, &#39;of&#39;, &#39;them.&#39;, &#39;(&#39;, &#39;Thanks&#39;, &#39;)&#39;, &#39;.&#39;]</span>
+<span class="sd">            &gt;&gt;&gt; [s[start:end] for start, end in NLTKWordTokenizer().span_tokenize(s)] == expected</span>
+<span class="sd">            True</span>
+
+<span class="sd">        :param text: A string with a sentence or sentences.</span>
+<span class="sd">        :type text: str</span>
+<span class="sd">        :yield: Tuple[int, int]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">raw_tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="c1"># Convert converted quotes back to original double quotes</span>
+        <span class="c1"># Do this only if original text contains double quote(s) or double</span>
+        <span class="c1"># single-quotes (because &#39;&#39; might be transformed to `` if it is</span>
+        <span class="c1"># treated as starting quotes).</span>
+        <span class="k">if</span> <span class="p">(</span><span class="s1">&#39;&quot;&#39;</span> <span class="ow">in</span> <span class="n">text</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="s2">&quot;&#39;&#39;&quot;</span> <span class="ow">in</span> <span class="n">text</span><span class="p">):</span>
+            <span class="c1"># Find double quotes and converted quotes</span>
+            <span class="n">matched</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;``|&#39;</span><span class="si">{2}</span><span class="s2">|</span><span class="se">\&quot;</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">text</span><span class="p">)]</span>
+
+            <span class="c1"># Replace converted quotes back to double quotes</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">matched</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">tok</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s2">&quot;``&quot;</span><span class="p">,</span> <span class="s2">&quot;&#39;&#39;&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="n">tok</span>
+                <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">raw_tokens</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">raw_tokens</span>
+
+        <span class="k">yield from</span> <span class="n">align_tokens</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span></div></div>
 </pre></div>
 
         </div>
@@ -258,13 +344,13 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.6.5">3.6.5</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.6.6">3.6.6</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Oct 19, 2021
+                    Dec 21, 2021
                 </li>
             
         </ul>

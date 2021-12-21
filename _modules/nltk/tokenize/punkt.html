@@ -364,7 +364,6 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_word_tokenizer_re</span><span class="p">()</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">s</span><span class="p">)</span></div>
 
     <span class="n">_period_context_fmt</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">        \S*                          # some word material</span>
 <span class="s2">        </span><span class="si">%(SentEndChars)s</span><span class="s2">             # a potential sentence ending</span>
 <span class="s2">        (?=(?P&lt;after_tok&gt;</span>
 <span class="s2">            </span><span class="si">%(NonWord)s</span><span class="s2">              # either other punctuation</span>
@@ -1382,8 +1381,7 @@
 <span class="sd">        See format_debug_decision() to help make this output readable.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="o">.</span><span class="n">period_context_re</span><span class="p">()</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
-            <span class="n">decision_text</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="o">+</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;after_tok&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">match</span><span class="p">,</span> <span class="n">decision_text</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_match_potential_end_contexts</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
             <span class="n">tokens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tokenize_words</span><span class="p">(</span><span class="n">decision_text</span><span class="p">)</span>
             <span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_annotate_first_pass</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
             <span class="k">while</span> <span class="n">tokens</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tok</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="o">.</span><span class="n">sent_end_chars</span><span class="p">):</span>
@@ -1431,10 +1429,68 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span><span class="n">text</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">e</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">span_tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">realign_boundaries</span><span class="p">)]</span></div>
 
+    <span class="k">def</span> <span class="nf">_match_potential_end_contexts</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a text, find the matches of potential sentence breaks,</span>
+<span class="sd">        alongside the contexts surrounding these sentence breaks.</span>
+
+<span class="sd">        Since the fix for the ReDOS discovered in issue #2866, we no longer match</span>
+<span class="sd">        the word before a potential end of sentence token. Instead, we use a separate</span>
+<span class="sd">        regex for this. As a consequence, `finditer`&#39;s desire to find non-overlapping</span>
+<span class="sd">        matches no longer aids us in finding the single longest match.</span>
+<span class="sd">        Where previously, we could use::</span>
+
+<span class="sd">            &gt;&gt;&gt; pst = PunktSentenceTokenizer()</span>
+<span class="sd">            &gt;&gt;&gt; text = &quot;Very bad acting!!! I promise.&quot;</span>
+<span class="sd">            &gt;&gt;&gt; list(pst._lang_vars.period_context_re().finditer(text)) # doctest: +SKIP</span>
+<span class="sd">            [&lt;re.Match object; span=(9, 18), match=&#39;acting!!!&#39;&gt;]</span>
+
+<span class="sd">        Now we have to find the word before (i.e. &#39;acting&#39;) separately, and `finditer`</span>
+<span class="sd">        returns::</span>
+
+<span class="sd">            &gt;&gt;&gt; pst = PunktSentenceTokenizer()</span>
+<span class="sd">            &gt;&gt;&gt; text = &quot;Very bad acting!!! I promise.&quot;</span>
+<span class="sd">            &gt;&gt;&gt; list(pst._lang_vars.period_context_re().finditer(text)) # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">            [&lt;re.Match object; span=(15, 16), match=&#39;!&#39;&gt;,</span>
+<span class="sd">            &lt;re.Match object; span=(16, 17), match=&#39;!&#39;&gt;,</span>
+<span class="sd">            &lt;re.Match object; span=(17, 18), match=&#39;!&#39;&gt;]</span>
+
+<span class="sd">        So, we need to find the word before the match from right to left, and then manually remove</span>
+<span class="sd">        the overlaps. That is what this method does::</span>
+
+<span class="sd">            &gt;&gt;&gt; pst = PunktSentenceTokenizer()</span>
+<span class="sd">            &gt;&gt;&gt; text = &quot;Very bad acting!!! I promise.&quot;</span>
+<span class="sd">            &gt;&gt;&gt; pst._match_potential_end_contexts(text)</span>
+<span class="sd">            [(&lt;re.Match object; span=(17, 18), match=&#39;!&#39;&gt;, &#39;acting!!! I&#39;)]</span>
+
+<span class="sd">        :param text: String of one or more sentences</span>
+<span class="sd">        :type text: str</span>
+<span class="sd">        :return: List of match-context tuples.</span>
+<span class="sd">        :rtype: List[Tuple[re.Match, str]]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">before_words</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="o">.</span><span class="n">period_context_re</span><span class="p">()</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">text</span><span class="p">))):</span>
+            <span class="c1"># Ignore matches that have already been captured by matches to the right of this match</span>
+            <span class="k">if</span> <span class="n">matches</span> <span class="ow">and</span> <span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">before_start</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="c1"># Find the word before the current match</span>
+            <span class="n">split</span> <span class="o">=</span> <span class="n">text</span><span class="p">[:</span> <span class="n">match</span><span class="o">.</span><span class="n">start</span><span class="p">()]</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="n">maxsplit</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">before_start</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">split</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">split</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="mi">0</span>
+            <span class="n">before_words</span><span class="p">[</span><span class="n">match</span><span class="p">]</span> <span class="o">=</span> <span class="n">split</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">matches</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">match</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="p">(</span>
+                <span class="n">match</span><span class="p">,</span>
+                <span class="n">before_words</span><span class="p">[</span><span class="n">match</span><span class="p">]</span> <span class="o">+</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="o">+</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;after_tok&quot;</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="p">]</span>
+
     <span class="k">def</span> <span class="nf">_slices_from_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
         <span class="n">last_break</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lang_vars</span><span class="o">.</span><span class="n">period_context_re</span><span class="p">()</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
-            <span class="n">context</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span> <span class="o">+</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;after_tok&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">match</span><span class="p">,</span> <span class="n">context</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_match_potential_end_contexts</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">text_contains_sentbreak</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
                 <span class="k">yield</span> <span class="nb">slice</span><span class="p">(</span><span class="n">last_break</span><span class="p">,</span> <span class="n">match</span><span class="o">.</span><span class="n">end</span><span class="p">())</span>
                 <span class="k">if</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="s2">&quot;next_tok&quot;</span><span class="p">):</span>
@@ -1775,13 +1831,13 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.6.5">3.6.5</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.6.6">3.6.6</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Oct 19, 2021
+                    Dec 21, 2021
                 </li>
             
         </ul>

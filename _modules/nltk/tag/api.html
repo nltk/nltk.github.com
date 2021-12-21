@@ -101,6 +101,7 @@
 <span class="c1"># Copyright (C) 2001-2021 NLTK Project</span>
 <span class="c1"># Author: Edward Loper &lt;edloper@gmail.com&gt;</span>
 <span class="c1">#         Steven Bird &lt;stevenbird1@gmail.com&gt; (minor additions)</span>
+<span class="c1">#         Tom Aarsen &lt;&gt;</span>
 <span class="c1"># URL: &lt;https://www.nltk.org/&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
 
@@ -109,10 +110,12 @@
 <span class="sd">information, such as its part of speech.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABCMeta</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">lru_cache</span>
 <span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span>
 
-<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">overridden</span>
-<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">accuracy</span>
+<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">deprecated</span><span class="p">,</span> <span class="n">overridden</span>
+<span class="kn">from</span> <span class="nn">nltk.metrics</span> <span class="kn">import</span> <span class="n">ConfusionMatrix</span><span class="p">,</span> <span class="n">accuracy</span>
 <span class="kn">from</span> <span class="nn">nltk.tag.util</span> <span class="kn">import</span> <span class="n">untag</span>
 
 
@@ -145,20 +148,24 @@
 
 <div class="viewcode-block" id="TaggerI.tag_sents"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.tag_sents">[docs]</a>    <span class="k">def</span> <span class="nf">tag_sents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Apply ``self.tag()`` to each element of *sentences*.  I.e.:</span>
+<span class="sd">        Apply ``self.tag()`` to each element of *sentences*.  I.e.::</span>
 
 <span class="sd">            return [self.tag(sent) for sent in sentences]</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">tag</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">sentences</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="TaggerI.evaluate"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.evaluate">[docs]</a>    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+    <span class="nd">@deprecated</span><span class="p">(</span><span class="s2">&quot;Use accuracy(gold) instead.&quot;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TaggerI.accuracy"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.accuracy">[docs]</a>    <span class="k">def</span> <span class="nf">accuracy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Score the accuracy of the tagger against the gold standard.</span>
 <span class="sd">        Strip the tags from the gold standard text, retag it using</span>
 <span class="sd">        the tagger, then compute the accuracy score.</span>
 
-<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
 <span class="sd">        :param gold: The list of tagged sentences to score the tagger on.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
 <span class="sd">        :rtype: float</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
@@ -166,6 +173,212 @@
         <span class="n">gold_tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">gold</span><span class="p">))</span>
         <span class="n">test_tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">))</span>
         <span class="k">return</span> <span class="n">accuracy</span><span class="p">(</span><span class="n">gold_tokens</span><span class="p">,</span> <span class="n">test_tokens</span><span class="p">)</span></div>
+
+    <span class="nd">@lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">_confusion_cached</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Inner function used after ``gold`` is converted to a</span>
+<span class="sd">        ``tuple(tuple(tuple(str, str)))``. That way, we can use caching on</span>
+<span class="sd">        creating a ConfusionMatrix.</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to run the tagger with,</span>
+<span class="sd">            also used as the reference values in the generated confusion matrix.</span>
+<span class="sd">        :type gold: tuple(tuple(tuple(str, str)))</span>
+<span class="sd">        :rtype: ConfusionMatrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">tagged_sents</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tag_sents</span><span class="p">(</span><span class="n">untag</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">gold</span><span class="p">)</span>
+        <span class="n">gold_tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">token</span> <span class="k">for</span> <span class="n">_word</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">gold</span><span class="p">)]</span>
+        <span class="n">test_tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">token</span> <span class="k">for</span> <span class="n">_word</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">tagged_sents</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">ConfusionMatrix</span><span class="p">(</span><span class="n">gold_tokens</span><span class="p">,</span> <span class="n">test_tokens</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TaggerI.confusion"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.confusion">[docs]</a>    <span class="k">def</span> <span class="nf">confusion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a ConfusionMatrix with the tags from ``gold`` as the reference</span>
+<span class="sd">        values, with the predictions from ``tag_sents`` as the predicted values.</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag import PerceptronTagger</span>
+<span class="sd">        &gt;&gt;&gt; from nltk.corpus import treebank</span>
+<span class="sd">        &gt;&gt;&gt; tagger = PerceptronTagger()</span>
+<span class="sd">        &gt;&gt;&gt; gold_data = treebank.tagged_sents()[:10]</span>
+<span class="sd">        &gt;&gt;&gt; print(tagger.confusion(gold_data))</span>
+<span class="sd">               |        -                                                                                     |</span>
+<span class="sd">               |        N                                                                                     |</span>
+<span class="sd">               |        O                                               P                                     |</span>
+<span class="sd">               |        N                       J  J        N  N  P  P  R     R           V  V  V  V  V  W    |</span>
+<span class="sd">               |  &#39;     E     C  C  D  E  I  J  J  J  M  N  N  N  O  R  P  R  B  R  T  V  B  B  B  B  B  D  ` |</span>
+<span class="sd">               |  &#39;  ,  -  .  C  D  T  X  N  J  R  S  D  N  P  S  S  P  $  B  R  P  O  B  D  G  N  P  Z  T  ` |</span>
+<span class="sd">        -------+----------------------------------------------------------------------------------------------+</span>
+<span class="sd">            &#39;&#39; | &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">             , |  .&lt;15&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">        -NONE- |  .  . &lt;.&gt; .  .  2  .  .  .  2  .  .  .  5  1  .  .  .  .  2  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">             . |  .  .  .&lt;10&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            CC |  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            CD |  .  .  .  .  . &lt;5&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            DT |  .  .  .  .  .  .&lt;20&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            EX |  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            IN |  .  .  .  .  .  .  .  .&lt;22&gt; .  .  .  .  .  .  .  .  .  .  3  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            JJ |  .  .  .  .  .  .  .  .  .&lt;16&gt; .  .  .  .  1  .  .  .  .  1  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           JJR |  .  .  .  .  .  .  .  .  .  . &lt;.&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           JJS |  .  .  .  .  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            MD |  .  .  .  .  .  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            NN |  .  .  .  .  .  .  .  .  .  .  .  .  .&lt;28&gt; 1  1  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           NNP |  .  .  .  .  .  .  .  .  .  .  .  .  .  .&lt;25&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           NNS |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .&lt;19&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           POS |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           PRP |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;4&gt; .  .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">          PRP$ |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;2&gt; .  .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            RB |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;4&gt; .  .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">           RBR |  .  .  .  .  .  .  .  .  .  .  1  .  .  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            RP |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;1&gt; .  .  .  .  .  .  .  .  . |</span>
+<span class="sd">            TO |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;5&gt; .  .  .  .  .  .  .  . |</span>
+<span class="sd">            VB |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;3&gt; .  .  .  .  .  .  . |</span>
+<span class="sd">           VBD |  .  .  .  .  .  .  .  .  .  .  .  .  .  1  .  .  .  .  .  .  .  .  .  . &lt;6&gt; .  .  .  .  .  . |</span>
+<span class="sd">           VBG |  .  .  .  .  .  .  .  .  .  .  .  .  .  1  .  .  .  .  .  .  .  .  .  .  . &lt;4&gt; .  .  .  .  . |</span>
+<span class="sd">           VBN |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  1  . &lt;4&gt; .  .  .  . |</span>
+<span class="sd">           VBP |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;3&gt; .  .  . |</span>
+<span class="sd">           VBZ |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;7&gt; .  . |</span>
+<span class="sd">           WDT |  .  .  .  .  .  .  .  .  2  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;.&gt; . |</span>
+<span class="sd">            `` |  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . &lt;1&gt;|</span>
+<span class="sd">        -------+----------------------------------------------------------------------------------------------+</span>
+<span class="sd">        (row = reference; col = test)</span>
+<span class="sd">        &lt;BLANKLINE&gt;</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to run the tagger with,</span>
+<span class="sd">            also used as the reference values in the generated confusion matrix.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
+<span class="sd">        :rtype: ConfusionMatrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_confusion_cached</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">sent</span><span class="p">)</span> <span class="k">for</span> <span class="n">sent</span> <span class="ow">in</span> <span class="n">gold</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="TaggerI.recall"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.recall">[docs]</a>    <span class="k">def</span> <span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the recall for each tag from ``gold`` or from running ``tag``</span>
+<span class="sd">        on the tokenized sentences from ``gold``. Then, return the dictionary</span>
+<span class="sd">        with mappings from tag to recall. The recall is defined as:</span>
+
+<span class="sd">        - *r* = true positive / (true positive + false positive)</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to score the tagger on.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
+<span class="sd">        :return: A mapping from tags to recall</span>
+<span class="sd">        :rtype: Dict[str, float]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">cm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">confusion</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">tag</span><span class="p">:</span> <span class="n">cm</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">cm</span><span class="o">.</span><span class="n">_values</span><span class="p">}</span></div>
+
+<div class="viewcode-block" id="TaggerI.precision"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.precision">[docs]</a>    <span class="k">def</span> <span class="nf">precision</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the precision for each tag from ``gold`` or from running ``tag``</span>
+<span class="sd">        on the tokenized sentences from ``gold``. Then, return the dictionary</span>
+<span class="sd">        with mappings from tag to precision. The precision is defined as:</span>
+
+<span class="sd">        - *p* = true positive / (true positive + false negative)</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to score the tagger on.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
+<span class="sd">        :return: A mapping from tags to precision</span>
+<span class="sd">        :rtype: Dict[str, float]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">cm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">confusion</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">tag</span><span class="p">:</span> <span class="n">cm</span><span class="o">.</span><span class="n">precision</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">cm</span><span class="o">.</span><span class="n">_values</span><span class="p">}</span></div>
+
+<div class="viewcode-block" id="TaggerI.f_measure"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.f_measure">[docs]</a>    <span class="k">def</span> <span class="nf">f_measure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the f-measure for each tag from ``gold`` or from running ``tag``</span>
+<span class="sd">        on the tokenized sentences from ``gold``. Then, return the dictionary</span>
+<span class="sd">        with mappings from tag to f-measure. The f-measure is the harmonic mean</span>
+<span class="sd">        of the ``precision`` and ``recall``, weighted by ``alpha``.</span>
+<span class="sd">        In particular, given the precision *p* and recall *r* defined by:</span>
+
+<span class="sd">        - *p* = true positive / (true positive + false negative)</span>
+<span class="sd">        - *r* = true positive / (true positive + false positive)</span>
+
+<span class="sd">        The f-measure is:</span>
+
+<span class="sd">        - *1/(alpha/p + (1-alpha)/r)*</span>
+
+<span class="sd">        With ``alpha = 0.5``, this reduces to:</span>
+
+<span class="sd">        - *2pr / (p + r)*</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to score the tagger on.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
+<span class="sd">        :param alpha: Ratio of the cost of false negative compared to false</span>
+<span class="sd">            positives. Defaults to 0.5, where the costs are equal.</span>
+<span class="sd">        :type alpha: float</span>
+<span class="sd">        :return: A mapping from tags to precision</span>
+<span class="sd">        :rtype: Dict[str, float]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">confusion</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">tag</span><span class="p">:</span> <span class="n">cm</span><span class="o">.</span><span class="n">f_measure</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="n">alpha</span><span class="p">)</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">cm</span><span class="o">.</span><span class="n">_values</span><span class="p">}</span></div>
+
+<div class="viewcode-block" id="TaggerI.evaluate_per_tag"><a class="viewcode-back" href="../../../api/nltk.tag.api.html#nltk.tag.api.TaggerI.evaluate_per_tag">[docs]</a>    <span class="k">def</span> <span class="nf">evaluate_per_tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gold</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">truncate</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sort_by_count</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Tabulate the **recall**, **precision** and **f-measure**</span>
+<span class="sd">        for each tag from ``gold`` or from running ``tag`` on the tokenized</span>
+<span class="sd">        sentences from ``gold``.</span>
+
+<span class="sd">        &gt;&gt;&gt; from nltk.tag import PerceptronTagger</span>
+<span class="sd">        &gt;&gt;&gt; from nltk.corpus import treebank</span>
+<span class="sd">        &gt;&gt;&gt; tagger = PerceptronTagger()</span>
+<span class="sd">        &gt;&gt;&gt; gold_data = treebank.tagged_sents()[:10]</span>
+<span class="sd">        &gt;&gt;&gt; print(tagger.evaluate_per_tag(gold_data))</span>
+<span class="sd">           Tag | Prec.  | Recall | F-measure</span>
+<span class="sd">        -------+--------+--------+-----------</span>
+<span class="sd">            &#39;&#39; | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">             , | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">        -NONE- | 0.0000 | 0.0000 | 0.0000</span>
+<span class="sd">             . | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            CC | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            CD | 0.7143 | 1.0000 | 0.8333</span>
+<span class="sd">            DT | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            EX | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            IN | 0.9167 | 0.8800 | 0.8980</span>
+<span class="sd">            JJ | 0.8889 | 0.8889 | 0.8889</span>
+<span class="sd">           JJR | 0.0000 | 0.0000 | 0.0000</span>
+<span class="sd">           JJS | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            MD | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            NN | 0.8000 | 0.9333 | 0.8615</span>
+<span class="sd">           NNP | 0.8929 | 1.0000 | 0.9434</span>
+<span class="sd">           NNS | 0.9500 | 1.0000 | 0.9744</span>
+<span class="sd">           POS | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">           PRP | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">          PRP$ | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            RB | 0.4000 | 1.0000 | 0.5714</span>
+<span class="sd">           RBR | 1.0000 | 0.5000 | 0.6667</span>
+<span class="sd">            RP | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            TO | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">            VB | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">           VBD | 0.8571 | 0.8571 | 0.8571</span>
+<span class="sd">           VBG | 1.0000 | 0.8000 | 0.8889</span>
+<span class="sd">           VBN | 1.0000 | 0.8000 | 0.8889</span>
+<span class="sd">           VBP | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">           VBZ | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">           WDT | 0.0000 | 0.0000 | 0.0000</span>
+<span class="sd">            `` | 1.0000 | 1.0000 | 1.0000</span>
+<span class="sd">        &lt;BLANKLINE&gt;</span>
+
+<span class="sd">        :param gold: The list of tagged sentences to score the tagger on.</span>
+<span class="sd">        :type gold: list(list(tuple(str, str)))</span>
+<span class="sd">        :param alpha: Ratio of the cost of false negative compared to false</span>
+<span class="sd">            positives, as used in the f-measure computation. Defaults to 0.5,</span>
+<span class="sd">            where the costs are equal.</span>
+<span class="sd">        :type alpha: float</span>
+<span class="sd">        :param truncate: If specified, then only show the specified</span>
+<span class="sd">            number of values.  Any sorting (e.g., sort_by_count)</span>
+<span class="sd">            will be performed before truncation. Defaults to None</span>
+<span class="sd">        :type truncate: int, optional</span>
+<span class="sd">        :param sort_by_count: Whether to sort the outputs on number of</span>
+<span class="sd">            occurrences of that tag in the ``gold`` data, defaults to False</span>
+<span class="sd">        :type sort_by_count: bool, optional</span>
+<span class="sd">        :return: A tabulated recall, precision and f-measure string</span>
+<span class="sd">        :rtype: str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">confusion</span><span class="p">(</span><span class="n">gold</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cm</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">truncate</span><span class="o">=</span><span class="n">truncate</span><span class="p">,</span> <span class="n">sort_by_count</span><span class="o">=</span><span class="n">sort_by_count</span><span class="p">)</span></div>
 
     <span class="k">def</span> <span class="nf">_check_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">train</span> <span class="ow">and</span> <span class="n">model</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="ow">not</span> <span class="n">train</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">model</span><span class="p">):</span>
@@ -193,13 +406,13 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.6.5">3.6.5</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.6.6">3.6.6</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Oct 19, 2021
+                    Dec 21, 2021
                 </li>
             
         </ul>
