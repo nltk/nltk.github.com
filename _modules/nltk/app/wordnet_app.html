@@ -101,7 +101,7 @@
   <h1>Source code for nltk.app.wordnet_app</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: WordNet Browser Application</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2022 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2023 NLTK Project</span>
 <span class="c1"># Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="c1">#         Paul Bone &lt;pbone@students.csse.unimelb.edu.au&gt;</span>
 <span class="c1"># URL: &lt;https://www.nltk.org/&gt;</span>
@@ -148,11 +148,10 @@
 
 <span class="kn">import</span> <span class="nn">base64</span>
 <span class="kn">import</span> <span class="nn">copy</span>
-<span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">import</span> <span class="nn">getopt</span>
+<span class="kn">import</span> <span class="nn">io</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">pickle</span>
-<span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">sys</span>
 <span class="kn">import</span> <span class="nn">threading</span>
 <span class="kn">import</span> <span class="nn">time</span>
@@ -161,16 +160,11 @@
 <span class="kn">from</span> <span class="nn">http.server</span> <span class="kn">import</span> <span class="n">BaseHTTPRequestHandler</span><span class="p">,</span> <span class="n">HTTPServer</span>
 
 <span class="c1"># Allow this program to run inside the NLTK source tree.</span>
-<span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">argv</span><span class="p">,</span> <span class="n">path</span>
+<span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">argv</span>
 <span class="kn">from</span> <span class="nn">urllib.parse</span> <span class="kn">import</span> <span class="n">unquote_plus</span>
 
 <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">wordnet</span> <span class="k">as</span> <span class="n">wn</span>
 <span class="kn">from</span> <span class="nn">nltk.corpus.reader.wordnet</span> <span class="kn">import</span> <span class="n">Lemma</span><span class="p">,</span> <span class="n">Synset</span>
-
-<span class="c1"># now included in local file</span>
-<span class="c1"># from util import html_header, html_trailer, \</span>
-<span class="c1">#    get_static_index_page, get_static_page_by_path, \</span>
-<span class="c1">#    page_from_word, page_from_href</span>
 
 <span class="n">firstClient</span> <span class="o">=</span> <span class="kc">True</span>
 
@@ -228,7 +222,12 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="c1"># Handle files here.</span>
                 <span class="n">word</span> <span class="o">=</span> <span class="n">sp</span>
-                <span class="n">page</span> <span class="o">=</span> <span class="n">get_static_page_by_path</span><span class="p">(</span><span class="n">usp</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">page</span> <span class="o">=</span> <span class="n">get_static_page_by_path</span><span class="p">(</span><span class="n">usp</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+                    <span class="n">page</span> <span class="o">=</span> <span class="s2">&quot;Internal error: Path for static page &#39;</span><span class="si">%s</span><span class="s2">&#39; is unknown&quot;</span> <span class="o">%</span> <span class="n">usp</span>
+                    <span class="c1"># Set type to plain to prevent XSS by printing the path as HTML</span>
+                    <span class="nb">type</span> <span class="o">=</span> <span class="s2">&quot;text/plain&quot;</span>
         <span class="k">elif</span> <span class="n">sp</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;search&quot;</span><span class="p">):</span>
             <span class="c1"># This doesn&#39;t seem to work with MWEs.</span>
             <span class="nb">type</span> <span class="o">=</span> <span class="s2">&quot;text/html&quot;</span>
@@ -755,6 +754,16 @@
     <span class="k">return</span> <span class="n">html</span>
 
 
+<span class="k">class</span> <span class="nc">RestrictedUnpickler</span><span class="p">(</span><span class="n">pickle</span><span class="o">.</span><span class="n">Unpickler</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Unpickler that prevents any class or function from being used during loading.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">find_class</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="c1"># Forbid every function</span>
+        <span class="k">raise</span> <span class="n">pickle</span><span class="o">.</span><span class="n">UnpicklingError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;global &#39;</span><span class="si">{</span><span class="n">module</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; is forbidden&quot;</span><span class="p">)</span>
+
+
 <span class="k">class</span> <span class="nc">Reference</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A reference to a page that may be generated by page_word</span>
@@ -790,7 +799,7 @@
 <span class="sd">        Decode a reference encoded with Reference.encode</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">string</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64decode</span><span class="p">(</span><span class="n">string</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
-        <span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+        <span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span> <span class="o">=</span> <span class="n">RestrictedUnpickler</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">string</span><span class="p">))</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">Reference</span><span class="p">(</span><span class="n">word</span><span class="p">,</span> <span class="n">synset_relations</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">toggle_synset_relation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset</span><span class="p">,</span> <span class="n">relation</span><span class="p">):</span>
@@ -890,7 +899,7 @@
                 <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
                     <span class="k">pass</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">body</span><span class="p">:</span>
-        <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;The word or words &#39;</span><span class="si">%s</span><span class="s2">&#39; where not found in the dictionary.&quot;</span> <span class="o">%</span> <span class="n">word</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;The word or words &#39;</span><span class="si">%s</span><span class="s2">&#39; were not found in the dictionary.&quot;</span> <span class="o">%</span> <span class="n">word</span>
     <span class="k">return</span> <span class="n">body</span><span class="p">,</span> <span class="n">word</span>
 
 
@@ -917,8 +926,7 @@
         <span class="k">return</span> <span class="n">get_static_web_help_page</span><span class="p">()</span>
     <span class="k">elif</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;wx_help.html&quot;</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">get_static_wx_help_page</span><span class="p">()</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;Internal error: Path for static page &#39;</span><span class="si">%s</span><span class="s2">&#39; is unknown&quot;</span> <span class="o">%</span> <span class="n">path</span>
+    <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">()</span>
 
 
 <span class="k">def</span> <span class="nf">get_static_web_help_page</span><span class="p">():</span>
@@ -929,7 +937,7 @@
 <span class="s2">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01//EN&quot; &quot;http://www.w3.org/TR/html4/strict.dtd&quot;&gt;</span>
 <span class="s2">&lt;html&gt;</span>
 <span class="s2">     &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="s2">            Copyright (C) 2001-2022 NLTK Project</span>
+<span class="s2">            Copyright (C) 2001-2023 NLTK Project</span>
 <span class="s2">            Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="s2">            URL: &lt;https://www.nltk.org/&gt;</span>
 <span class="s2">            For license information, see LICENSE.TXT --&gt;</span>
@@ -999,7 +1007,7 @@
 <span class="s2">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01 Frameset//EN&quot;  &quot;http://www.w3.org/TR/html4/frameset.dtd&quot;&gt;</span>
 <span class="s2">&lt;HTML&gt;</span>
 <span class="s2">     &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="s2">            Copyright (C) 2001-2022 NLTK Project</span>
+<span class="s2">            Copyright (C) 2001-2023 NLTK Project</span>
 <span class="s2">            Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="s2">            URL: &lt;https://www.nltk.org/&gt;</span>
 <span class="s2">            For license information, see LICENSE.TXT --&gt;</span>
@@ -1032,7 +1040,7 @@
 <span class="s2">&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.01//EN&quot; &quot;http://www.w3.org/TR/html4/strict.dtd&quot;&gt;</span>
 <span class="s2">&lt;html&gt;</span>
 <span class="s2">    &lt;!-- Natural Language Toolkit: Wordnet Interface: Graphical Wordnet Browser</span>
-<span class="s2">        Copyright (C) 2001-2022 NLTK Project</span>
+<span class="s2">        Copyright (C) 2001-2023 NLTK Project</span>
 <span class="s2">        Author: Jussi Salmela &lt;jtsalmela@users.sourceforge.net&gt;</span>
 <span class="s2">        URL: &lt;https://www.nltk.org/&gt;</span>
 <span class="s2">        For license information, see LICENSE.TXT --&gt;</span>
@@ -1110,20 +1118,20 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.8">3.8</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.8.1">3.8.1</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Dec 12, 2022
+                    Jan 02, 2023
                 </li>
             
         </ul>
 
         
             <div id="copyright">
-                &copy; 2022, NLTK Project
+                &copy; 2023, NLTK Project
             </div>
         
 
