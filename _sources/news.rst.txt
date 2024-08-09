@@ -6,7 +6,8 @@ Release Notes
 
 NLTK 3.8.2 release: August 2024:
 
-- Remove support for pickled models, resolves security vulnerability CVE-2024-39705
+- Avoid need for pickled models, resolves security vulnerability CVE-2024-39705
+- Add Python 3.12 support
 - Many other minor fixes
 
 2023
