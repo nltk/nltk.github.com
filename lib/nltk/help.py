@@ -1,6 +1,6 @@
 # Natural Language Toolkit (NLTK) Help
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -9,10 +9,11 @@
 Provide structured access to documentation.
 """
 
+import json
 import re
 from textwrap import wrap
 
-from nltk.data import load
+from nltk.data import find
 
 
 def brown_tagset(tagpattern=None):
@@ -43,7 +44,11 @@ def _print_entries(tags, tagdict):
 
 
 def _format_tagset(tagset, tagpattern=None):
-    tagdict = load("help/tagsets/" + tagset + ".pickle")
+    # Load tagset from json file.
+    tag_json_file = find(f"help/tagsets_json/PY3_json/{tagset}.json")
+    with open(tag_json_file) as fin:
+        tagdict = json.load(fin)
+
     if not tagpattern:
         _print_entries(sorted(tagdict), tagdict)
     elif tagpattern in tagdict:

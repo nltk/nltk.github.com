@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Tokenizers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
 # Contributors: matthewmc, clouds56
@@ -16,7 +16,7 @@ tokenizers can be used to find the words and punctuation in a string:
     >>> from nltk.tokenize import word_tokenize
     >>> s = '''Good muffins cost $3.88\nin New York.  Please buy me
     ... two of them.\n\nThanks.'''
-    >>> word_tokenize(s)
+    >>> word_tokenize(s) # doctest: +NORMALIZE_WHITESPACE
     ['Good', 'muffins', 'cost', '$', '3.88', 'in', 'New', 'York', '.',
     'Please', 'buy', 'me', 'two', 'of', 'them', '.', 'Thanks', '.']
 
@@ -26,7 +26,7 @@ regular-expression based tokenizer, which splits text on whitespace
 and punctuation:
 
     >>> from nltk.tokenize import wordpunct_tokenize
-    >>> wordpunct_tokenize(s)
+    >>> wordpunct_tokenize(s) # doctest: +NORMALIZE_WHITESPACE
     ['Good', 'muffins', 'cost', '$', '3', '.', '88', 'in', 'New', 'York', '.',
     'Please', 'buy', 'me', 'two', 'of', 'them', '.', 'Thanks', '.']
 
@@ -36,7 +36,7 @@ tokenizer directly as follows:
     >>> from nltk.tokenize import sent_tokenize, word_tokenize
     >>> sent_tokenize(s)
     ['Good muffins cost $3.88\nin New York.', 'Please buy me\ntwo of them.', 'Thanks.']
-    >>> [word_tokenize(t) for t in sent_tokenize(s)]
+    >>> [word_tokenize(t) for t in sent_tokenize(s)] # doctest: +NORMALIZE_WHITESPACE
     [['Good', 'muffins', 'cost', '$', '3.88', 'in', 'New', 'York', '.'],
     ['Please', 'buy', 'me', 'two', 'of', 'them', '.'], ['Thanks', '.']]
 
@@ -49,7 +49,7 @@ having the same semantics as string slices, to support efficient comparison
 of tokenizers.  (These methods are implemented as generators.)
 
     >>> from nltk.tokenize import WhitespaceTokenizer
-    >>> list(WhitespaceTokenizer().span_tokenize(s))
+    >>> list(WhitespaceTokenizer().span_tokenize(s)) # doctest: +NORMALIZE_WHITESPACE
     [(0, 4), (5, 12), (13, 17), (18, 23), (24, 26), (27, 30), (31, 36), (38, 44),
     (45, 48), (49, 51), (52, 55), (56, 58), (59, 64), (66, 73)]
 
@@ -66,7 +66,7 @@ from nltk.tokenize.casual import TweetTokenizer, casual_tokenize
 from nltk.tokenize.destructive import NLTKWordTokenizer
 from nltk.tokenize.legality_principle import LegalitySyllableTokenizer
 from nltk.tokenize.mwe import MWETokenizer
-from nltk.tokenize.punkt import PunktSentenceTokenizer
+from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktTokenizer
 from nltk.tokenize.regexp import (
     BlanklineTokenizer,
     RegexpTokenizer,
@@ -103,7 +103,7 @@ def sent_tokenize(text, language="english"):
     :param text: text to split into sentences
     :param language: the model name in the Punkt corpus
     """
-    tokenizer = load(f"tokenizers/punkt/{language}.pickle")
+    tokenizer = PunktTokenizer(language)
     return tokenizer.tokenize(text)
 
 

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Corpus & Model Downloader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -695,10 +695,8 @@ class Downloader:
             os.remove(filepath)
 
         # Ensure the download_dir exists
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-        if not os.path.exists(os.path.join(download_dir, info.subdir)):
-            os.makedirs(os.path.join(download_dir, info.subdir))
+        os.makedirs(download_dir, exist_ok=True)
+        os.makedirs(os.path.join(download_dir, info.subdir), exist_ok=True)
 
         # Download the file.  This will raise an IOError if the url
         # is not found.
@@ -751,7 +749,6 @@ class Downloader:
         raise_on_error=False,
         print_error_to=sys.stderr,
     ):
-
         print_to = functools.partial(print, file=print_error_to)
         # If no info or id is given, then use the interactive shell.
         if info_or_id is None:
@@ -1494,10 +1491,14 @@ class DownloaderGUI:
             ("download_dir", "Download Directory:", self._set_download_dir),
         ]
         self._info = {}
-        for (i, (key, label, callback)) in enumerate(info):
+        for i, (key, label, callback) in enumerate(info):
             Label(infoframe, text=label).grid(column=0, row=i, sticky="e")
             entry = Entry(
-                infoframe, font="courier", relief="groove", disabledforeground="black"
+                infoframe,
+                font="courier",
+                relief="groove",
+                disabledforeground="#007aff",
+                foreground="#007aff",
             )
             self._info[key] = (entry, callback)
             entry.bind("<Return>", self._info_save)
@@ -1607,7 +1608,7 @@ class DownloaderGUI:
         self.top.config(menu=menubar)
 
     def _select_columns(self):
-        for (column, var) in self._column_vars.items():
+        for column, var in self._column_vars.items():
             if var.get():
                 self._table.show_column(column)
             else:
@@ -1647,12 +1648,12 @@ class DownloaderGUI:
         if self._table.column_names[col].endswith("Size"):
             if isinstance(val, str):
                 return "  %s" % val
-            elif val < 1024 ** 2:
-                return "  %.1f KB" % (val / 1024.0 ** 1)
-            elif val < 1024 ** 3:
-                return "  %.1f MB" % (val / 1024.0 ** 2)
+            elif val < 1024**2:
+                return "  %.1f KB" % (val / 1024.0**1)
+            elif val < 1024**3:
+                return "  %.1f MB" % (val / 1024.0**2)
             else:
-                return "  %.1f GB" % (val / 1024.0 ** 3)
+                return "  %.1f GB" % (val / 1024.0**3)
 
         if col in (0, ""):
             return str(val)
@@ -2125,7 +2126,6 @@ class DownloaderGUI:
         if not self._download_lock.acquire():
             return
         for msg in self._download_msg_queue:
-
             # Done downloading?
             if msg == "finished" or msg == "aborted":
                 # self._fill_table(sort=False)
@@ -2240,7 +2240,7 @@ def _unzip_iter(filename, root, verbose=True):
 
     try:
         zf = zipfile.ZipFile(filename)
-    except zipfile.error as e:
+    except zipfile.BadZipFile:
         yield ErrorMessage(filename, "Error with downloaded zip file")
         return
     except Exception as e:
@@ -2321,11 +2321,9 @@ def build_index(root, base_url):
     # Put it all together
     top_elt = ElementTree.Element("nltk_data")
     top_elt.append(ElementTree.Element("packages"))
-    for package in packages:
-        top_elt[0].append(package)
+    top_elt[0].extend(sorted(packages, key=lambda package: package.get("id")))
     top_elt.append(ElementTree.Element("collections"))
-    for collection in collections:
-        top_elt[1].append(collection)
+    top_elt[1].extend(sorted(collections, key=lambda collection: collection.get("id")))
 
     _indent_xml(top_elt)
     return top_elt
@@ -2392,8 +2390,7 @@ def _find_collections(root):
     Helper for ``build_index()``: Yield a list of ElementTree.Element
     objects, each holding the xml for a single package collection.
     """
-    packages = []
-    for dirname, subdirs, files in os.walk(root):
+    for dirname, _subdirs, files in os.walk(root):
         for filename in files:
             if filename.endswith(".xml"):
                 xmlfile = os.path.join(dirname, filename)

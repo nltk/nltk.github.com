@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Stemmers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Tomcavage <stomcava@law.upenn.edu>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -224,7 +224,6 @@ class LancasterStemmer(StemmerI):
         proceed = True
 
         while proceed:
-
             # Find the position of the last letter of the word to be stemmed
             last_letter_position = self.__getLastLetter(word)
 

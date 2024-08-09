@@ -1,6 +1,6 @@
 # Natural Language Toolkit: vader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: C.J. Hutto <Clayton.Hutto@gtri.gatech.edu>
 #         Ewan Klein <ewan@inf.ed.ac.uk> (modifications)
 #         Pierpaolo Pantone <24alsecondo@gmail.com> (modifications)
@@ -356,6 +356,11 @@ class SentimentIntensityAnalyzer:
         Return a float for sentiment strength based on the input text.
         Positive values are positive valence, negative value are negative
         valence.
+
+        :note: Hashtags are not taken into consideration (e.g. #BAD is neutral). If you
+            are interested in processing the text in the hashtags too, then we recommend
+            preprocessing your data to remove the #, after which the hashtag text may be
+            matched as if it was a normal word in the sentence.
         """
         # text, words_and_emoticons, is_cap_diff = self.preprocess(text)
         sentitext = SentiText(

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Comparative Sentence Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Pierpaolo Pantone <24alsecondo@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -99,7 +99,7 @@ class ComparativeSentencesCorpusReader(CorpusReader):
 
         >>> from nltk.corpus import comparative_sentences
         >>> comparison = comparative_sentences.comparisons()[0]
-        >>> comparison.text
+        >>> comparison.text # doctest: +NORMALIZE_WHITESPACE
         ['its', 'fast-forward', 'and', 'rewind', 'work', 'much', 'more', 'smoothly',
         'and', 'consistently', 'than', 'those', 'of', 'other', 'models', 'i', "'ve",
         'had', '.']
@@ -249,7 +249,7 @@ class ComparativeSentencesCorpusReader(CorpusReader):
                         line = stream.readline()
                         entities_feats = ENTITIES_FEATS.findall(line)
                         if entities_feats:
-                            for (code, entity_feat) in entities_feats:
+                            for code, entity_feat in entities_feats:
                                 if code == "1":
                                     comparison.entity_1 = entity_feat.strip()
                                 elif code == "2":

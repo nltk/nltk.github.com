@@ -8,8 +8,8 @@
 #
 # This module is provided under the terms of the MIT License.
 
+import json
 import logging
-import pickle
 import random
 from collections import defaultdict
 
@@ -22,12 +22,29 @@ try:
 except ImportError:
     pass
 
-PICKLE = "averaged_perceptron_tagger.pickle"
+TRAINED_TAGGER_PATH = "averaged_perceptron_tagger/"
+
+TAGGER_JSONS = {
+    "eng": {
+        "weights": "averaged_perceptron_tagger_eng.weights.json",
+        "tagdict": "averaged_perceptron_tagger_eng.tagdict.json",
+        "classes": "averaged_perceptron_tagger_eng.classes.json",
+    },
+    "rus": {
+        "weights": "averaged_perceptron_tagger_rus.weights.json",
+        "tagdict": "averaged_perceptron_tagger_rus.tagdict.json",
+        "classes": "averaged_perceptron_tagger_rus.classes.json",
+    },
+    "xxx": {
+        "weights": "averaged_perceptron_tagger.xxx.weights.json",
+        "tagdict": "averaged_perceptron_tagger.xxx.tagdict.json",
+        "classes": "averaged_perceptron_tagger.xxx.classes.json",
+    },
+}
 
 
 @jsontags.register_tag
 class AveragedPerceptron:
-
     """An averaged perceptron, as implemented by Matthew Honnibal.
 
     See more implementation details here:
@@ -103,13 +120,14 @@ class AveragedPerceptron:
             self.weights[feat] = new_feat_weights
 
     def save(self, path):
-        """Save the pickled model weights."""
-        with open(path, "wb") as fout:
-            return pickle.dump(dict(self.weights), fout)
+        """Save the model weights as json"""
+        with open(path, "w") as fout:
+            return json.dump(self.weights, fout)
 
     def load(self, path):
-        """Load the pickled model weights."""
-        self.weights = load(path)
+        """Load the json model weights."""
+        with open(path) as fin:
+            self.weights = json.load(fin)
 
     def encode_json_obj(self):
         return self.weights
@@ -121,7 +139,6 @@ class AveragedPerceptron:
 
 @jsontags.register_tag
 class PerceptronTagger(TaggerI):
-
     """
     Greedy Averaged Perceptron tagger, as implemented by Matthew Honnibal.
     See more implementation details here:
@@ -155,18 +172,15 @@ class PerceptronTagger(TaggerI):
     START = ["-START-", "-START2-"]
     END = ["-END-", "-END2-"]
 
-    def __init__(self, load=True):
+    def __init__(self, load=True, lang="eng"):
         """
-        :param load: Load the pickled model upon instantiation.
+        :param load: Load the json model upon instantiation.
         """
         self.model = AveragedPerceptron()
         self.tagdict = {}
         self.classes = set()
         if load:
-            AP_MODEL_LOC = "file:" + str(
-                find("taggers/averaged_perceptron_tagger/" + PICKLE)
-            )
-            self.load(AP_MODEL_LOC)
+            self.load_from_json(lang)
 
     def tag(self, tokens, return_conf=False, use_tagdict=True):
         """
@@ -198,7 +212,7 @@ class PerceptronTagger(TaggerI):
 
         :param sentences: A list or iterator of sentences, where each sentence
             is a list of (words, tags) tuples.
-        :param save_loc: If not ``None``, saves a pickled model in this location.
+        :param save_loc: If not ``None``, saves a json model in this location.
         :param nr_iter: Number of training iterations.
         """
         # We'd like to allow ``sentences`` to be either a list or an iterator,
@@ -233,23 +247,37 @@ class PerceptronTagger(TaggerI):
             logging.info(f"Iter {iter_}: {c}/{n}={_pc(c, n)}")
 
         # We don't need the training sentences anymore, and we don't want to
-        # waste space on them when we pickle the trained tagger.
+        # waste space on them when we the trained tagger.
         self._sentences = None
 
         self.model.average_weights()
-        # Pickle as a binary file
+        # Save to json files.
         if save_loc is not None:
-            with open(save_loc, "wb") as fout:
-                # changed protocol from -1 to 2 to make pickling Python 2 compatible
-                pickle.dump((self.model.weights, self.tagdict, self.classes), fout, 2)
+            self.save_to_json(loc)
 
-    def load(self, loc):
-        """
-        :param loc: Load a pickled model at location.
-        :type loc: str
-        """
+    def save_to_json(self, loc, lang="xxx"):
+        # TODO:
+        assert os.isdir(
+            TRAINED_TAGGER_PATH
+        ), f"Path set for saving needs to be a directory"
 
-        self.model.weights, self.tagdict, self.classes = load(loc)
+        with open(loc + TAGGER_JSONS[lang]["weights"], "w") as fout:
+            json.dump(self.model.weights, fout)
+        with open(loc + TAGGER_JSONS[lang]["tagdict"], "w") as fout:
+            json.dump(self.tagdict, fout)
+        with open(loc + TAGGER_JSONS[lang]["classes"], "w") as fout:
+            json.dump(self.classes, fout)
+
+    def load_from_json(self, lang="eng"):
+        # Automatically find path to the tagger if location is not specified.
+        loc = find(f"taggers/averaged_perceptron_tagger_{lang}/")
+        with open(loc + TAGGER_JSONS[lang]["weights"]) as fin:
+            self.model.weights = json.load(fin)
+        with open(loc + TAGGER_JSONS[lang]["tagdict"]) as fin:
+            self.tagdict = json.load(fin)
+        with open(loc + TAGGER_JSONS[lang]["classes"]) as fin:
+            self.classes = set(json.load(fin))
+
         self.model.classes = self.classes
 
     def encode_json_obj(self):
@@ -362,7 +390,7 @@ def _get_pretrain_model():
     testing = _load_data_conll_format("english_ptb_test.conll")
     print("Size of training and testing (sentence)", len(training), len(testing))
     # Train and save the model
-    tagger.train(training, PICKLE)
+    tagger.train(training, TRAINED_TAGGER_PATH)
     print("Accuracy : ", tagger.accuracy(testing))
 
 

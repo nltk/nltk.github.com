@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Text Trees
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 #         Peter Ljunglöf <peter.ljunglof@gu.se>
@@ -52,15 +52,11 @@ class ProbabilisticTree(Tree, ProbabilisticMixIn):
             return val
 
     def __eq__(self, other):
-        return (
-            self.__class__ is other.__class__
-            and (
-                self._label,
-                list(self),
-                self.prob(),
-            )
-            == (other._label, list(other), other.prob())
-        )
+        return self.__class__ is other.__class__ and (
+            self._label,
+            list(self),
+            self.prob(),
+        ) == (other._label, list(other), other.prob())
 
     def __lt__(self, other):
         if not isinstance(other, Tree):

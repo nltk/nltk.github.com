@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Combinatory Categorial Grammar
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Graeme Gange <ggange@csse.unimelb.edu.au>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -380,7 +380,7 @@ def printCCGDerivation(tree):
 
     # Construct a string with both the leaf word and corresponding
     # category aligned.
-    for (leaf, cat) in leafcats:
+    for leaf, cat in leafcats:
         str_cat = "%s" % cat
         nextlen = 2 + max(len(leaf), len(str_cat))
         lcatlen = (nextlen - len(str_cat)) // 2

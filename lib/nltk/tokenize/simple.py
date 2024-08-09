@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Simple Tokenizers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org>
@@ -18,13 +18,13 @@ The simple tokenizers are *not* available as separate functions;
 instead, you should just use the string ``split()`` method directly:
 
     >>> s = "Good muffins cost $3.88\nin New York.  Please buy me\ntwo of them.\n\nThanks."
-    >>> s.split()
+    >>> s.split() # doctest: +NORMALIZE_WHITESPACE
     ['Good', 'muffins', 'cost', '$3.88', 'in', 'New', 'York.',
     'Please', 'buy', 'me', 'two', 'of', 'them.', 'Thanks.']
-    >>> s.split(' ')
+    >>> s.split(' ') # doctest: +NORMALIZE_WHITESPACE
     ['Good', 'muffins', 'cost', '$3.88\nin', 'New', 'York.', '',
     'Please', 'buy', 'me\ntwo', 'of', 'them.\n\nThanks.']
-    >>> s.split('\n')
+    >>> s.split('\n') # doctest: +NORMALIZE_WHITESPACE
     ['Good muffins cost $3.88', 'in New York.  Please buy me',
     'two of them.', '', 'Thanks.']
 
@@ -45,7 +45,7 @@ class SpaceTokenizer(StringTokenizer):
 
         >>> from nltk.tokenize import SpaceTokenizer
         >>> s = "Good muffins cost $3.88\nin New York.  Please buy me\ntwo of them.\n\nThanks."
-        >>> SpaceTokenizer().tokenize(s)
+        >>> SpaceTokenizer().tokenize(s) # doctest: +NORMALIZE_WHITESPACE
         ['Good', 'muffins', 'cost', '$3.88\nin', 'New', 'York.', '',
         'Please', 'buy', 'me\ntwo', 'of', 'them.\n\nThanks.']
     """
@@ -70,6 +70,8 @@ class CharTokenizer(StringTokenizer):
     is ever required directly, use ``for char in string``.
     """
 
+    _string = None
+
     def tokenize(self, s):
         return list(s)
 
@@ -83,11 +85,11 @@ class LineTokenizer(TokenizerI):
 
         >>> from nltk.tokenize import LineTokenizer
         >>> s = "Good muffins cost $3.88\nin New York.  Please buy me\ntwo of them.\n\nThanks."
-        >>> LineTokenizer(blanklines='keep').tokenize(s)
+        >>> LineTokenizer(blanklines='keep').tokenize(s) # doctest: +NORMALIZE_WHITESPACE
         ['Good muffins cost $3.88', 'in New York.  Please buy me',
         'two of them.', '', 'Thanks.']
         >>> # same as [l for l in s.split('\n') if l.strip()]:
-        >>> LineTokenizer(blanklines='discard').tokenize(s)
+        >>> LineTokenizer(blanklines='discard').tokenize(s) # doctest: +NORMALIZE_WHITESPACE
         ['Good muffins cost $3.88', 'in New York.  Please buy me',
         'two of them.', 'Thanks.']
 

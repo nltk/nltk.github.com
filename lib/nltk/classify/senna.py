@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Senna Interface
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Rami Al-Rfou' <ralrfou@cs.stonybrook.edu>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -30,9 +30,9 @@ The input is:
 Note: Unit tests for this module can be found in test/unit/test_senna.py
 
 >>> from nltk.classify import Senna
->>> pipeline = Senna('/usr/share/senna-v3.0', ['pos', 'chk', 'ner'])
+>>> pipeline = Senna('/usr/share/senna-v3.0', ['pos', 'chk', 'ner'])  # doctest: +SKIP
 >>> sent = 'Dusseldorf is an international business center'.split()
->>> [(token['word'], token['chk'], token['ner'], token['pos']) for token in pipeline.tag(sent)] # doctest: +SKIP
+>>> [(token['word'], token['chk'], token['ner'], token['pos']) for token in pipeline.tag(sent)]  # doctest: +SKIP
 [('Dusseldorf', 'B-NP', 'B-LOC', 'NNP'), ('is', 'B-VP', 'O', 'VBZ'), ('an', 'B-NP', 'O', 'DT'),
 ('international', 'I-NP', 'O', 'JJ'), ('business', 'I-NP', 'O', 'NN'), ('center', 'I-NP', 'O', 'NN')]
 """
@@ -45,7 +45,6 @@ from nltk.tag.api import TaggerI
 
 
 class Senna(TaggerI):
-
     SUPPORTED_OPERATIONS = ["pos", "chk", "ner"]
 
     def __init__(self, senna_path, operations, encoding="utf-8"):
@@ -62,7 +61,7 @@ class Senna(TaggerI):
                 self._path = path.normpath(environ["SENNA"]) + sep
                 exe_file_2 = self.executable(self._path)
                 if not path.isfile(exe_file_2):
-                    raise OSError(
+                    raise LookupError(
                         "Senna executable expected at %s or %s but not found"
                         % (exe_file_1, exe_file_2)
                     )
@@ -115,7 +114,7 @@ class Senna(TaggerI):
         encoding = self._encoding
 
         if not path.isfile(self.executable(self._path)):
-            raise OSError(
+            raise LookupError(
                 "Senna executable expected at %s but not found"
                 % self.executable(self._path)
             )

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Confusion Matrices
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 #         Tom Aarsen <>
@@ -61,7 +61,7 @@ class ConfusionMatrix:
         indices = {val: i for (i, val) in enumerate(values)}
 
         # Make a confusion matrix table.
-        confusion = [[0 for val in values] for val in values]
+        confusion = [[0 for _ in values] for _ in values]
         max_conf = 0  # Maximum confusion
         for w, g in zip(reference, test):
             confusion[indices[w]][indices[g]] += 1
@@ -197,9 +197,7 @@ class ConfusionMatrix:
         str = "Value key:\n"
         indexlen = len(repr(len(values) - 1))
         key_format = "  %" + repr(indexlen) + "d: %s\n"
-        for i in range(len(values)):
-            str += key_format % (i, values[i])
-
+        str += "".join([key_format % (i, values[i]) for i in range(len(values))])
         return str
 
     def recall(self, value):

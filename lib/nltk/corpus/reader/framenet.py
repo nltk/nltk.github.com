@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Framenet Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Chuck Wooters <wooters@icsi.berkeley.edu>,
 #          Nathan Schneider <nathan.schneider@georgetown.edu>
 # URL: <https://www.nltk.org/>
@@ -51,7 +51,6 @@ def mimic_wrap(lines, wrap_at=65, **kwargs):
 
 
 def _pretty_longstring(defstr, prefix="", wrap_at=65):
-
     """
     Helper function for pretty-printing a long string.
 
@@ -60,15 +59,12 @@ def _pretty_longstring(defstr, prefix="", wrap_at=65):
     :return: A nicely formatted string representation of the long string.
     :rtype: str
     """
-
-    outstr = ""
-    for line in textwrap.fill(defstr, wrap_at).split("\n"):
-        outstr += prefix + line + "\n"
-    return outstr
+    return "\n".join(
+        [prefix + line for line in textwrap.fill(defstr, wrap_at).split("\n")]
+    )
 
 
 def _pretty_any(obj):
-
     """
     Helper function for pretty-printing any AttrDict object.
 
@@ -91,7 +87,6 @@ def _pretty_any(obj):
 
 
 def _pretty_semtype(st):
-
     """
     Helper function for pretty-printing a semantic type.
 
@@ -127,7 +122,6 @@ def _pretty_semtype(st):
 
 
 def _pretty_frame_relation_type(freltyp):
-
     """
     Helper function for pretty-printing a frame relation type.
 
@@ -143,7 +137,6 @@ def _pretty_frame_relation_type(freltyp):
 
 
 def _pretty_frame_relation(frel):
-
     """
     Helper function for pretty-printing a frame relation.
 
@@ -159,7 +152,6 @@ def _pretty_frame_relation(frel):
 
 
 def _pretty_fe_relation(ferel):
-
     """
     Helper function for pretty-printing an FE relation.
 
@@ -175,7 +167,6 @@ def _pretty_fe_relation(ferel):
 
 
 def _pretty_lu(lu):
-
     """
     Helper function for pretty-printing a lexical unit.
 
@@ -651,7 +642,6 @@ def _annotation_ascii_FEs(sent):
 
 
 def _pretty_fe(fe):
-
     """
     Helper function for pretty-printing a frame element.
 
@@ -695,7 +685,6 @@ def _pretty_fe(fe):
 
 
 def _pretty_frame(frame):
-
     """
     Helper function for pretty-printing a frame.
 
@@ -764,12 +753,10 @@ def _pretty_frame(frame):
 
 
 class FramenetError(Exception):
-
     """An exception class for framenet-related errors."""
 
 
 class AttrDict(dict):
-
     """A class that wraps a dict and allows accessing the keys of the
     dict as if they were attributes. Taken from here:
     https://stackoverflow.com/a/14620633/8879
@@ -1259,9 +1246,9 @@ warnings(True) to display corpus consistency warnings when loading data
             self.abspath("luIndex.xml"), "luIndex/lu", self._handle_elt
         ) as view:
             for lu in view:
-                self._lu_idx[
-                    lu["ID"]
-                ] = lu  # populate with LU index entries. if any of these
+                self._lu_idx[lu["ID"]] = (
+                    lu  # populate with LU index entries. if any of these
+                )
                 # are looked up they will be replaced by full LU objects.
 
     def _buildrelationindex(self):
@@ -1400,8 +1387,10 @@ warnings(True) to display corpus consistency warnings when loading data
         256
         >>> f.name
         'Medical_specialties'
-        >>> f.definition
-        "This frame includes words that name ..."
+        >>> f.definition # doctest: +NORMALIZE_WHITESPACE
+        "This frame includes words that name medical specialties and is closely related to the
+        Medical_professionals frame.  The FE Type characterizing a sub-are in a Specialty may also be
+        expressed. 'Ralph practices paediatric oncology.'"
 
         :param fn_fid: The Framenet id number of the frame
         :type fn_fid: int
@@ -1441,8 +1430,10 @@ warnings(True) to display corpus consistency warnings when loading data
         256
         >>> f.name
         'Medical_specialties'
-        >>> f.definition
-        "This frame includes words that name ..."
+        >>> f.definition # doctest: +NORMALIZE_WHITESPACE
+         "This frame includes words that name medical specialties and is closely related to the
+          Medical_professionals frame.  The FE Type characterizing a sub-are in a Specialty may also be
+          expressed. 'Ralph practices paediatric oncology.'"
 
         :param fn_fname: The name of the frame
         :type fn_fname: str
@@ -1510,8 +1501,9 @@ warnings(True) to display corpus consistency warnings when loading data
         >>> f.ID
         256
         >>> # ensure non-ASCII character in definition doesn't trigger an encoding error:
-        >>> fn.frame('Imposing_obligation')
+        >>> fn.frame('Imposing_obligation') # doctest: +ELLIPSIS
         frame (1494): Imposing_obligation...
+
 
         The dict that is returned from this function will contain the
         following information about the Frame:
@@ -1649,10 +1641,10 @@ warnings(True) to display corpus consistency warnings when loading data
         'COD: be aware of beforehand; predict.'
         >>> fn.lu(256).frame.name
         'Expectation'
-        >>> pprint(list(map(PrettyDict, fn.lu(256).lexemes)))
+        >>> list(map(PrettyDict, fn.lu(256).lexemes))
         [{'POS': 'V', 'breakBefore': 'false', 'headword': 'false', 'name': 'foresee', 'order': 1}]
 
-        >>> fn.lu(227).exemplars[23]
+        >>> fn.lu(227).exemplars[23] # doctest: +NORMALIZE_WHITESPACE
         exemplar sentence (352962):
         [sentNo] 0
         [aPos] 59699508
@@ -2070,14 +2062,14 @@ warnings(True) to display corpus consistency warnings when loading data
         >>> from nltk.corpus import framenet as fn
         >>> fn.fes('Noise_maker')
         [<fe ID=6043 name=Noise_maker>]
-        >>> sorted([(fe.frame.name,fe.name) for fe in fn.fes('sound')])
+        >>> sorted([(fe.frame.name,fe.name) for fe in fn.fes('sound')]) # doctest: +NORMALIZE_WHITESPACE
         [('Cause_to_make_noise', 'Sound_maker'), ('Make_noise', 'Sound'),
          ('Make_noise', 'Sound_source'), ('Sound_movement', 'Location_of_sound_source'),
          ('Sound_movement', 'Sound'), ('Sound_movement', 'Sound_source'),
          ('Sounds', 'Component_sound'), ('Sounds', 'Location_of_sound_source'),
          ('Sounds', 'Sound_source'), ('Vocalizations', 'Location_of_sound_source'),
          ('Vocalizations', 'Sound_source')]
-        >>> sorted([(fe.frame.name,fe.name) for fe in fn.fes('sound',r'(?i)make_noise')])
+        >>> sorted([(fe.frame.name,fe.name) for fe in fn.fes('sound',r'(?i)make_noise')]) # doctest: +NORMALIZE_WHITESPACE
         [('Cause_to_make_noise', 'Sound_maker'),
          ('Make_noise', 'Sound'),
          ('Make_noise', 'Sound_source')]
@@ -2550,7 +2542,7 @@ warnings(True) to display corpus consistency warnings when loading data
          <Parent=Apply_heat -- Using -> Child=Cooking_creation>, ...]
         >>> PrettyList(fn.frame_relations('Cooking_creation', type='Inheritance'))
         [<Parent=Intentionally_create -- Inheritance -> Child=Cooking_creation>]
-        >>> PrettyList(fn.frame_relations('Cooking_creation', 'Apply_heat'), breakLines=True)
+        >>> PrettyList(fn.frame_relations('Cooking_creation', 'Apply_heat'), breakLines=True) # doctest: +NORMALIZE_WHITESPACE
         [<Parent=Apply_heat -- Using -> Child=Cooking_creation>,
         <MainEntry=Apply_heat -- See_also -> ReferringEntry=Cooking_creation>]
         """
@@ -2625,7 +2617,7 @@ warnings(True) to display corpus consistency warnings when loading data
         True
         >>> len(ferels) in (10020, 12393)   # FN 1.5 and 1.7, resp.
         True
-        >>> PrettyDict(ferels[0], breakLines=True)
+        >>> PrettyDict(ferels[0], breakLines=True) # doctest: +NORMALIZE_WHITESPACE
         {'ID': 14642,
         '_type': 'ferelation',
         'frameRelation': <Parent=Abounding_with -- Inheritance -> Child=Lively_place>,
@@ -2710,7 +2702,6 @@ warnings(True) to display corpus consistency warnings when loading data
         ]
 
         for attr in attr_dict:
-
             if any(attr.endswith(x) for x in ignore_attrs):
                 continue
 

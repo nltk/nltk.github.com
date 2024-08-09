@@ -1,10 +1,11 @@
 # Natural Language Toolkit: Language Model Unit Tests
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Ilia Kurenkov <ilia.kurenkov@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 import math
+from math import fsum as sum
 from operator import itemgetter
 
 import pytest

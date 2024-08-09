@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Ngram Association Measures
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Joel Nothman <jnothman@student.usyd.edu.au>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -90,7 +90,7 @@ class NgramAssocMeasures(metaclass=ABCMeta):
             # Yield the expected value
             yield (
                 _product(
-                    sum(cont[x] for x in range(2 ** cls._n) if (x & j) == (i & j))
+                    sum(cont[x] for x in range(2**cls._n) if (x & j) == (i & j))
                     for j in bits
                 )
                 / (n_all ** (cls._n - 1))

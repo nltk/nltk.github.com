@@ -1,6 +1,6 @@
 # Natural Language Toolkit: CFG visualization
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -698,7 +698,7 @@ class CFGDemo:
 
         # Convert the production to a tree.
         rhs = production.rhs()
-        for (i, elt) in enumerate(rhs):
+        for i, elt in enumerate(rhs):
             if isinstance(elt, Nonterminal):
                 elt = Tree(elt)
         tree = Tree(production.lhs().symbol(), *rhs)

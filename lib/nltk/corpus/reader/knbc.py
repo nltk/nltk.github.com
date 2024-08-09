@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 # KNB Corpus reader
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Masato Hagiwara <hagisan@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -130,7 +130,6 @@ class KNBCorpusReader(SyntaxCorpusReader):
 
 
 def demo():
-
     import nltk
     from nltk.corpus.util import LazyCorpusLoader
 
@@ -172,7 +171,6 @@ def demo():
 
 
 def test():
-
     from nltk.corpus.util import LazyCorpusLoader
 
     knbc = LazyCorpusLoader(

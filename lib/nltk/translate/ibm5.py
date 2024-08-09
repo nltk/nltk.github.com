@@ -1,6 +1,6 @@
 # Natural Language Toolkit: IBM Model 5
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Tah Wei Hoon <hoon.tw@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -158,8 +158,8 @@ class IBMModel5(IBMModel):
     >>> print(round(ibm5.fertility_table[1]['book'], 3))
     1.0
 
-    >>> print(ibm5.p1)
-    0.033...
+    >>> print(round(ibm5.p1, 3))
+    0.033
 
     >>> test_sentence = bitext[2]
     >>> test_sentence.words
@@ -581,14 +581,12 @@ class Model5Counts(Counts):
 
     def __init__(self):
         super().__init__()
-        self.head_vacancy = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(lambda: 0.0))
-        )
-        self.head_vacancy_for_any_dv = defaultdict(lambda: defaultdict(lambda: 0.0))
+        self.head_vacancy = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+        self.head_vacancy_for_any_dv = defaultdict(lambda: defaultdict(float))
         self.non_head_vacancy = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(lambda: 0.0))
+            lambda: defaultdict(lambda: defaultdict(float))
         )
-        self.non_head_vacancy_for_any_dv = defaultdict(lambda: defaultdict(lambda: 0.0))
+        self.non_head_vacancy_for_any_dv = defaultdict(lambda: defaultdict(float))
 
     def update_vacancy(self, count, alignment_info, i, trg_classes, slots):
         """

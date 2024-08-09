@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Plaintext Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Edward Loper <edloper@gmail.com>
 #         Nitin Madnani <nmadnani@umiacs.umd.edu>
@@ -39,7 +39,7 @@ class PlaintextCorpusReader(CorpusReader):
         root,
         fileids,
         word_tokenizer=WordPunctTokenizer(),
-        sent_tokenizer=nltk.data.LazyLoader("tokenizers/punkt/english.pickle"),
+        sent_tokenizer=None,
         para_block_reader=read_blankline_block,
         encoding="utf8",
     ):
@@ -85,7 +85,10 @@ class PlaintextCorpusReader(CorpusReader):
         :rtype: list(list(str))
         """
         if self._sent_tokenizer is None:
-            raise ValueError("No sentence tokenizer for this corpus")
+            try:
+                self._sent_tokenizer = PunktTokenizer()
+            except:
+                raise ValueError("No sentence tokenizer for this corpus")
 
         return concat(
             [
@@ -102,7 +105,10 @@ class PlaintextCorpusReader(CorpusReader):
         :rtype: list(list(list(str)))
         """
         if self._sent_tokenizer is None:
-            raise ValueError("No sentence tokenizer for this corpus")
+            try:
+                self._sent_tokenizer = PunktTokenizer()
+            except:
+                raise ValueError("No sentence tokenizer for this corpus")
 
         return concat(
             [
@@ -163,14 +169,10 @@ class CategorizedPlaintextCorpusReader(CategorizedCorpusReader, PlaintextCorpusR
 class PortugueseCategorizedPlaintextCorpusReader(CategorizedPlaintextCorpusReader):
     def __init__(self, *args, **kwargs):
         CategorizedCorpusReader.__init__(self, kwargs)
-        kwargs["sent_tokenizer"] = nltk.data.LazyLoader(
-            "tokenizers/punkt/portuguese.pickle"
-        )
-        PlaintextCorpusReader.__init__(self, *args, **kwargs)
+        kwargs["sent_tokenizer"] = PunktTokenizer("portuguese")
 
 
 class EuroparlCorpusReader(PlaintextCorpusReader):
-
     """
     Reader for Europarl corpora that consist of plaintext documents.
     Documents are divided into chapters instead of paragraphs as

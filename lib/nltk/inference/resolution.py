@@ -2,7 +2,7 @@
 #
 # Author: Dan Garrette <dhgarrette@gmail.com>
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
@@ -534,7 +534,7 @@ class BindingDict:
         self.d = {}
 
         if binding_list:
-            for (v, b) in binding_list:
+            for v, b in binding_list:
                 self[v] = b
 
     def __setitem__(self, variable, binding):

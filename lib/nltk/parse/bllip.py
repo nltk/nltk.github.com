@@ -2,7 +2,7 @@
 #
 # Author: David McClosky <dmcc@bigasterisk.com>
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
@@ -89,7 +89,6 @@ try:
 
     def _ensure_bllip_import_or_error():
         pass
-
 
 except ImportError as ie:
 

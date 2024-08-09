@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Transformation-based learning
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Marcus Uneson <marcus.uneson@gmail.com>
 #   based on previous (nltk2) version by
 #   Christopher Maloof, Edward Loper, Steven Bird
@@ -279,7 +279,7 @@ def postag(
     # printing the learned rules, if learned silently
     if trace == 1:
         print("\nLearned rules: ")
-        for (ruleno, rule) in enumerate(brill_tagger.rules(), 1):
+        for ruleno, rule in enumerate(brill_tagger.rules(), 1):
             print(f"{ruleno:4d} {rule.format(ruleformat):s}")
 
     # printing template statistics (optionally including comparison with the training data)

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: WordNet stemmer interface
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
@@ -39,7 +39,7 @@ class WordNetLemmatizer:
         :param pos: The Part Of Speech tag. Valid options are `"n"` for nouns,
             `"v"` for verbs, `"a"` for adjectives, `"r"` for adverbs and `"s"`
             for satellite adjectives.
-        :param pos: str
+        :type pos: str
         :return: The lemma of `word`, for the given `pos`.
         """
         lemmas = wn._morphy(word, pos)

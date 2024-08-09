@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Chunk format conversions
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
 # URL: <https://www.nltk.org/>
@@ -457,7 +457,7 @@ def conlltags2tree(
     Convert the CoNLL IOB format to a tree.
     """
     tree = Tree(root_label, [])
-    for (word, postag, chunktag) in sentence:
+    for word, postag, chunktag in sentence:
         if chunktag is None:
             if strict:
                 raise ValueError("Bad conll tag sequence")
@@ -592,7 +592,6 @@ def ieerstr2tree(
 
 
 def demo():
-
     s = "[ Pierre/NNP Vinken/NNP ] ,/, [ 61/CD years/NNS ] old/JJ ,/, will/MD join/VB [ the/DT board/NN ] ./."
     import nltk
 

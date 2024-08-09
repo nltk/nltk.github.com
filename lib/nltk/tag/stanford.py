@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Interface to the Stanford Part-of-speech and Named-Entity Taggers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Nitin Madnani <nmadnani@ets.org>
 #         Rami Al-Rfou' <ralrfou@cs.stonybrook.edu>
 # URL: <https://www.nltk.org/>
@@ -147,8 +147,8 @@ class StanfordPOSTagger(StanfordTagger):
     Example:
 
         >>> from nltk.tag import StanfordPOSTagger
-        >>> st = StanfordPOSTagger('english-bidirectional-distsim.tagger')
-        >>> st.tag('What is the airspeed of an unladen swallow ?'.split())
+        >>> st = StanfordPOSTagger('english-bidirectional-distsim.tagger') # doctest: +SKIP
+        >>> st.tag('What is the airspeed of an unladen swallow ?'.split()) # doctest: +SKIP
         [('What', 'WP'), ('is', 'VBZ'), ('the', 'DT'), ('airspeed', 'NN'), ('of', 'IN'), ('an', 'DT'), ('unladen', 'JJ'), ('swallow', 'VB'), ('?', '.')]
     """
 

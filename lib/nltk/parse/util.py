@@ -3,7 +3,7 @@
 # Author: Ewan Klein <ewan@inf.ed.ac.uk>
 #         Tom Aarsen <>
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
@@ -82,7 +82,7 @@ def taggedsent_to_conll(sentence):
 
     >>> from nltk import word_tokenize, pos_tag
     >>> text = "This is a foobar sentence."
-    >>> for line in taggedsent_to_conll(pos_tag(word_tokenize(text))):
+    >>> for line in taggedsent_to_conll(pos_tag(word_tokenize(text))): # doctest: +NORMALIZE_WHITESPACE
     ... 	print(line, end="")
         1	This	_	DT	DT	_	0	a	_	_
         2	is	_	VBZ	VBZ	_	0	a	_	_
@@ -96,7 +96,7 @@ def taggedsent_to_conll(sentence):
     :rtype: iter(str)
     :return: a generator yielding a single sentence in CONLL format.
     """
-    for (i, (word, tag)) in enumerate(sentence, start=1):
+    for i, (word, tag) in enumerate(sentence, start=1):
         input_str = [str(i), word, "_", tag, tag, "_", "0", "a", "_", "_"]
         input_str = "\t".join(input_str) + "\n"
         yield input_str
@@ -112,7 +112,7 @@ def taggedsents_to_conll(sentences):
     >>> from nltk import word_tokenize, sent_tokenize, pos_tag
     >>> text = "This is a foobar sentence. Is that right?"
     >>> sentences = [pos_tag(word_tokenize(sent)) for sent in sent_tokenize(text)]
-    >>> for line in taggedsents_to_conll(sentences):
+    >>> for line in taggedsents_to_conll(sentences): # doctest: +NORMALIZE_WHITESPACE
     ...     if line:
     ...         print(line, end="")
     1	This	_	DT	DT	_	0	a	_	_

@@ -1,12 +1,13 @@
 # Natural Language Toolkit: Language Models
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Ilia Kurenkov <ilia.kurenkov@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 """Language Model Interface."""
 
 import random
+import warnings
 from abc import ABCMeta, abstractmethod
 from bisect import bisect
 from itertools import accumulate
@@ -83,7 +84,7 @@ class LanguageModel(metaclass=ABCMeta):
             of creating a new one when training.
         :type vocabulary: `nltk.lm.Vocabulary` or None
         :param counter: If provided, use this object to count ngrams.
-        :type vocabulary: `nltk.lm.NgramCounter` or None
+        :type counter: `nltk.lm.NgramCounter` or None
         :param ngrams_fn: If given, defines how sentences in training text are turned to ngram
             sequences.
         :type ngrams_fn: function or None
@@ -91,6 +92,12 @@ class LanguageModel(metaclass=ABCMeta):
         :type pad_fn: function or None
         """
         self.order = order
+        if vocabulary and not isinstance(vocabulary, Vocabulary):
+            warnings.warn(
+                f"The `vocabulary` argument passed to {self.__class__.__name__!r} "
+                "must be an instance of `nltk.lm.Vocabulary`.",
+                stacklevel=3,
+            )
         self.vocab = Vocabulary() if vocabulary is None else vocabulary
         self.counts = NgramCounter() if counter is None else counter
 
@@ -155,6 +162,9 @@ class LanguageModel(metaclass=ABCMeta):
 
     def entropy(self, text_ngrams):
         """Calculate cross-entropy of model for given evaluation text.
+
+        This implementation is based on the Shannon-McMillan-Breiman theorem,
+        as used and referenced by Dan Jurafsky and Jordan Boyd-Graber.
 
         :param Iterable(tuple(str)) text_ngrams: A sequence of ngram tuples.
         :rtype: float

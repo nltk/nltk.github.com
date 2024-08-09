@@ -1,4 +1,4 @@
-.. Copyright (C) 2001-2021 NLTK Project
+.. Copyright (C) 2001-2023 NLTK Project
 .. For license information, see LICENSE.TXT
 
     >>> from nltk.tokenize import *
@@ -132,6 +132,15 @@ Testing treebank's detokenizer
     >>> s = "(Sentence) starting with parentheses."
     >>> detokenizer.detokenize(word_tokenize(s))
     '(Sentence) starting with parentheses.'
+    >>> s = "I've"
+    >>> detokenizer.detokenize(word_tokenize(s))
+    "I've"
+    >>> s = "Don't"
+    >>> detokenizer.detokenize(word_tokenize(s))
+    "Don't"
+    >>> s = "I'd"
+    >>> detokenizer.detokenize(word_tokenize(s))
+    "I'd"
 
 
 Sentence tokenization in word_tokenize:
@@ -310,6 +319,11 @@ Testing mutable default arguments for https://github.com/nltk/nltk/pull/2067
     >>> type(pst._lang_vars)
     <class 'nltk.tokenize.punkt.PunktLanguageVars'>
 
+Testing that inputs can start with dots.
+
+    >>> pst = PunktSentenceTokenizer(lang_vars=None)
+    >>> pst.tokenize(". This input starts with a dot. This used to cause issues.")
+    ['.', 'This input starts with a dot.', 'This used to cause issues.']
 
 Regression Tests: align_tokens
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -381,3 +395,52 @@ Test that `ValueError` exceptions are raised when illegal arguments are used.
     Traceback (most recent call last):
       ...
     ValueError: Smoothing method bar not recognized
+
+
+Regression Tests: ToktokTokenizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    >>> toktok = ToktokTokenizer()
+    >>> text = u'Is 9.5 or 525,600 my favorite number?'
+    >>> print(toktok.tokenize(text, return_str=True))
+    Is 9.5 or 525,600 my favorite number ?
+    >>> text = u'The https://github.com/jonsafari/tok-tok/blob/master/tok-tok.pl is a website with/and/or slashes and sort of weird : things'
+    >>> print(toktok.tokenize(text, return_str=True))
+    The https://github.com/jonsafari/tok-tok/blob/master/tok-tok.pl is a website with/and/or slashes and sort of weird : things
+    >>> text = u'\xa1This, is a sentence with weird\xbb symbols\u2026 appearing everywhere\xbf'
+    >>> expected = u'\xa1 This , is a sentence with weird \xbb symbols \u2026 appearing everywhere \xbf'
+    >>> assert toktok.tokenize(text, return_str=True) == expected
+    >>> toktok.tokenize(text) == [u'\xa1', u'This', u',', u'is', u'a', u'sentence', u'with', u'weird', u'\xbb', u'symbols', u'\u2026', u'appearing', u'everywhere', u'\xbf']
+    True
+
+Taking comments from the code and turning them into actual tests...
+
+    # Don't tokenize period unless it ends the line and that it isn't
+    # preceded by another period, e.g.
+    # "something ..." -> "something ..."
+    >>> text = "something ..."
+    >>> print(toktok.tokenize(text, return_str=True))
+    something ...
+
+    # "something." -> "something ."
+    >>> text = "something."
+    >>> print(toktok.tokenize(text, return_str=True))
+    something .
+
+    # Don't tokenize period unless it ends the line eg.
+    # " ... stuff." ->  "... stuff ."
+    >>> text = "also more ... stuff."
+    >>> print(toktok.tokenize(text, return_str=True))
+    also more ... stuff .
+
+Demonstrate that the "FUNKY_PUNCT_1" and "FUNKY_PUNCT_2" patterns do what
+they're supposed to do. For example, FUNKY_PUNCT_1 splits out inverted question
+marks.
+    >>> text = "¿Quieres una taza de café?"
+    >>> print(toktok.tokenize(text, return_str=True))
+    ¿ Quieres una taza de café ?
+
+This one would have failed without the FUNKY_PUNCT_2 pattern included.
+    >>> text = "«Sí, por favor.»"
+    >>> print(toktok.tokenize(text, return_str=True))
+    « Sí , por favor . »

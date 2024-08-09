@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Internal utility functions
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Edward Loper <edloper@gmail.com>
 #         Nitin Madnani <nmadnani@ets.org>
@@ -25,6 +25,8 @@ from xml.etree import ElementTree
 
 _java_bin = None
 _java_options = []
+
+
 # [xx] add classpath option to config_java?
 def config_java(bin=None, options=None, verbose=False):
     """
@@ -74,9 +76,8 @@ def java(cmd, classpath=None, stdin=None, stdout=None, stderr=None, blocking=Tru
         archives, and ZIP archives to search for class files.
     :type classpath: str
 
-    :param stdin, stdout, stderr: Specify the executed programs'
-        standard input, standard output and standard error file
-        handles, respectively.  Valid values are ``subprocess.PIPE``,
+    :param stdin: Specify the executed program's
+        standard input file handles, respectively.  Valid values are ``subprocess.PIPE``,
         an existing file descriptor (a positive integer), an existing
         file object, 'pipe', 'stdout', 'devnull' and None.  ``subprocess.PIPE`` indicates that a
         new pipe to the child should be created.  With None, no
@@ -85,6 +86,13 @@ def java(cmd, classpath=None, stdin=None, stdout=None, stderr=None, blocking=Tru
         ``subprocess.STDOUT``, which indicates that the stderr data
         from the applications should be captured into the same file
         handle as for stdout.
+
+    :param stdout: Specify the executed program's standard output file
+        handle. See ``stdin`` for valid values.
+
+    :param stderr: Specify the executed program's standard error file
+        handle. See ``stdin`` for valid values.
+
 
     :param blocking: If ``false``, then return immediately after
         spawning the subprocess.  In this case, the return value is
@@ -140,27 +148,6 @@ def java(cmd, classpath=None, stdin=None, stdout=None, stderr=None, blocking=Tru
         raise OSError("Java command failed : " + str(cmd))
 
     return (stdout, stderr)
-
-
-if 0:
-    # config_java(options='-Xmx512m')
-    # Write:
-    # java('weka.classifiers.bayes.NaiveBayes',
-    #     ['-d', '/tmp/names.model', '-t', '/tmp/train.arff'],
-    #     classpath='/Users/edloper/Desktop/weka/weka.jar')
-    # Read:
-    (a, b) = java(
-        [
-            "weka.classifiers.bayes.NaiveBayes",
-            "-l",
-            "/tmp/names.model",
-            "-T",
-            "/tmp/test.arff",
-            "-p",
-            "0",
-        ],  # , '-distribution'],
-        classpath="/Users/edloper/Desktop/weka/weka.jar",
-    )
 
 
 ######################################################################

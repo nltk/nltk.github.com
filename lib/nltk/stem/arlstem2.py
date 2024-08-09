@@ -1,7 +1,7 @@
 #
 # Natural Language Toolkit: ARLSTem Stemmer v2
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 #
 # Author: Kheireddine Abainia (x-programer) <k.abainia@gmail.com>
 # Algorithms: Kheireddine Abainia <k.abainia@gmail.com>
@@ -40,6 +40,7 @@ class ARLSTem2(StemmerI):
         >>> stemmer = ARLSTem2()
         >>> word = stemmer.stem('يعمل')
         >>> print(word)
+        عمل
 
     :param token: The input Arabic word (unicode) to be stemmed
     :type token: unicode

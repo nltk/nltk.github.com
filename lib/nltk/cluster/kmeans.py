@@ -1,6 +1,6 @@
 # Natural Language Toolkit: K-Means Clusterer
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Trevor Cohn <tacohn@cs.mu.oz.au>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -41,7 +41,6 @@ class KMeansClusterer(VectorSpaceClusterer):
         rng=None,
         avoid_empty_clusters=False,
     ):
-
         """
         :param  num_means:  the number of means to use (may use fewer)
         :type   num_means:  int

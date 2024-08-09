@@ -2,7 +2,7 @@
 #
 # Natural Language Toolkit: TGrep search
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Will Roberts <wildwilhelm@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -836,6 +836,7 @@ def _tgrep_exprs_action(_s, _l, tokens):
         macro_dict.update(macro_def)
     # collect all tgrep expressions
     tgrep_exprs = [tok for tok in tokens if not isinstance(tok, dict)]
+
     # create a new scope for the node label dictionary
     def top_level_pred(n, m=macro_dict, l=None):
         label_dict = {}

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Dependency Grammars
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Jason Narad <jason.narad@gmail.com>
 #
 # URL: <https://www.nltk.org/>
@@ -633,7 +633,7 @@ class NonprojectiveDependencyParser:
 
             # Traverse lattice
             analyses = []
-            for root in roots:
+            for _ in roots:
                 stack = []
                 analysis = [[] for i in range(len(possible_heads))]
             i = 0

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: API for Corpus Readers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
@@ -338,7 +338,7 @@ class CategorizedCorpusReader:
                 self._add(file_id, category)
 
         elif self._map is not None:
-            for (file_id, categories) in self._map.items():
+            for file_id, categories in self._map.items():
                 for category in categories:
                     self._add(file_id, category)
 
@@ -415,6 +415,7 @@ class CategorizedCorpusReader:
 ######################################################################
 # { Treebank readers
 ######################################################################
+
 
 # [xx] is it worth it to factor this out?
 class SyntaxCorpusReader(CorpusReader):

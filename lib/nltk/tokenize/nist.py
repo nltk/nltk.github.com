@@ -46,7 +46,7 @@ class NISTTokenizer(TokenizerI):
     >>> nist = NISTTokenizer()
 
     # Input strings.
-    >>> albb = u'Alibaba Group Holding Limited (Chinese: 阿里巴巴集团控股 有限公司) us a Chinese e-commerce company...'
+    >>> albb = u'Alibaba Group Holding Limited (Chinese: 阿里巴巴集团控股 有限公司) is a Chinese e-commerce company...'
     >>> amz = u'Amazon.com, Inc. (/ˈæməzɒn/) is an American electronic commerce...'
     >>> rkt = u'Rakuten, Inc. (楽天株式会社 Rakuten Kabushiki-gaisha) is a Japanese electronic commerce and Internet company based in Tokyo.'
 

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Opinion Lexicon Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Pierpaolo Pantone <24alsecondo@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -66,10 +66,10 @@ class OpinionLexiconCorpusReader(WordListCorpusReader):
 
     Note that words from `words()` method are sorted by file id, not alphabetically:
 
-        >>> opinion_lexicon.words()[0:10]
+        >>> opinion_lexicon.words()[0:10] # doctest: +NORMALIZE_WHITESPACE
         ['2-faced', '2-faces', 'abnormal', 'abolish', 'abominable', 'abominably',
         'abominate', 'abomination', 'abort', 'aborted']
-        >>> sorted(opinion_lexicon.words())[0:10]
+        >>> sorted(opinion_lexicon.words())[0:10] # doctest: +NORMALIZE_WHITESPACE
         ['2-faced', '2-faces', 'a+', 'abnormal', 'abolish', 'abominable', 'abominably',
         'abominate', 'abomination', 'abort']
     """

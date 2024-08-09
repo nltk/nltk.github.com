@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Shift-Reduce Parser
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org/>
@@ -185,7 +185,6 @@ class ShiftReduceParser(ParserI):
 
             # check if the RHS of a production matches the top of the stack
             if self._match_rhs(production.rhs(), stack[-rhslen:]):
-
                 # combine the tree to reflect the reduction
                 tree = Tree(production.lhs().symbol(), stack[-rhslen:])
                 stack[-rhslen:] = [tree]

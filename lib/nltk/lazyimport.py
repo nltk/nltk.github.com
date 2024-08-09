@@ -23,7 +23,6 @@ _debug = 0
 
 
 class LazyModule:
-
     """Lazy module class.
 
     Lazy modules are imported into the given namespaces whenever a
@@ -61,7 +60,6 @@ class LazyModule:
     __lazymodule_globals = None
 
     def __init__(self, name, locals, globals=None):
-
         """Create a LazyModule instance wrapping module name.
 
         The module will later on be registered in locals under the
@@ -83,16 +81,16 @@ class LazyModule:
         self.__lazymodule_init = 1
 
     def __lazymodule_import(self):
-
         """Import the module now."""
         # Load and register module
-        name = self.__lazymodule_name
+        local_name = self.__lazymodule_name  # e.g. "toolbox"
+        full_name = self.__name__  # e.g. "nltk.toolbox"
         if self.__lazymodule_loaded:
-            return self.__lazymodule_locals[name]
+            return self.__lazymodule_locals[local_name]
         if _debug:
-            print("LazyModule: Loading module %r" % name)
-        self.__lazymodule_locals[name] = module = __import__(
-            name, self.__lazymodule_locals, self.__lazymodule_globals, "*"
+            print("LazyModule: Loading module %r" % full_name)
+        self.__lazymodule_locals[local_name] = module = __import__(
+            full_name, self.__lazymodule_locals, self.__lazymodule_globals, "*"
         )
 
         # Fill namespace with all symbols from original module to
@@ -103,11 +101,10 @@ class LazyModule:
         self.__dict__["__lazymodule_loaded"] = 1
 
         if _debug:
-            print("LazyModule: Module %r loaded" % name)
+            print("LazyModule: Module %r loaded" % full_name)
         return module
 
     def __getattr__(self, name):
-
         """Import the module on demand and get the attribute."""
         if self.__lazymodule_loaded:
             raise AttributeError(name)
@@ -120,7 +117,6 @@ class LazyModule:
         return getattr(module, name)
 
     def __setattr__(self, name, value):
-
         """Import the module on demand and set the attribute."""
         if not self.__lazymodule_init:
             self.__dict__[name] = value

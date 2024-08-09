@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Machine Translation
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 #         Peter Ljunglöf <peter.ljunglof@gu.se>
@@ -33,3 +33,20 @@ from nltk.tree.transforms import (
     un_chomsky_normal_form,
 )
 from nltk.tree.tree import Tree
+
+__all__ = [
+    "ImmutableMultiParentedTree",
+    "ImmutableParentedTree",
+    "ImmutableProbabilisticTree",
+    "ImmutableTree",
+    "MultiParentedTree",
+    "ParentedTree",
+    "bracket_parse",
+    "sinica_parse",
+    "TreePrettyPrinter",
+    "ProbabilisticTree",
+    "chomsky_normal_form",
+    "collapse_unary",
+    "un_chomsky_normal_form",
+    "Tree",
+]

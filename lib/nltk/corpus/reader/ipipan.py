@@ -1,6 +1,6 @@
 # Natural Language Toolkit: IPI PAN Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Konrad Goluchowski <kodie@mimuw.edu.pl>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -241,7 +241,6 @@ class IPIPANCorpusReader(CorpusReader):
 
 
 class IPIPANCorpusView(StreamBackedCorpusView):
-
     WORDS_MODE = 0
     SENTS_MODE = 1
     PARAS_MODE = 2
@@ -271,7 +270,6 @@ class IPIPANCorpusView(StreamBackedCorpusView):
         lines = self._read_data(stream)
 
         while True:
-
             # we may have only part of last line
             if len(lines) <= 1:
                 self._seek(stream)

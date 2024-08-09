@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Taggers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
 # URL: <https://www.nltk.org/>
@@ -57,8 +57,8 @@ of ``None``.
 
 We evaluate a tagger on data that was not seen during training:
 
-    >>> tagger.accuracy(brown.tagged_sents(categories='news')[500:600])
-    0.7...
+    >>> round(tagger.accuracy(brown.tagged_sents(categories='news')[500:600]), 3)
+    0.735
 
 For more information, please consult chapter 5 of the NLTK Book.
 
@@ -93,16 +93,16 @@ from nltk.tag.perceptron import PerceptronTagger
 
 from nltk.data import load, find
 
-RUS_PICKLE = (
-    "taggers/averaged_perceptron_tagger_ru/averaged_perceptron_tagger_ru.pickle"
-)
+
+PRETRAINED_TAGGERS = {
+    "rus": "taggers/averaged_perceptron_tagger_rus/",
+    "eng": "taggers/averaged_perceptron_tagger_eng/",
+}
 
 
 def _get_tagger(lang=None):
     if lang == "rus":
-        tagger = PerceptronTagger(False)
-        ap_russian_model_loc = "file:" + str(find(RUS_PICKLE))
-        tagger.load(ap_russian_model_loc)
+        tagger = PerceptronTagger(lang=lang)
     else:
         tagger = PerceptronTagger()
     return tagger

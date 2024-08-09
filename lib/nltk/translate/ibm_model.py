@@ -1,6 +1,6 @@
 # Natural Language Toolkit: IBM Model Core
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Tah Wei Hoon <hoon.tw@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -521,12 +521,12 @@ class Counts:
     """
 
     def __init__(self):
-        self.t_given_s = defaultdict(lambda: defaultdict(lambda: 0.0))
-        self.any_t_given_s = defaultdict(lambda: 0.0)
+        self.t_given_s = defaultdict(lambda: defaultdict(float))
+        self.any_t_given_s = defaultdict(float)
         self.p0 = 0.0
         self.p1 = 0.0
-        self.fertility = defaultdict(lambda: defaultdict(lambda: 0.0))
-        self.fertility_for_any_phi = defaultdict(lambda: 0.0)
+        self.fertility = defaultdict(lambda: defaultdict(float))
+        self.fertility_for_any_phi = defaultdict(float)
 
     def update_lexical_translation(self, count, alignment_info, j):
         i = alignment_info.alignment[j]

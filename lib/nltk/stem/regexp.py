@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Stemmers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Trevor Cohn <tacohn@cs.mu.oz.au>
 #         Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
@@ -40,7 +40,6 @@ class RegexpStemmer(StemmerI):
     """
 
     def __init__(self, regexp, min=0):
-
         if not hasattr(regexp, "pattern"):
             regexp = re.compile(regexp)
         self._regexp = regexp

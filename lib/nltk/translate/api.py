@@ -1,6 +1,6 @@
 # Natural Language Toolkit: API for alignment and translation objects
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Will Zhang <wilzzha@gmail.com>
 #         Guan Gui <ggui@student.unimelb.edu.au>
 #         Steven Bird <stevenbird1@gmail.com>
@@ -89,15 +89,16 @@ class AlignedSent:
         s += "node[shape=plaintext]\n"
 
         # Declare node
-        for w in self._words:
-            s += f'"{w}_source" [label="{w}"] \n'
-
-        for w in self._mots:
-            s += f'"{w}_target" [label="{w}"] \n'
+        s += "".join([f'"{w}_source" [label="{w}"] \n' for w in self._words])
+        s += "".join([f'"{w}_target" [label="{w}"] \n' for w in self._mots])
 
         # Alignment
-        for u, v in self._alignment:
-            s += f'"{self._words[u]}_source" -- "{self._mots[v]}_target" \n'
+        s += "".join(
+            [
+                f'"{self._words[u]}_source" -- "{self._mots[v]}_target" \n'
+                for u, v in self._alignment
+            ]
+        )
 
         # Connect the source words
         for i in range(len(self._words) - 1):

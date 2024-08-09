@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Masato Hagiwara <hagisan@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -90,12 +90,10 @@ class ChasenCorpusView(StreamBackedCorpusView):
         """Reads one paragraph at a time."""
         block = []
         for para_str in read_regexp_block(stream, r".", r"^EOS\n"):
-
             para = []
 
             sent = []
             for line in para_str.splitlines():
-
                 _eos = line.strip() == "EOS"
                 _cells = line.split("\t")
                 w = (_cells[0], "\t".join(_cells[1:]))
@@ -129,7 +127,6 @@ class ChasenCorpusView(StreamBackedCorpusView):
 
 
 def demo():
-
     import nltk
     from nltk.corpus.util import LazyCorpusLoader
 
@@ -145,7 +142,6 @@ def demo():
 
 
 def test():
-
     from nltk.corpus.util import LazyCorpusLoader
 
     jeita = LazyCorpusLoader("jeita", ChasenCorpusReader, r".*chasen", encoding="utf-8")

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Probability and Statistics
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (additions)
 #         Trevor Cohn <tacohn@cs.mu.oz.au> (additions)
@@ -245,7 +245,7 @@ class FreqDist(Counter):
         return self.most_common(1)[0][0]
 
     def plot(
-        self, *args, title="", cumulative=False, percents=False, show=True, **kwargs
+        self, *args, title="", cumulative=False, percents=False, show=False, **kwargs
     ):
         """
         Plot samples from the frequency distribution
@@ -719,7 +719,7 @@ class DictionaryProbDist(ProbDistI):
                     for x in prob_dict:
                         self._prob_dict[x] = logp
                 else:
-                    for (x, p) in self._prob_dict.items():
+                    for x, p in self._prob_dict.items():
                         self._prob_dict[x] -= value_sum
             else:
                 value_sum = sum(self._prob_dict.values())
@@ -729,7 +729,7 @@ class DictionaryProbDist(ProbDistI):
                         self._prob_dict[x] = p
                 else:
                     norm_factor = 1.0 / value_sum
-                    for (x, p) in self._prob_dict.items():
+                    for x, p in self._prob_dict.items():
                         self._prob_dict[x] *= norm_factor
 
     def prob(self, sample):
@@ -1444,7 +1444,7 @@ class SimpleGoodTuringProbDist(ProbDistI):
         xy_cov = x_var = 0.0
         x_mean = sum(log_r) / len(log_r)
         y_mean = sum(log_zr) / len(log_zr)
-        for (x, y) in zip(log_r, log_zr):
+        for x, y in zip(log_r, log_zr):
             xy_cov += (x - x_mean) * (y - y_mean)
             x_var += (x - x_mean) ** 2
         self._slope = xy_cov / x_var if x_var != 0 else 0.0
@@ -1481,7 +1481,7 @@ class SimpleGoodTuringProbDist(ProbDistI):
         r = float(r)
         nr = float(nr)
         nr_1 = float(nr_1)
-        return (r + 1.0) ** 2 * (nr_1 / nr ** 2) * (1.0 + nr_1 / nr)
+        return (r + 1.0) ** 2 * (nr_1 / nr**2) * (1.0 + nr_1 / nr)
 
     def _renormalize(self, r, nr):
         """
@@ -1891,7 +1891,7 @@ class ConditionalFreqDist(defaultdict):
         defaultdict.__init__(self, FreqDist)
 
         if cond_samples:
-            for (cond, sample) in cond_samples:
+            for cond, sample in cond_samples:
                 self[cond][sample] += 1
 
     def __reduce__(self):
@@ -1927,7 +1927,7 @@ class ConditionalFreqDist(defaultdict):
         cumulative=False,
         percents=False,
         conditions=None,
-        show=True,
+        show=False,
         **kwargs,
     ):
         """
@@ -2059,16 +2059,9 @@ class ConditionalFreqDist(defaultdict):
         """
         if not isinstance(other, ConditionalFreqDist):
             return NotImplemented
-        result = ConditionalFreqDist()
-        for cond in self.conditions():
-            newfreqdist = self[cond] + other[cond]
-            if newfreqdist:
-                result[cond] = newfreqdist
+        result = self.copy()
         for cond in other.conditions():
-            if cond not in self.conditions():
-                for elem, count in other[cond].items():
-                    if count > 0:
-                        result[cond][elem] = count
+            result[cond] += other[cond]
         return result
 
     def __sub__(self, other):
@@ -2077,16 +2070,11 @@ class ConditionalFreqDist(defaultdict):
         """
         if not isinstance(other, ConditionalFreqDist):
             return NotImplemented
-        result = ConditionalFreqDist()
-        for cond in self.conditions():
-            newfreqdist = self[cond] - other[cond]
-            if newfreqdist:
-                result[cond] = newfreqdist
+        result = self.copy()
         for cond in other.conditions():
-            if cond not in self.conditions():
-                for elem, count in other[cond].items():
-                    if count < 0:
-                        result[cond][elem] = 0 - count
+            result[cond] -= other[cond]
+            if not result[cond]:
+                del result[cond]
         return result
 
     def __or__(self, other):
@@ -2095,16 +2083,9 @@ class ConditionalFreqDist(defaultdict):
         """
         if not isinstance(other, ConditionalFreqDist):
             return NotImplemented
-        result = ConditionalFreqDist()
-        for cond in self.conditions():
-            newfreqdist = self[cond] | other[cond]
-            if newfreqdist:
-                result[cond] = newfreqdist
+        result = self.copy()
         for cond in other.conditions():
-            if cond not in self.conditions():
-                for elem, count in other[cond].items():
-                    if count > 0:
-                        result[cond][elem] = count
+            result[cond] |= other[cond]
         return result
 
     def __and__(self, other):
@@ -2142,6 +2123,13 @@ class ConditionalFreqDist(defaultdict):
         if not isinstance(other, ConditionalFreqDist):
             raise_unorderable_types(">", self, other)
         return other < self
+
+    def deepcopy(self):
+        from copy import deepcopy
+
+        return deepcopy(self)
+
+    copy = deepcopy
 
     def __repr__(self):
         """
@@ -2220,7 +2208,7 @@ class ConditionalProbDist(ConditionalProbDistI):
         >>> cpdist = ConditionalProbDist(cfdist, ELEProbDist, 10)
         >>> cpdist['passed'].max()
         'VBD'
-        >>> cpdist['passed'].prob('VBD')
+        >>> cpdist['passed'].prob('VBD') #doctest: +ELLIPSIS
         0.423...
 
     """

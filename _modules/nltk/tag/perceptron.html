@@ -13,10 +13,8 @@
 
   <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
       <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
-      <script type="text/javascript" src="../../../_static/jquery.js"></script>
-      <script type="text/javascript" src="../../../_static/underscore.js"></script>
-      <script type="text/javascript" src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
       <script type="text/javascript" src="../../../_static/doctools.js"></script>
+      <script type="text/javascript" src="../../../_static/sphinx_highlight.js"></script>
   
 
   <script src="https://email.tl.fortawesome.com/c/eJxNjUEOgyAQAF8jR7Kw6wIHDh7sP1Cw2mgxgmn6-3JsMqc5zEQfE8dkxOY1KKMUOI3ACFKRJpSW2AAp7ontYIaxI6i7XPJVwyeVfCQ550Os3jLrGSNOLgbdAy6s0PBk2TFNjEbsfq31LB0OnX407pJa5v2faRadwSW63mn5KuLyR9j2tgx3zecanl-55R_-jjPs"></script> 
@@ -109,8 +107,8 @@
 <span class="c1">#</span>
 <span class="c1"># This module is provided under the terms of the MIT License.</span>
 
+<span class="kn">import</span> <span class="nn">json</span>
 <span class="kn">import</span> <span class="nn">logging</span>
-<span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">import</span> <span class="nn">random</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
 
@@ -123,13 +121,32 @@
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="k">pass</span>
 
-<span class="n">PICKLE</span> <span class="o">=</span> <span class="s2">&quot;averaged_perceptron_tagger.pickle&quot;</span>
+<span class="n">TRAINED_TAGGER_PATH</span> <span class="o">=</span> <span class="s2">&quot;averaged_perceptron_tagger/&quot;</span>
+
+<span class="n">TAGGER_JSONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;eng&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;weights&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_eng.weights.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tagdict&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_eng.tagdict.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;classes&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_eng.classes.json&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;rus&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;weights&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_rus.weights.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tagdict&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_rus.tagdict.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;classes&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger_rus.classes.json&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;xxx&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;weights&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger.xxx.weights.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tagdict&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger.xxx.tagdict.json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;classes&quot;</span><span class="p">:</span> <span class="s2">&quot;averaged_perceptron_tagger.xxx.classes.json&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
 
 
-<div class="viewcode-block" id="AveragedPerceptron"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron">[docs]</a><span class="nd">@jsontags</span><span class="o">.</span><span class="n">register_tag</span>
+<div class="viewcode-block" id="AveragedPerceptron">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron">[docs]</a>
+<span class="nd">@jsontags</span><span class="o">.</span><span class="n">register_tag</span>
 <span class="k">class</span> <span class="nc">AveragedPerceptron</span><span class="p">:</span>
-
-    <span class="sd">&quot;&quot;&quot;An averaged perceptron, as implemented by Matthew Honnibal.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An averaged perceptron, as implemented by Matthew Honnibal.</span>
 
 <span class="sd">    See more implementation details here:</span>
 <span class="sd">        https://explosion.ai/blog/part-of-speech-pos-tagger-in-python</span>
@@ -137,7 +154,9 @@
 
     <span class="n">json_tag</span> <span class="o">=</span> <span class="s2">&quot;nltk.tag.perceptron.AveragedPerceptron&quot;</span>
 
-<div class="viewcode-block" id="AveragedPerceptron.__init__"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.__init__">[docs]</a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="AveragedPerceptron.__init__">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.__init__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="c1"># Each feature gets its own weight vector, so weights is a dict-of-dicts</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="k">if</span> <span class="n">weights</span> <span class="k">else</span> <span class="p">{}</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -151,13 +170,16 @@
         <span class="c1"># Number of instances seen</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span></div>
 
+
     <span class="k">def</span> <span class="nf">_softmax</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scores</span><span class="p">):</span>
         <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fromiter</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
         <span class="n">exps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">exps</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">exps</span><span class="p">)</span>
 
-<div class="viewcode-block" id="AveragedPerceptron.predict"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">features</span><span class="p">,</span> <span class="n">return_conf</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Dot-product the features and current weights and return the best label.&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="AveragedPerceptron.predict">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.predict">[docs]</a>
+    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">features</span><span class="p">,</span> <span class="n">return_conf</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dot-product the features and current weights and return the best label.&quot;&quot;&quot;</span>
         <span class="n">scores</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">feat</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">features</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">feat</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="ow">or</span> <span class="n">value</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
@@ -173,8 +195,11 @@
 
         <span class="k">return</span> <span class="n">best_label</span><span class="p">,</span> <span class="n">conf</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.update"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">truth</span><span class="p">,</span> <span class="n">guess</span><span class="p">,</span> <span class="n">features</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Update the feature weights.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="AveragedPerceptron.update">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.update">[docs]</a>
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">truth</span><span class="p">,</span> <span class="n">guess</span><span class="p">,</span> <span class="n">features</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update the feature weights.&quot;&quot;&quot;</span>
 
         <span class="k">def</span> <span class="nf">upd_feat</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
             <span class="n">param</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
@@ -190,8 +215,11 @@
             <span class="n">upd_feat</span><span class="p">(</span><span class="n">truth</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">truth</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">)</span>
             <span class="n">upd_feat</span><span class="p">(</span><span class="n">guess</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">guess</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.average_weights"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.average_weights">[docs]</a>    <span class="k">def</span> <span class="nf">average_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Average weights from all iterations.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="AveragedPerceptron.average_weights">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.average_weights">[docs]</a>
+    <span class="k">def</span> <span class="nf">average_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Average weights from all iterations.&quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="n">feat</span><span class="p">,</span> <span class="n">weights</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">new_feat_weights</span> <span class="o">=</span> <span class="p">{}</span>
             <span class="k">for</span> <span class="n">clas</span><span class="p">,</span> <span class="n">weight</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -203,27 +231,43 @@
                     <span class="n">new_feat_weights</span><span class="p">[</span><span class="n">clas</span><span class="p">]</span> <span class="o">=</span> <span class="n">averaged</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">[</span><span class="n">feat</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_feat_weights</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.save"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.save">[docs]</a>    <span class="k">def</span> <span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Save the pickled model weights.&quot;&quot;&quot;</span>
-        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">),</span> <span class="n">fout</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.load"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.load">[docs]</a>    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Load the pickled model weights.&quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></div>
+<div class="viewcode-block" id="AveragedPerceptron.save">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.save">[docs]</a>
+    <span class="k">def</span> <span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Save the model weights as json&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="n">fout</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.encode_json_obj"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.encode_json_obj">[docs]</a>    <span class="k">def</span> <span class="nf">encode_json_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="AveragedPerceptron.load">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.load">[docs]</a>
+    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load the json model weights.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">fin</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AveragedPerceptron.encode_json_obj">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.encode_json_obj">[docs]</a>
+    <span class="k">def</span> <span class="nf">encode_json_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span></div>
 
-<div class="viewcode-block" id="AveragedPerceptron.decode_json_obj"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.AveragedPerceptron.decode_json_obj">[docs]</a>    <span class="nd">@classmethod</span>
+
+<div class="viewcode-block" id="AveragedPerceptron.decode_json_obj">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.AveragedPerceptron.decode_json_obj">[docs]</a>
+    <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">decode_json_obj</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span></div>
+</div>
 
 
-<div class="viewcode-block" id="PerceptronTagger"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger">[docs]</a><span class="nd">@jsontags</span><span class="o">.</span><span class="n">register_tag</span>
+
+<div class="viewcode-block" id="PerceptronTagger">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger">[docs]</a>
+<span class="nd">@jsontags</span><span class="o">.</span><span class="n">register_tag</span>
 <span class="k">class</span> <span class="nc">PerceptronTagger</span><span class="p">(</span><span class="n">TaggerI</span><span class="p">):</span>
-
-    <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Greedy Averaged Perceptron tagger, as implemented by Matthew Honnibal.</span>
 <span class="sd">    See more implementation details here:</span>
 <span class="sd">    https://explosion.ai/blog/part-of-speech-pos-tagger-in-python</span>
@@ -256,21 +300,23 @@
     <span class="n">START</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;-START-&quot;</span><span class="p">,</span> <span class="s2">&quot;-START2-&quot;</span><span class="p">]</span>
     <span class="n">END</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;-END-&quot;</span><span class="p">,</span> <span class="s2">&quot;-END2-&quot;</span><span class="p">]</span>
 
-<div class="viewcode-block" id="PerceptronTagger.__init__"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.__init__">[docs]</a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">load</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param load: Load the pickled model upon instantiation.</span>
+<div class="viewcode-block" id="PerceptronTagger.__init__">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.__init__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">load</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param load: Load the json model upon instantiation.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">AveragedPerceptron</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">load</span><span class="p">:</span>
-            <span class="n">AP_MODEL_LOC</span> <span class="o">=</span> <span class="s2">&quot;file:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span>
-                <span class="n">find</span><span class="p">(</span><span class="s2">&quot;taggers/averaged_perceptron_tagger/&quot;</span> <span class="o">+</span> <span class="n">PICKLE</span><span class="p">)</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">AP_MODEL_LOC</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_from_json</span><span class="p">(</span><span class="n">lang</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.tag"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.tag">[docs]</a>    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_conf</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">use_tagdict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="PerceptronTagger.tag">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.tag">[docs]</a>
+    <span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">return_conf</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">use_tagdict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Tag tokenized sentences.</span>
 <span class="sd">        :params tokens: list of word</span>
 <span class="sd">        :type tokens: list(str)</span>
@@ -293,13 +339,16 @@
 
         <span class="k">return</span> <span class="n">output</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.train"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.train">[docs]</a>    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">save_loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nr_iter</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Train a model from sentences, and save it at ``save_loc``. ``nr_iter``</span>
+
+<div class="viewcode-block" id="PerceptronTagger.train">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.train">[docs]</a>
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">,</span> <span class="n">save_loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nr_iter</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Train a model from sentences, and save it at ``save_loc``. ``nr_iter``</span>
 <span class="sd">        controls the number of Perceptron training iterations.</span>
 
 <span class="sd">        :param sentences: A list or iterator of sentences, where each sentence</span>
 <span class="sd">            is a list of (words, tags) tuples.</span>
-<span class="sd">        :param save_loc: If not ``None``, saves a pickled model in this location.</span>
+<span class="sd">        :param save_loc: If not ``None``, saves a json model in this location.</span>
 <span class="sd">        :param nr_iter: Number of training iterations.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># We&#39;d like to allow ``sentences`` to be either a list or an iterator,</span>
@@ -331,32 +380,58 @@
                     <span class="n">c</span> <span class="o">+=</span> <span class="n">guess</span> <span class="o">==</span> <span class="n">tags</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                     <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sentences</span><span class="p">)</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Iter </span><span class="si">{</span><span class="n">iter_</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">_pc</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Iter </span><span class="si">{</span><span class="n">iter_</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">_pc</span><span class="p">(</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
         <span class="c1"># We don&#39;t need the training sentences anymore, and we don&#39;t want to</span>
-        <span class="c1"># waste space on them when we pickle the trained tagger.</span>
+        <span class="c1"># waste space on them when we the trained tagger.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sentences</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">average_weights</span><span class="p">()</span>
-        <span class="c1"># Pickle as a binary file</span>
+        <span class="c1"># Save to json files.</span>
         <span class="k">if</span> <span class="n">save_loc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">save_loc</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
-                <span class="c1"># changed protocol from -1 to 2 to make pickling Python 2 compatible</span>
-                <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">classes</span><span class="p">),</span> <span class="n">fout</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_to_json</span><span class="p">(</span><span class="n">loc</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.load"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.load">[docs]</a>    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        :param loc: Load a pickled model at location.</span>
-<span class="sd">        :type loc: str</span>
-<span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">loc</span><span class="p">)</span>
+<div class="viewcode-block" id="PerceptronTagger.save_to_json">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.save_to_json">[docs]</a>
+    <span class="k">def</span> <span class="nf">save_to_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loc</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;xxx&quot;</span><span class="p">):</span>
+        <span class="c1"># TODO:</span>
+        <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span>
+            <span class="n">TRAINED_TAGGER_PATH</span>
+        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;Path set for saving needs to be a directory&quot;</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;weights&quot;</span><span class="p">],</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="n">fout</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;tagdict&quot;</span><span class="p">],</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span><span class="p">,</span> <span class="n">fout</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;classes&quot;</span><span class="p">],</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fout</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">classes</span><span class="p">,</span> <span class="n">fout</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PerceptronTagger.load_from_json">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.load_from_json">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_from_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+        <span class="c1"># Automatically find path to the tagger if location is not specified.</span>
+        <span class="n">loc</span> <span class="o">=</span> <span class="n">find</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;taggers/averaged_perceptron_tagger_</span><span class="si">{</span><span class="n">lang</span><span class="si">}</span><span class="s2">/&quot;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;weights&quot;</span><span class="p">])</span> <span class="k">as</span> <span class="n">fin</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;tagdict&quot;</span><span class="p">])</span> <span class="k">as</span> <span class="n">fin</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">loc</span> <span class="o">+</span> <span class="n">TAGGER_JSONS</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="s2">&quot;classes&quot;</span><span class="p">])</span> <span class="k">as</span> <span class="n">fin</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">fin</span><span class="p">))</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">classes</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.encode_json_obj"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.encode_json_obj">[docs]</a>    <span class="k">def</span> <span class="nf">encode_json_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="PerceptronTagger.encode_json_obj">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.encode_json_obj">[docs]</a>
+    <span class="k">def</span> <span class="nf">encode_json_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">classes</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.decode_json_obj"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.decode_json_obj">[docs]</a>    <span class="nd">@classmethod</span>
+
+<div class="viewcode-block" id="PerceptronTagger.decode_json_obj">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.decode_json_obj">[docs]</a>
+    <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">decode_json_obj</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
         <span class="n">tagger</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span><span class="n">load</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="n">tagger</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span> <span class="n">tagger</span><span class="o">.</span><span class="n">tagdict</span><span class="p">,</span> <span class="n">tagger</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="n">obj</span>
@@ -364,8 +439,11 @@
         <span class="n">tagger</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">classes</span> <span class="o">=</span> <span class="n">tagger</span><span class="o">.</span><span class="n">classes</span>
         <span class="k">return</span> <span class="n">tagger</span></div>
 
-<div class="viewcode-block" id="PerceptronTagger.normalize"><a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.PerceptronTagger.normalize">[docs]</a>    <span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="PerceptronTagger.normalize">
+<a class="viewcode-back" href="../../../api/nltk.tag.perceptron.html#nltk.tag.perceptron.PerceptronTagger.normalize">[docs]</a>
+    <span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Normalization used in pre-processing.</span>
 <span class="sd">        - All words are lower cased</span>
 <span class="sd">        - Groups of digits of length 4 are represented as !YEAR;</span>
@@ -381,8 +459,9 @@
             <span class="k">return</span> <span class="s2">&quot;!DIGITS&quot;</span>
         <span class="k">return</span> <span class="n">word</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
 
+
     <span class="k">def</span> <span class="nf">_get_features</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">prev</span><span class="p">,</span> <span class="n">prev2</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Map tokens into a feature representation, implemented as a</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Map tokens into a feature representation, implemented as a</span>
 <span class="sd">        {hashable: int} dict. If the features change, a new model must be</span>
 <span class="sd">        trained.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -410,7 +489,7 @@
         <span class="k">return</span> <span class="n">features</span>
 
     <span class="k">def</span> <span class="nf">_make_tagdict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sentences</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Make a tag dictionary for single-tag words.</span>
 <span class="sd">        :param sentences: A list of list of (word, tag) tuples.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -429,6 +508,7 @@
             <span class="c1"># Only add quite unambiguous words</span>
             <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="n">freq_thresh</span> <span class="ow">and</span> <span class="p">(</span><span class="n">mode</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">ambiguity_thresh</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">tagdict</span><span class="p">[</span><span class="n">word</span><span class="p">]</span> <span class="o">=</span> <span class="n">tag</span></div>
+
 
 
 <span class="k">def</span> <span class="nf">_pc</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
@@ -463,7 +543,7 @@
     <span class="n">testing</span> <span class="o">=</span> <span class="n">_load_data_conll_format</span><span class="p">(</span><span class="s2">&quot;english_ptb_test.conll&quot;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Size of training and testing (sentence)&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">training</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">testing</span><span class="p">))</span>
     <span class="c1"># Train and save the model</span>
-    <span class="n">tagger</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">training</span><span class="p">,</span> <span class="n">PICKLE</span><span class="p">)</span>
+    <span class="n">tagger</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">training</span><span class="p">,</span> <span class="n">TRAINED_TAGGER_PATH</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Accuracy : &quot;</span><span class="p">,</span> <span class="n">tagger</span><span class="o">.</span><span class="n">accuracy</span><span class="p">(</span><span class="n">testing</span><span class="p">))</span>
 
 
@@ -484,13 +564,13 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.8.1">3.8.1</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.8.2">3.8.2</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Jan 02, 2023
+                    Aug 09, 2024
                 </li>
             
         </ul>

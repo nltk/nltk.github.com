@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Corpus Reader Utility Functions
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -110,7 +110,6 @@ class LazyCorpusLoader:
         self._unload = _make_bound_method(_unload, self)
 
     def __getattr__(self, attr):
-
         # Fix for inspect.isclass under Python 2.6
         # (see https://bugs.python.org/issue1225107).
         # Without this fix tests may take extra 1.5GB RAM

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Relation Extraction
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Ewan Klein <ewan@inf.ed.ac.uk>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -300,6 +300,7 @@ def clause(reldict, relsym):
 # Demos of relation extraction with regular expressions
 #######################################################
 
+
 ############################################
 # Example of in(ORG, LOC)
 ############################################
@@ -319,7 +320,6 @@ def in_demo(trace=0, sql=True):
             import sqlite3
 
             connection = sqlite3.connect(":memory:")
-            connection.text_factory = sqlite3.OptimizedUnicode
             cur = connection.cursor()
             cur.execute(
                 """create table Locations
@@ -427,7 +427,6 @@ def roles_demo(trace=0):
 
 
 def ieer_headlines():
-
     from nltk.corpus import ieer
     from nltk.tree import Tree
 

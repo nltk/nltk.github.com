@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Pros and Cons Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Pierpaolo Pantone <24alsecondo@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -36,7 +36,7 @@ class ProsConsCorpusReader(CategorizedCorpusReader, CorpusReader):
     Reader for the Pros and Cons sentence dataset.
 
         >>> from nltk.corpus import pros_cons
-        >>> pros_cons.sents(categories='Cons')
+        >>> pros_cons.sents(categories='Cons') # doctest: +NORMALIZE_WHITESPACE
         [['East', 'batteries', '!', 'On', '-', 'off', 'switch', 'too', 'easy',
         'to', 'maneuver', '.'], ['Eats', '...', 'no', ',', 'GULPS', 'batteries'],
         ...]

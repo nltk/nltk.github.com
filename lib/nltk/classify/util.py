@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Classifier Utility Functions
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
 # URL: <https://www.nltk.org/>
@@ -19,6 +19,7 @@ from nltk.util import LazyMap
 ######################################################################
 # { Helper Functions
 ######################################################################
+
 
 # alternative name possibility: 'map_featurefunc()'?
 # alternative name possibility: 'detect_features()'?
@@ -214,7 +215,7 @@ def names_demo(trainer, features=names_demo_features):
         print("Avg. log likelihood: %6.4f" % (sum(ll) / len(test)))
         print()
         print("Unseen Names      P(Male)  P(Female)\n" + "-" * 40)
-        for ((name, gender), pdist) in list(zip(test, pdists))[:5]:
+        for (name, gender), pdist in list(zip(test, pdists))[:5]:
             if gender == "male":
                 fmt = "  %-15s *%6.4f   %6.4f"
             else:
@@ -270,7 +271,7 @@ def partial_names_demo(trainer, features=names_demo_features):
         print("Avg. log likelihood: %6.4f" % (sum(ll) / len(test)))
         print()
         print("Unseen Names      P(Male)  P(Female)\n" + "-" * 40)
-        for ((name, is_male), pdist) in zip(test, pdists)[:5]:
+        for (name, is_male), pdist in zip(test, pdists)[:5]:
             if is_male == True:
                 fmt = "  %-15s *%6.4f   %6.4f"
             else:

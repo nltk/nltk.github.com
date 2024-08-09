@@ -13,10 +13,8 @@
 
   <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
       <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
-      <script type="text/javascript" src="../../../_static/jquery.js"></script>
-      <script type="text/javascript" src="../../../_static/underscore.js"></script>
-      <script type="text/javascript" src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
       <script type="text/javascript" src="../../../_static/doctools.js"></script>
+      <script type="text/javascript" src="../../../_static/sphinx_highlight.js"></script>
   
 
   <script src="https://email.tl.fortawesome.com/c/eJxNjUEOgyAQAF8jR7Kw6wIHDh7sP1Cw2mgxgmn6-3JsMqc5zEQfE8dkxOY1KKMUOI3ACFKRJpSW2AAp7ontYIaxI6i7XPJVwyeVfCQ550Os3jLrGSNOLgbdAy6s0PBk2TFNjEbsfq31LB0OnX407pJa5v2faRadwSW63mn5KuLyR9j2tgx3zecanl-55R_-jjPs"></script> 
@@ -101,31 +99,64 @@
   <h1>Source code for nltk.translate.bleu_score</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: BLEU Score</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2023 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2024 NLTK Project</span>
 <span class="c1"># Authors: Chin Yee Lee, Hengfeng Li, Ruxin Hou, Calvin Tanujaya Lim</span>
 <span class="c1"># Contributors: Björn Mattsson, Dmitrijs Milajevs, Liling Tan</span>
 <span class="c1"># URL: &lt;https://www.nltk.org/&gt;</span>
 <span class="c1"># For license information, see LICENSE.TXT</span>
 
 <span class="sd">&quot;&quot;&quot;BLEU score implementation.&quot;&quot;&quot;</span>
-
 <span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">sys</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span>
-<span class="kn">from</span> <span class="nn">fractions</span> <span class="kn">import</span> <span class="n">Fraction</span>
+<span class="kn">from</span> <span class="nn">fractions</span> <span class="kn">import</span> <span class="n">Fraction</span> <span class="k">as</span> <span class="n">_Fraction</span>
 
 <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">ngrams</span>
 
 
-<div class="viewcode-block" id="sentence_bleu"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.sentence_bleu">[docs]</a><span class="k">def</span> <span class="nf">sentence_bleu</span><span class="p">(</span>
+<div class="viewcode-block" id="Fraction">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.Fraction">[docs]</a>
+<span class="k">class</span> <span class="nc">Fraction</span><span class="p">(</span><span class="n">_Fraction</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fraction with _normalize=False support for 3.12&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Fraction.__new__">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.Fraction.__new__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">numerator</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">denominator</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">12</span><span class="p">):</span>
+            <span class="bp">self</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">numerator</span><span class="p">,</span> <span class="n">denominator</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">numerator</span><span class="p">,</span> <span class="n">denominator</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="n">_normalize</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span> <span class="o">=</span> <span class="n">_normalize</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_original_numerator</span> <span class="o">=</span> <span class="n">numerator</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_original_denominator</span> <span class="o">=</span> <span class="n">denominator</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">numerator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_original_numerator</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">numerator</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">denominator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_original_denominator</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">denominator</span></div>
+
+
+
+<div class="viewcode-block" id="sentence_bleu">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.sentence_bleu">[docs]</a>
+<span class="k">def</span> <span class="nf">sentence_bleu</span><span class="p">(</span>
     <span class="n">references</span><span class="p">,</span>
     <span class="n">hypothesis</span><span class="p">,</span>
     <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span>
     <span class="n">smoothing_function</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">auto_reweigh</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate BLEU score (Bilingual Evaluation Understudy) from</span>
 <span class="sd">    Papineni, Kishore, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002.</span>
 <span class="sd">    &quot;BLEU: a method for automatic evaluation of machine translation.&quot;</span>
@@ -210,14 +241,17 @@
     <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="corpus_bleu"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.corpus_bleu">[docs]</a><span class="k">def</span> <span class="nf">corpus_bleu</span><span class="p">(</span>
+
+<div class="viewcode-block" id="corpus_bleu">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.corpus_bleu">[docs]</a>
+<span class="k">def</span> <span class="nf">corpus_bleu</span><span class="p">(</span>
     <span class="n">list_of_references</span><span class="p">,</span>
     <span class="n">hypotheses</span><span class="p">,</span>
     <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span>
     <span class="n">smoothing_function</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">auto_reweigh</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate a single corpus-level BLEU score (aka. system-level BLEU) for all</span>
 <span class="sd">    the hypotheses and their respective references.</span>
 
@@ -299,7 +333,7 @@
 
     <span class="k">try</span><span class="p">:</span>
         <span class="n">weights</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+    <span class="k">except</span><span class="p">:</span>
         <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="n">weights</span><span class="p">]</span>
     <span class="n">max_weight_length</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">weight</span><span class="p">)</span> <span class="k">for</span> <span class="n">weight</span> <span class="ow">in</span> <span class="n">weights</span><span class="p">)</span>
 
@@ -358,8 +392,11 @@
     <span class="k">return</span> <span class="n">bleu_scores</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">bleu_scores</span></div>
 
 
-<div class="viewcode-block" id="modified_precision"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.modified_precision">[docs]</a><span class="k">def</span> <span class="nf">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="modified_precision">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.modified_precision">[docs]</a>
+<span class="k">def</span> <span class="nf">modified_precision</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate modified ngram precision.</span>
 
 <span class="sd">    The normal precision method may lead to some wrong translations with</span>
@@ -469,8 +506,11 @@
     <span class="k">return</span> <span class="n">Fraction</span><span class="p">(</span><span class="n">numerator</span><span class="p">,</span> <span class="n">denominator</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="closest_ref_length"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.closest_ref_length">[docs]</a><span class="k">def</span> <span class="nf">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="closest_ref_length">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.closest_ref_length">[docs]</a>
+<span class="k">def</span> <span class="nf">closest_ref_length</span><span class="p">(</span><span class="n">references</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This function finds the reference that is the closest length to the</span>
 <span class="sd">    hypothesis. The closest reference length is referred to as *r* variable</span>
 <span class="sd">    from the brevity penalty formula in Papineni et. al. (2002)</span>
@@ -489,8 +529,11 @@
     <span class="k">return</span> <span class="n">closest_ref_len</span></div>
 
 
-<div class="viewcode-block" id="brevity_penalty"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.brevity_penalty">[docs]</a><span class="k">def</span> <span class="nf">brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="brevity_penalty">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.brevity_penalty">[docs]</a>
+<span class="k">def</span> <span class="nf">brevity_penalty</span><span class="p">(</span><span class="n">closest_ref_len</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate brevity penalty.</span>
 
 <span class="sd">    As the modified n-gram precision still has the problem from the short</span>
@@ -581,8 +624,11 @@
         <span class="k">return</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">closest_ref_len</span> <span class="o">/</span> <span class="n">hyp_len</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="SmoothingFunction"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction">[docs]</a><span class="k">class</span> <span class="nc">SmoothingFunction</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction">[docs]</a>
+<span class="k">class</span> <span class="nc">SmoothingFunction</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This is an implementation of the smoothing techniques</span>
 <span class="sd">    for segment-level BLEU scores that was presented in</span>
 <span class="sd">    Boxing Chen and Collin Cherry (2014) A Systematic Comparison of</span>
@@ -590,8 +636,10 @@
 <span class="sd">    http://acl2014.org/acl2014/W14-33/pdf/W14-3346.pdf</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-<div class="viewcode-block" id="SmoothingFunction.__init__"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.__init__">[docs]</a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+<div class="viewcode-block" id="SmoothingFunction.__init__">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.__init__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        This will initialize the parameters required for the various smoothing</span>
 <span class="sd">        techniques, the default values are set to the numbers used in the</span>
 <span class="sd">        experiments from Chen and Cherry (2014).</span>
@@ -634,8 +682,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">=</span> <span class="n">alpha</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k</span> <span class="o">=</span> <span class="n">k</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method0"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method0">[docs]</a>    <span class="k">def</span> <span class="nf">method0</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method0">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method0">[docs]</a>
+    <span class="k">def</span> <span class="nf">method0</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        No smoothing.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">p_n_new</span> <span class="o">=</span> <span class="p">[]</span>
@@ -659,33 +710,46 @@
                 <span class="n">p_n_new</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">float_info</span><span class="o">.</span><span class="n">min</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">p_n_new</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method1"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method1">[docs]</a>    <span class="k">def</span> <span class="nf">method1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method1">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method1">[docs]</a>
+    <span class="k">def</span> <span class="nf">method1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 1: Add *epsilon* counts to precision with 0 counts.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span>
-            <span class="p">(</span><span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span><span class="p">)</span> <span class="o">/</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span>
-            <span class="k">if</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">==</span> <span class="mi">0</span>
-            <span class="k">else</span> <span class="n">p_i</span>
+            <span class="p">(</span>
+                <span class="p">(</span><span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span><span class="p">)</span> <span class="o">/</span> <span class="n">p_i</span><span class="o">.</span><span class="n">denominator</span>
+                <span class="k">if</span> <span class="n">p_i</span><span class="o">.</span><span class="n">numerator</span> <span class="o">==</span> <span class="mi">0</span>
+                <span class="k">else</span> <span class="n">p_i</span>
+            <span class="p">)</span>
             <span class="k">for</span> <span class="n">p_i</span> <span class="ow">in</span> <span class="n">p_n</span>
         <span class="p">]</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method2"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method2">[docs]</a>    <span class="k">def</span> <span class="nf">method2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method2">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method2">[docs]</a>
+    <span class="k">def</span> <span class="nf">method2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 2: Add 1 to both numerator and denominator from</span>
 <span class="sd">        Chin-Yew Lin and Franz Josef Och (2004) ORANGE: a Method for</span>
 <span class="sd">        Evaluating Automatic Evaluation Metrics for Machine Translation.</span>
 <span class="sd">        In COLING 2004.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span>
-            <span class="n">Fraction</span><span class="p">(</span><span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">denominator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="mi">0</span>
-            <span class="k">else</span> <span class="n">p_n</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="p">(</span>
+                <span class="n">Fraction</span><span class="p">(</span><span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">numerator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">denominator</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">_normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="mi">0</span>
+                <span class="k">else</span> <span class="n">p_n</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="p">)</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">p_n</span><span class="p">))</span>
         <span class="p">]</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method3"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method3">[docs]</a>    <span class="k">def</span> <span class="nf">method3</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method3">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method3">[docs]</a>
+    <span class="k">def</span> <span class="nf">method3</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 3: NIST geometric sequence smoothing</span>
 <span class="sd">        The smoothing is computed by taking 1 / ( 2^k ), instead of 0, for each</span>
 <span class="sd">        precision score whose matching n-gram count is null.</span>
@@ -710,8 +774,11 @@
                 <span class="n">incvnt</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="n">p_n</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method4"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method4">[docs]</a>    <span class="k">def</span> <span class="nf">method4</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method4">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method4">[docs]</a>
+    <span class="k">def</span> <span class="nf">method4</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 4:</span>
 <span class="sd">        Shorter translations may have inflated precision values due to having</span>
 <span class="sd">        smaller denominators; therefore, we give them proportionally</span>
@@ -731,8 +798,11 @@
                 <span class="n">incvnt</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="n">p_n</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method5"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method5">[docs]</a>    <span class="k">def</span> <span class="nf">method5</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method5">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method5">[docs]</a>
+    <span class="k">def</span> <span class="nf">method5</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 5:</span>
 <span class="sd">        The matched counts for similar values of n should be similar. To a</span>
 <span class="sd">        calculate the n-gram matched count, it averages the n−1, n and n+1 gram</span>
@@ -748,8 +818,11 @@
             <span class="n">m</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
         <span class="k">return</span> <span class="n">p_n</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method6"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method6">[docs]</a>    <span class="k">def</span> <span class="nf">method6</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method6">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method6">[docs]</a>
+    <span class="k">def</span> <span class="nf">method6</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 6:</span>
 <span class="sd">        Interpolates the maximum likelihood estimate of the precision *p_n* with</span>
 <span class="sd">        a prior estimate *pi0*. The prior is estimated by assuming that the ratio</span>
@@ -775,15 +848,20 @@
                 <span class="n">p_n</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">*</span> <span class="n">pi0</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">l</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">p_n</span></div>
 
-<div class="viewcode-block" id="SmoothingFunction.method7"><a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method7">[docs]</a>    <span class="k">def</span> <span class="nf">method7</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SmoothingFunction.method7">
+<a class="viewcode-back" href="../../../api/nltk.translate.bleu_score.html#nltk.translate.bleu_score.SmoothingFunction.method7">[docs]</a>
+    <span class="k">def</span> <span class="nf">method7</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Smoothing method 7:</span>
 <span class="sd">        Interpolates methods 4 and 5.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">hyp_len</span> <span class="o">=</span> <span class="n">hyp_len</span> <span class="k">if</span> <span class="n">hyp_len</span> <span class="k">else</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypothesis</span><span class="p">)</span>
         <span class="n">p_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method4</span><span class="p">(</span><span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
         <span class="n">p_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method5</span><span class="p">(</span><span class="n">p_n</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">hypothesis</span><span class="p">,</span> <span class="n">hyp_len</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">p_n</span></div></div>
+        <span class="k">return</span> <span class="n">p_n</span></div>
+</div>
+
 </pre></div>
 
         </div>
@@ -798,13 +876,13 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.8.1">3.8.1</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.8.2">3.8.2</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Jan 02, 2023
+                    Aug 09, 2024
                 </li>
             
         </ul>

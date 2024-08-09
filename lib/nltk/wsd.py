@@ -3,14 +3,14 @@
 # Authors: Liling Tan <alvations@gmail.com>,
 #          Dmitrijs Milajevs <dimazest@gmail.com>
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 from nltk.corpus import wordnet
 
 
-def lesk(context_sentence, ambiguous_word, pos=None, synsets=None):
+def lesk(context_sentence, ambiguous_word, pos=None, synsets=None, lang="eng"):
     """Return a synset for an ambiguous word in a context.
 
     :param iter context_sentence: The context sentence where the ambiguous word
@@ -18,6 +18,7 @@ def lesk(context_sentence, ambiguous_word, pos=None, synsets=None):
     :param str ambiguous_word: The ambiguous word that requires WSD.
     :param str pos: A specified Part-of-Speech (POS).
     :param iter synsets: Possible synsets of the ambiguous word.
+    :param str lang: WordNet language.
     :return: ``lesk_sense`` The Synset() object with the highest signature overlaps.
 
     This function is an implementation of the original Lesk algorithm (1986) [1].
@@ -36,7 +37,7 @@ def lesk(context_sentence, ambiguous_word, pos=None, synsets=None):
 
     context = set(context_sentence)
     if synsets is None:
-        synsets = wordnet.synsets(ambiguous_word)
+        synsets = wordnet.synsets(ambiguous_word, lang=lang)
 
     if pos:
         synsets = [ss for ss in synsets if str(ss.pos()) == pos]

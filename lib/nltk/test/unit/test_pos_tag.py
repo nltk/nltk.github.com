@@ -2,10 +2,30 @@
 Tests for nltk.pos_tag
 """
 
-
+import io
 import unittest
+import unittest.mock
 
 from nltk import pos_tag, word_tokenize
+from nltk.help import brown_tagset, claws5_tagset, upenn_tagset
+
+UPENN_TAGSET_DOLLAR_TEST = """$: dollar
+    $ -$ --$ A$ C$ HK$ M$ NZ$ S$ U.S.$ US$
+PRP$: pronoun, possessive
+    her his mine my our ours their thy your
+WP$: WH-pronoun, possessive
+    whose
+"""
+
+BROWN_TAGSET_NNS_TEST = """NNS: noun, plural, common
+    irregularities presentments thanks reports voters laws legislators
+    years areas adjustments chambers $100 bonds courts sales details raises
+    sessions members congressmen votes polls calls ...
+"""
+
+CLAW5_TAGSET_VHD_TEST = """VHD: past tense form of the verb "HAVE"
+    had, 'd
+"""
 
 
 class TestPosTag(unittest.TestCase):
@@ -40,6 +60,20 @@ class TestPosTag(unittest.TestCase):
             (".", "."),
         ]
         assert pos_tag(word_tokenize(text), tagset="universal") == expected_tagged
+
+    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
+    def check_stdout(self, tagset, query_regex, expected_output, mock_stdout):
+        tagset(query_regex)
+        self.assertEqual(mock_stdout.getvalue(), expected_output)
+
+    def test_tagsets_upenn(self):
+        self.check_stdout(upenn_tagset, r".*\$", UPENN_TAGSET_DOLLAR_TEST)
+
+    def test_tagsets_brown(self):
+        self.check_stdout(brown_tagset, r"NNS", BROWN_TAGSET_NNS_TEST)
+
+    def test_tagsets_claw5(self):
+        self.check_stdout(claws5_tagset, r"VHD", CLAW5_TAGSET_VHD_TEST)
 
     def test_pos_tag_rus(self):
         text = "Илья оторопел и дважды перечитал бумажку."

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Viterbi Probabilistic Parser
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org/>
@@ -193,7 +193,7 @@ class ViterbiParser(ParserI):
             # ProbabilisticTree whose probability is the product
             # of the childrens' probabilities and the production's
             # probability.
-            for (production, children) in instantiations:
+            for production, children in instantiations:
                 subtrees = [c for c in children if isinstance(c, Tree)]
                 p = reduce(lambda pr, t: pr * t.prob(), subtrees, production.prob())
                 node = production.lhs().symbol()

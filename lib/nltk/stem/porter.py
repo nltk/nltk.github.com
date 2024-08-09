@@ -425,9 +425,11 @@ class PorterStemmer(StemmerI):
                 (
                     "y",
                     "i",
-                    nltk_condition
-                    if self.mode == self.NLTK_EXTENSIONS
-                    else original_condition,
+                    (
+                        nltk_condition
+                        if self.mode == self.NLTK_EXTENSIONS
+                        else original_condition
+                    ),
                 )
             ],
         )
@@ -695,7 +697,7 @@ def demo():
     orig = []
     stemmed = []
     for item in treebank.fileids()[:3]:
-        for (word, tag) in treebank.tagged_words(item):
+        for word, tag in treebank.tagged_words(item):
             orig.append(word)
             stemmed.append(stemmer.stem(word))
 

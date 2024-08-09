@@ -86,14 +86,14 @@ class IBMModel1(IBMModel):
 
     >>> ibm1 = IBMModel1(bitext, 5)
 
-    >>> print(ibm1.translation_table['buch']['book'])
-    0.889...
-    >>> print(ibm1.translation_table['das']['book'])
-    0.061...
-    >>> print(ibm1.translation_table['buch'][None])
-    0.113...
-    >>> print(ibm1.translation_table['ja'][None])
-    0.072...
+    >>> print(round(ibm1.translation_table['buch']['book'], 3))
+    0.889
+    >>> print(round(ibm1.translation_table['das']['book'], 3))
+    0.062
+    >>> print(round(ibm1.translation_table['buch'][None], 3))
+    0.113
+    >>> print(round(ibm1.translation_table['ja'][None], 3))
+    0.073
 
     >>> test_sentence = bitext[2]
     >>> test_sentence.words
@@ -187,7 +187,7 @@ class IBMModel1(IBMModel):
         :return: Probability of t for all s in ``src_sentence``
         :rtype: dict(str): float
         """
-        alignment_prob_for_t = defaultdict(lambda: 0.0)
+        alignment_prob_for_t = defaultdict(float)
         for t in trg_sentence:
             for s in src_sentence:
                 alignment_prob_for_t[t] += self.prob_alignment_point(s, t)

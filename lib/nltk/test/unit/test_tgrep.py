@@ -2,7 +2,7 @@
 #
 # Natural Language Toolkit: TGrep search
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Will Roberts <wildwilhelm@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -19,7 +19,6 @@ from nltk.tree import ParentedTree
 
 
 class TestSequenceFunctions(unittest.TestCase):
-
     """
     Class containing unit tests for nltk.tgrep.
     """

@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Language ID module using TextCat algorithm
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Avital Pekker <avital.pekker@utoronto.ca>
 #
 # URL: <https://www.nltk.org/>
@@ -45,7 +45,6 @@ except ImportError:
 
 
 class TextCat:
-
     _corpus = None
     fingerprints = {}
     _START_CHAR = "<"
@@ -180,10 +179,7 @@ def demo():
 
         # Generate a sample text of the language
         for i in range(0, rows):
-            cur_sent = ""
-            for j in range(0, cols[i]):
-                cur_sent += " " + raw_sentences[i][j]
-
+            cur_sent = " " + " ".join([raw_sentences[i][j] for j in range(0, cols[i])])
             sample += cur_sent
 
         # Try to detect what it is

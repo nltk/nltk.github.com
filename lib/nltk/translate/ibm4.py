@@ -1,6 +1,6 @@
 # Natural Language Toolkit: IBM Model 4
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Tah Wei Hoon <hoon.tw@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -154,8 +154,8 @@ class IBMModel4(IBMModel):
     >>> print(round(ibm4.fertility_table[1]['book'], 3))
     1.0
 
-    >>> print(ibm4.p1)
-    0.033...
+    >>> print(round(ibm4.p1, 3))
+    0.033
 
     >>> test_sentence = bitext[2]
     >>> test_sentence.words
@@ -457,11 +457,11 @@ class Model4Counts(Counts):
     def __init__(self):
         super().__init__()
         self.head_distortion = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(lambda: 0.0))
+            lambda: defaultdict(lambda: defaultdict(float))
         )
-        self.head_distortion_for_any_dj = defaultdict(lambda: defaultdict(lambda: 0.0))
-        self.non_head_distortion = defaultdict(lambda: defaultdict(lambda: 0.0))
-        self.non_head_distortion_for_any_dj = defaultdict(lambda: 0.0)
+        self.head_distortion_for_any_dj = defaultdict(lambda: defaultdict(float))
+        self.non_head_distortion = defaultdict(lambda: defaultdict(float))
+        self.non_head_distortion_for_any_dj = defaultdict(float)
 
     def update_distortion(self, count, alignment_info, j, src_classes, trg_classes):
         i = alignment_info.alignment[j]

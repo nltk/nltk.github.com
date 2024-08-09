@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Expectation Maximization Clusterer
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Trevor Cohn <tacohn@cs.mu.oz.au>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -153,7 +153,7 @@ class EMClusterer(VectorSpaceClusterer):
         try:
             det = numpy.linalg.det(cvm)
             inv = numpy.linalg.inv(cvm)
-            a = det ** -0.5 * (2 * numpy.pi) ** (-m / 2.0)
+            a = det**-0.5 * (2 * numpy.pi) ** (-m / 2.0)
             dx = x - mean
             print(dx, inv)
             b = -0.5 * numpy.dot(numpy.dot(dx, inv), dx)

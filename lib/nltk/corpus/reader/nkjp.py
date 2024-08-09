@@ -1,6 +1,6 @@
 # Natural Language Toolkit: NKJP Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Gabriela Kaczka
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -457,7 +457,6 @@ class NKJPCorpus_Morph_View(XMLCorpusView):
             flag = True
 
         for child in elt:
-
             # get word
             if "name" in child.keys() and child.attrib["name"] == "orth":
                 for symbol in child:

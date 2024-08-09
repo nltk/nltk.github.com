@@ -1,6 +1,13 @@
 Release Notes
 =============
 
+2024
+----
+
+NLTK 3.8.2 release: August 2024:
+- Remove support for pickled models, resolves security vulnerability CVE-2024-39705
+- Many other minor fixes
+
 2023
 ----
 

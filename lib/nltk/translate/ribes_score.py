@@ -1,6 +1,6 @@
 # Natural Language Toolkit: RIBES Score
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Contributors: Katsuhito Sudoh, Liling Tan, Kasramvd, J.F.Sebastian
 #               Mark Byers, ekhumoro, P. Ortiz
 # URL: <https://www.nltk.org/>
@@ -59,7 +59,7 @@ def sentence_ribes(references, hypothesis, alpha=0.25, beta=0.10):
         # Calculates the unigram precision, *p1*
         p1 = len(worder) / len(hypothesis)
 
-        _ribes = nkt * (p1 ** alpha) * (bp ** beta)
+        _ribes = nkt * (p1**alpha) * (bp**beta)
 
         if _ribes > best_ribes:  # Keeps the best score.
             best_ribes = _ribes

@@ -2,7 +2,7 @@
 #
 # Author: Long Duong <longdt219@gmail.com>
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
@@ -61,9 +61,9 @@ class DependencyEvaluator:
     >>> de = DependencyEvaluator([parsed_sent],[gold_sent])
     >>> las, uas = de.eval()
     >>> las
-    0.6...
+    0.6
     >>> uas
-    0.8...
+    0.8
     >>> abs(uas - 0.8) < 0.00001
     True
     """

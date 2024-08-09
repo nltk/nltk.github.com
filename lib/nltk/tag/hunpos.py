@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Interface to the HunPos POS-tagger
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Peter Ljunglöf <peter.ljunglof@heatherleaf.se>
 #         Dávid Márk Nemeskey <nemeskeyd@gmail.com> (modifications)
 #         Attila Zséder <zseder@gmail.com> (modifications)
@@ -30,8 +30,12 @@ class HunposTagger(TaggerI):
      - (optionally) the path to the hunpos-tag binary
      - (optionally) the encoding of the training data (default: ISO-8859-1)
 
-    Example:
+    Check whether the required "hunpos-tag" binary is available:
 
+        >>> from nltk.test.setup_fixt import check_binary
+        >>> check_binary('hunpos-tag')
+
+    Example:
         >>> from nltk.tag import HunposTagger
         >>> ht = HunposTagger('en_wsj.model')
         >>> ht.tag('What is the airspeed of an unladen swallow ?'.split())

@@ -2,6 +2,7 @@
 Unit tests for nltk.tokenize.
 See also nltk/test/tokenize.doctest
 """
+
 from typing import List, Tuple
 
 import pytest
@@ -13,8 +14,10 @@ from nltk.tokenize import (
     TreebankWordTokenizer,
     TweetTokenizer,
     punkt,
+    sent_tokenize,
     word_tokenize,
 )
+from nltk.tokenize.simple import CharTokenizer
 
 
 def load_stanford_segmenter():
@@ -269,6 +272,15 @@ class TestTokenize:
         tokens = tokenizer.tokenize("justification")
         assert tokens == ["jus", "ti", "fi", "ca", "tion"]
 
+    def test_syllable_tokenizer_numbers(self):
+        """
+        Test SyllableTokenizer tokenizer.
+        """
+        tokenizer = SyllableTokenizer()
+        text = "9" * 10000
+        tokens = tokenizer.tokenize(text)
+        assert tokens == [text]
+
     def test_legality_principle_syllable_tokenizer(self):
         """
         Test LegalitySyllableTokenizer tokenizer.
@@ -313,7 +325,14 @@ class TestTokenize:
         seg.default_config("zh")
         sent = "这是斯坦福中文分词器测试"
         segmented_sent = seg.segment(sent.split())
-        assert segmented_sent.split() == ["这", "是", "斯坦福", "中文", "分词器", "测试"]
+        assert segmented_sent.split() == [
+            "这",
+            "是",
+            "斯坦福",
+            "中文",
+            "分词器",
+            "测试",
+        ]
 
     def test_phone_tokenizer(self):
         """
@@ -380,6 +399,23 @@ class TestTokenize:
             "🙅🏽",
         ]
         result = tokenizer.tokenize(test3)
+        assert result == expected
+
+        # emoji flag sequences, including enclosed letter pairs
+        # Expected behavior from #3034
+        test4 = "🇦🇵🇵🇱🇪"
+        expected = ["🇦🇵", "🇵🇱", "🇪"]
+        result = tokenizer.tokenize(test4)
+        assert result == expected
+
+        test5 = "Hi 🇨🇦, 😍!!"
+        expected = ["Hi", "🇨🇦", ",", "😍", "!", "!"]
+        result = tokenizer.tokenize(test5)
+        assert result == expected
+
+        test6 = "<3 🇨🇦 🤝 🇵🇱 <3"
+        expected = ["<3", "🇨🇦", "🤝", "🇵🇱", "<3"]
+        result = tokenizer.tokenize(test6)
         assert result == expected
 
     def test_pad_asterisk(self):
@@ -709,14 +745,13 @@ class TestTokenize:
         assert word_tokenize(sentence) == expected
 
     def test_punkt_pair_iter(self):
-
         test_cases = [
             ("12", [("1", "2"), ("2", None)]),
             ("123", [("1", "2"), ("2", "3"), ("3", None)]),
             ("1234", [("1", "2"), ("2", "3"), ("3", "4"), ("4", None)]),
         ]
 
-        for (test_input, expected_output) in test_cases:
+        for test_input, expected_output in test_cases:
             actual_output = [x for x in punkt._pair_iter(test_input)]
 
             assert actual_output == expected_output
@@ -741,7 +776,6 @@ class TestTokenize:
         list(obj._tokenize_words("test"))
 
     def test_punkt_tokenize_custom_lang_vars(self):
-
         # Create LangVars including a full stop end character as used in Bengali
         class BengaliLanguageVars(punkt.PunktLanguageVars):
             sent_end_chars = (".", "?", "!", "\u0964")
@@ -759,7 +793,6 @@ class TestTokenize:
         assert obj.tokenize(sentences) == expected
 
     def test_punkt_tokenize_no_custom_lang_vars(self):
-
         obj = punkt.PunktSentenceTokenizer()
 
         # We expect these sentences to not be split properly, as the Bengali full stop '।' is not included in the default language vars
@@ -783,7 +816,7 @@ class TestTokenize:
             # with one split and hence one decision.
             # Test debug_decisions on a text with one sentences,
             # which is not split.
-            ("This is just a normal sentence, just like any other.", 1, 0)
+            ("This is just a normal sentence, just like any other.", 1, 0),
             # Hence just 1
         ],
     )
@@ -809,3 +842,64 @@ class TestTokenize:
         )
         # The sentence should be split into two sections,
         # with one split and hence one decision.
+
+    @pytest.mark.parametrize(
+        "sentences, expected",
+        [
+            (
+                "this is a test. . new sentence.",
+                ["this is a test.", ".", "new sentence."],
+            ),
+            ("This. . . That", ["This.", ".", ".", "That"]),
+            ("This..... That", ["This..... That"]),
+            ("This... That", ["This... That"]),
+            ("This.. . That", ["This.. .", "That"]),
+            ("This. .. That", ["This.", ".. That"]),
+            ("This. ,. That", ["This.", ",.", "That"]),
+            ("This!!! That", ["This!!!", "That"]),
+            ("This! That", ["This!", "That"]),
+            (
+                "1. This is R .\n2. This is A .\n3. That's all",
+                ["1.", "This is R .", "2.", "This is A .", "3.", "That's all"],
+            ),
+            (
+                "1. This is R .\t2. This is A .\t3. That's all",
+                ["1.", "This is R .", "2.", "This is A .", "3.", "That's all"],
+            ),
+            ("Hello.\tThere", ["Hello.", "There"]),
+        ],
+    )
+    def test_sent_tokenize(self, sentences: str, expected: List[str]):
+        assert sent_tokenize(sentences) == expected
+
+    def test_string_tokenizer(self) -> None:
+        sentence = "Hello there"
+        tokenizer = CharTokenizer()
+        assert tokenizer.tokenize(sentence) == list(sentence)
+        assert list(tokenizer.span_tokenize(sentence)) == [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 8),
+            (8, 9),
+            (9, 10),
+            (10, 11),
+        ]
+
+
+class TestPunktTrainer:
+    def test_punkt_train(self) -> None:
+        trainer = punkt.PunktTrainer()
+        trainer.train("This is a test.")
+
+    def test_punkt_train_single_word(self) -> None:
+        trainer = punkt.PunktTrainer()
+        trainer.train("This.")
+
+    def test_punkt_train_no_punc(self) -> None:
+        trainer = punkt.PunktTrainer()
+        trainer.train("This is a test")

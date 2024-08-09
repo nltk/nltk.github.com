@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Chatbots
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -33,15 +33,12 @@ bots = [
 
 
 def chatbots():
-    import sys
-
     print("Which chatbot would you like to talk to?")
     botcount = len(bots)
     for i in range(botcount):
         print("  %d: %s" % (i + 1, bots[i][1]))
     while True:
-        print("\nEnter a number in the range 1-%d: " % botcount, end=" ")
-        choice = sys.stdin.readline().strip()
+        choice = input(f"\nEnter a number in the range 1-{botcount}: ").strip()
         if choice.isdigit() and (int(choice) - 1) in range(botcount):
             break
         else:

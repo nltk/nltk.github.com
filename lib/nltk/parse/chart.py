@@ -1,6 +1,6 @@
 # Natural Language Toolkit: A Chart Parser
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com>
 #         Jean Mark Gawron <gawron@mail.sdsu.edu>
@@ -612,7 +612,7 @@ class Chart:
         A helper function for ``insert``, which registers the new
         edge with all existing indexes.
         """
-        for (restr_keys, index) in self._indexes.items():
+        for restr_keys, index in self._indexes.items():
             vals = tuple(getattr(edge, key)() for key in restr_keys)
             index.setdefault(vals, []).append(edge)
 
@@ -1840,7 +1840,7 @@ def demo(
     maxlen = max(len(key) for key in times)
     format = "%" + repr(maxlen) + "s parser: %6.3fsec"
     times_items = times.items()
-    for (parser, t) in sorted(times_items, key=lambda a: a[1]):
+    for parser, t in sorted(times_items, key=lambda a: a[1]):
         print(format % (parser, t))
 
 

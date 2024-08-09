@@ -1,6 +1,6 @@
 # Natural Language Toolkit: TextTiling
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: George Boutsioukis
 #
 # URL: <https://www.nltk.org/>
@@ -73,7 +73,6 @@ class TextTilingTokenizer(TokenizerI):
         cutoff_policy=HC,
         demo_mode=False,
     ):
-
         if stopwords is None:
             from nltk.corpus import stopwords
 
@@ -291,9 +290,8 @@ class TextTilingTokenizer(TokenizerI):
         avg = sum(depth_scores) / len(depth_scores)
         stdev = numpy.std(depth_scores)
 
-        # SB: what is the purpose of this conditional?
         if self.cutoff_policy == LC:
-            cutoff = avg - stdev / 2.0
+            cutoff = avg - stdev
         else:
             cutoff = avg - stdev / 2.0
 

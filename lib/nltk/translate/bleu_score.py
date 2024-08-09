@@ -1,20 +1,45 @@
 # Natural Language Toolkit: BLEU Score
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Chin Yee Lee, Hengfeng Li, Ruxin Hou, Calvin Tanujaya Lim
 # Contributors: Björn Mattsson, Dmitrijs Milajevs, Liling Tan
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 """BLEU score implementation."""
-
 import math
 import sys
 import warnings
 from collections import Counter
-from fractions import Fraction
+from fractions import Fraction as _Fraction
 
 from nltk.util import ngrams
+
+
+class Fraction(_Fraction):
+    """Fraction with _normalize=False support for 3.12"""
+
+    def __new__(cls, numerator=0, denominator=None, _normalize=False):
+        if sys.version_info >= (3, 12):
+            self = super().__new__(cls, numerator, denominator)
+        else:
+            self = super().__new__(cls, numerator, denominator, _normalize=_normalize)
+        self._normalize = _normalize
+        self._original_numerator = numerator
+        self._original_denominator = denominator
+        return self
+
+    @property
+    def numerator(self):
+        if not self._normalize:
+            return self._original_numerator
+        return super().numerator
+
+    @property
+    def denominator(self):
+        if not self._normalize:
+            return self._original_denominator
+        return super().denominator
 
 
 def sentence_bleu(
@@ -198,7 +223,7 @@ def corpus_bleu(
 
     try:
         weights[0][0]
-    except TypeError:
+    except:
         weights = [weights]
     max_weight_length = max(len(weight) for weight in weights)
 
@@ -563,9 +588,11 @@ class SmoothingFunction:
         Smoothing method 1: Add *epsilon* counts to precision with 0 counts.
         """
         return [
-            (p_i.numerator + self.epsilon) / p_i.denominator
-            if p_i.numerator == 0
-            else p_i
+            (
+                (p_i.numerator + self.epsilon) / p_i.denominator
+                if p_i.numerator == 0
+                else p_i
+            )
             for p_i in p_n
         ]
 
@@ -577,9 +604,11 @@ class SmoothingFunction:
         In COLING 2004.
         """
         return [
-            Fraction(p_n[i].numerator + 1, p_n[i].denominator + 1, _normalize=False)
-            if i != 0
-            else p_n[0]
+            (
+                Fraction(p_n[i].numerator + 1, p_n[i].denominator + 1, _normalize=False)
+                if i != 0
+                else p_n[0]
+            )
             for i in range(len(p_n))
         ]
 
@@ -605,7 +634,7 @@ class SmoothingFunction:
         incvnt = 1  # From the mteval-v13a.pl, it's referred to as k.
         for i, p_i in enumerate(p_n):
             if p_i.numerator == 0:
-                p_n[i] = 1 / (2 ** incvnt * p_i.denominator)
+                p_n[i] = 1 / (2**incvnt * p_i.denominator)
                 incvnt += 1
         return p_n
 
@@ -625,7 +654,7 @@ class SmoothingFunction:
                 #     hyp_len
                 # )  # Note that this K is different from the K from NIST.
                 # p_n[i] = incvnt / p_i.denominator\
-                numerator = 1 / (2 ** incvnt * self.k / math.log(hyp_len))
+                numerator = 1 / (2**incvnt * self.k / math.log(hyp_len))
                 p_n[i] = numerator / p_i.denominator
                 incvnt += 1
         return p_n

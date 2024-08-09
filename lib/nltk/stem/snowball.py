@@ -1,7 +1,7 @@
 #
 # Natural Language Toolkit: Snowball Stemmer
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Peter Michael Stahl <pemistahl@gmail.com>
 #         Peter Ljunglof <peter.ljunglof@heatherleaf.se> (revisions)
 #         Lakhdar Benzahia <lakhdar.benzahia@gmail.com>  (co-writer)
@@ -32,7 +32,6 @@ from nltk.stem.util import prefix_replace, suffix_replace
 
 
 class SnowballStemmer(StemmerI):
-
     """
     Snowball Stemmer
 
@@ -54,8 +53,8 @@ class SnowballStemmer(StemmerI):
 
     The stemmer is invoked as shown below:
 
-    >>> from nltk.stem import SnowballStemmer
-    >>> print(" ".join(SnowballStemmer.languages)) # See which languages are supported
+    >>> from nltk.stem import SnowballStemmer # See which languages are supported
+    >>> print(" ".join(SnowballStemmer.languages)) # doctest: +NORMALIZE_WHITESPACE
     arabic danish dutch english finnish french german hungarian
     italian norwegian porter portuguese romanian russian
     spanish swedish
@@ -114,7 +113,6 @@ class SnowballStemmer(StemmerI):
 
 
 class _LanguageSpecificStemmer(StemmerI):
-
     """
     This helper subclass offers the possibility
     to invoke a specific stemmer directly.
@@ -172,7 +170,6 @@ class PorterStemmer(_LanguageSpecificStemmer, porter.PorterStemmer):
 
 
 class _ScandinavianStemmer(_LanguageSpecificStemmer):
-
     """
     This subclass encapsulates a method for defining the string region R1.
     It is used by the Danish, Norwegian, and Swedish stemmer.
@@ -215,7 +212,6 @@ class _ScandinavianStemmer(_LanguageSpecificStemmer):
 
 
 class _StandardStemmer(_LanguageSpecificStemmer):
-
     """
     This subclass encapsulates two methods for defining the standard versions
     of the string regions R1, R2, and RV.
@@ -910,7 +906,6 @@ class ArabicStemmer(_StandardStemmer):
 
 
 class DanishStemmer(_ScandinavianStemmer):
-
     """
     The Danish Snowball stemmer.
 
@@ -1072,7 +1067,6 @@ class DanishStemmer(_ScandinavianStemmer):
 
 
 class DutchStemmer(_StandardStemmer):
-
     """
     The Dutch Snowball stemmer.
 
@@ -1264,7 +1258,6 @@ class DutchStemmer(_StandardStemmer):
 
 
 class EnglishStemmer(_StandardStemmer):
-
     """
     The English Snowball stemmer.
 
@@ -1404,7 +1397,6 @@ class EnglishStemmer(_StandardStemmer):
     }
 
     def stem(self, word):
-
         """
         Stem an English word and return the stemmed form.
 
@@ -1469,7 +1461,6 @@ class EnglishStemmer(_StandardStemmer):
         # STEP 1a
         for suffix in self.__step1a_suffixes:
             if word.endswith(suffix):
-
                 if suffix == "sses":
                     word = word[:-2]
                     r1 = r1[:-2]
@@ -1501,7 +1492,6 @@ class EnglishStemmer(_StandardStemmer):
         for suffix in self.__step1b_suffixes:
             if word.endswith(suffix):
                 if suffix in ("eed", "eedly"):
-
                     if r1.endswith(suffix):
                         word = suffix_replace(word, suffix, "ee")
 
@@ -1550,7 +1540,6 @@ class EnglishStemmer(_StandardStemmer):
                             and word[0] in self.__vowels
                             and word[1] not in self.__vowels
                         ):
-
                             word = "".join((word, "e"))
 
                             if len(r1) > 0:
@@ -1785,7 +1774,6 @@ class EnglishStemmer(_StandardStemmer):
 
 
 class FinnishStemmer(_StandardStemmer):
-
     """
     The Finnish Snowball stemmer.
 
@@ -2128,7 +2116,6 @@ class FinnishStemmer(_StandardStemmer):
 
 
 class FrenchStemmer(_StandardStemmer):
-
     """
     The French Snowball stemmer.
 
@@ -2622,7 +2609,6 @@ class FrenchStemmer(_StandardStemmer):
 
 
 class GermanStemmer(_StandardStemmer):
-
     """
     The German Snowball stemmer.
 
@@ -2778,7 +2764,6 @@ class GermanStemmer(_StandardStemmer):
 
 
 class HungarianStemmer(_LanguageSpecificStemmer):
-
     """
     The Hungarian Snowball stemmer.
 
@@ -3191,7 +3176,6 @@ class HungarianStemmer(_LanguageSpecificStemmer):
 
 
 class ItalianStemmer(_StandardStemmer):
-
     """
     The Italian Snowball stemmer.
 
@@ -3567,7 +3551,6 @@ class ItalianStemmer(_StandardStemmer):
 
 
 class NorwegianStemmer(_ScandinavianStemmer):
-
     """
     The Norwegian Snowball stemmer.
 
@@ -3689,7 +3672,6 @@ class NorwegianStemmer(_ScandinavianStemmer):
 
 
 class PortugueseStemmer(_StandardStemmer):
-
     """
     The Portuguese Snowball stemmer.
 
@@ -4035,7 +4017,6 @@ class PortugueseStemmer(_StandardStemmer):
 
 
 class RomanianStemmer(_StandardStemmer):
-
     """
     The Romanian Snowball stemmer.
 
@@ -4353,7 +4334,6 @@ class RomanianStemmer(_StandardStemmer):
 
         # STEP 1: Reduction of combining suffixes
         while True:
-
             replacement_done = False
 
             for suffix in self.__step1_suffixes:
@@ -4518,7 +4498,6 @@ class RomanianStemmer(_StandardStemmer):
 
 
 class RussianStemmer(_LanguageSpecificStemmer):
-
     """
     The Russian Snowball stemmer.
 
@@ -5359,7 +5338,6 @@ class RussianStemmer(_LanguageSpecificStemmer):
 
 
 class SpanishStemmer(_StandardStemmer):
-
     """
     The Spanish Snowball stemmer.
 
@@ -5402,6 +5380,7 @@ class SpanishStemmer(_StandardStemmer):
         "imientos",
         "amiento",
         "imiento",
+        "acion",
         "aciones",
         "uciones",
         "adoras",
@@ -5603,7 +5582,6 @@ class SpanishStemmer(_StandardStemmer):
                 rv[: -len(suffix)].endswith("yendo")
                 and word[: -len(suffix)].endswith("uyendo")
             ):
-
                 word = self.__replace_accented(word[: -len(suffix)])
                 r1 = self.__replace_accented(r1[: -len(suffix)])
                 r2 = self.__replace_accented(r2[: -len(suffix)])
@@ -5642,6 +5620,7 @@ class SpanishStemmer(_StandardStemmer):
                     "aci\xF3n",
                     "adoras",
                     "adores",
+                    "acion",
                     "aciones",
                     "ante",
                     "antes",
@@ -5756,7 +5735,6 @@ class SpanishStemmer(_StandardStemmer):
 
 
 class SwedishStemmer(_ScandinavianStemmer):
-
     """
     The Swedish Snowball stemmer.
 
@@ -5906,7 +5884,6 @@ def demo():
     print("******************************")
 
     while True:
-
         language = input(
             "Please enter the name of the language "
             + "to be demonstrated\n"

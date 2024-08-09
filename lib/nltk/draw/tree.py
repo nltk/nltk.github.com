@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Graphical Representations for Trees
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -478,7 +478,7 @@ def tree_to_treesegment(
     leaf_attribs = {}
     loc_attribs = {}
 
-    for (key, value) in list(attribs.items()):
+    for key, value in list(attribs.items()):
         if key[:5] == "tree_":
             tree_attribs[key[5:]] = value
         elif key[:5] == "node_":

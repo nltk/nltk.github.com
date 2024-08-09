@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Drawing utilities
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -80,18 +80,18 @@ class CanvasWidget(metaclass=ABCMeta):
     arguments of the form ``attribute=value``:
 
         >>> from nltk.draw.util import TextWidget
-        >>> cn = TextWidget(c, 'test', color='red')
+        >>> cn = TextWidget(Canvas(), 'test', color='red')  # doctest: +SKIP
 
     Attribute values can also be changed after a canvas widget has
     been constructed, using the ``__setitem__`` operator:
 
-        >>> cn['font'] = 'times'
+        >>> cn['font'] = 'times'  # doctest: +SKIP
 
     The current value of an attribute value can be queried using the
     ``__getitem__`` operator:
 
-        >>> cn['color']
-        red
+        >>> cn['color']  # doctest: +SKIP
+        'red'
 
     For a list of the attributes supported by a type of canvas widget,
     see its class documentation.
@@ -215,7 +215,7 @@ class CanvasWidget(metaclass=ABCMeta):
         self.__draggable = 0
 
         # Set up attributes.
-        for (attr, value) in list(attribs.items()):
+        for attr, value in list(attribs.items()):
             self[attr] = value
 
         # Manage this canvas widget
@@ -2216,7 +2216,7 @@ class ColorizedList:
         """
         Set up any colortags that will be used by this colorized list.
         E.g.:
-            >>> textwidget.tag_config('terminal', foreground='black')
+            textwidget.tag_config('terminal', foreground='black')
         """
 
     @abstractmethod
@@ -2253,7 +2253,7 @@ class ColorizedList:
         self._textwidget["state"] = "normal"
         self._textwidget.delete("1.0", "end")
         for item in items:
-            for (text, colortag) in self._item_repr(item):
+            for text, colortag in self._item_repr(item):
                 assert "\n" not in text, "item repr may not contain newline"
                 self._textwidget.insert("end", text, colortag)
             self._textwidget.insert("end", "\n")

@@ -1,4 +1,4 @@
-.. Copyright (C) 2001-2021 NLTK Project
+.. Copyright (C) 2001-2023 NLTK Project
 .. For license information, see LICENSE.TXT
 
 =================
@@ -45,13 +45,12 @@ A synset is identified with a 3-part name of the form: word.pos.nn:
     Synset('dog.n.01')
 
 The WordNet corpus reader gives access to the Open Multilingual
-WordNet, using ISO-639 language codes.
+WordNet, using ISO-639 language codes. These languages are not
+loaded by default, but only lazily, when needed.
 
-    >>> sorted(wn.langs())
-    ['als', 'arb', 'bul', 'cat', 'cmn', 'dan', 'ell', 'eng', 'eus',
-    'fin', 'fra', 'glg', 'heb', 'hrv', 'ind', 'isl', 'ita', 'ita_iwn',
-    'jpn', 'lit', 'nld', 'nno', 'nob', 'pol', 'por', 'ron', 'slk',
-    'slv', 'spa', 'swe', 'tha', 'zsm']
+    >>> wn.langs()
+    ['eng']
+
     >>> wn.synsets(b'\xe7\x8a\xac'.decode('utf-8'), lang='jpn')
     [Synset('dog.n.01'), Synset('spy.n.01')]
 
@@ -59,6 +58,12 @@ WordNet, using ISO-639 language codes.
     ['いぬ', 'まわし者', 'スパイ', '回し者', '回者', '密偵',
     '工作員', '廻し者', '廻者', '探', '探り', '犬', '秘密捜査員',
     '諜報員', '諜者', '間者', '間諜', '隠密']
+
+    >>> sorted(wn.langs())
+    ['als', 'arb', 'bul', 'cat', 'cmn', 'dan', 'ell', 'eng', 'eus',
+    'fin', 'fra', 'glg', 'heb', 'hrv', 'ind', 'isl', 'ita', 'ita_iwn',
+    'jpn', 'lit', 'nld', 'nno', 'nob', 'pol', 'por', 'ron', 'slk',
+    'slv', 'spa', 'swe', 'tha', 'zsm']
 
     >>> wn.synset('dog.n.01').lemma_names('ita')
     ['Canis_familiaris', 'cane']
@@ -79,6 +84,15 @@ WordNet, using ISO-639 language codes.
     'por'
     >>> len(list(wordnet.all_lemma_names(pos='n', lang='jpn')))
     66031
+
+The synonyms of a word are returned as a nested list of synonyms of the different senses of
+the input word in the given language, since these different senses are not mutual synonyms:
+
+    >>> wn.synonyms('car')
+    [['auto', 'automobile', 'machine', 'motorcar'], ['railcar', 'railroad_car', 'railway_car'], ['gondola'], ['elevator_car'], ['cable_car']]
+    >>> wn.synonyms('coche', lang='spa')
+    [['auto', 'automóvil', 'carro', 'máquina', 'turismo', 'vehículo'], ['automotor', 'vagón'], ['vagón', 'vagón_de_pasajeros']]
+
 
 -------
 Synsets
@@ -120,6 +134,11 @@ in NLTK:
 
     >>> wn.synset_from_pos_and_offset('n', 4543158)
     Synset('wagon.n.01')
+
+Likewise, instantiate a synset from a known sense key:
+    >>> wn.synset_from_sense_key("driving%1:04:03::")
+    Synset('drive.n.06')
+
 
 ------
 Lemmas
@@ -261,7 +280,7 @@ Wu-Palmer Similarity:
 Return a score denoting how similar two word senses are, based on the
 depth of the two senses in the taxonomy and that of their Least Common
 Subsumer (most specific ancestor node). Note that at this time the
-scores given do _not_ always agree with those given by Pedersen's Perl
+scores given do **not** always agree with those given by Pedersen's Perl
 implementation of Wordnet Similarity.
 
 The LCS does not necessarily feature in the shortest path connecting the
@@ -619,6 +638,24 @@ Issue 2721: WordNetCorpusReader.ic() does not add smoothing to N
     >>> information_content(word, fake_ic) > 0
     True
 
+Issue 3077: Incorrect part-of-speech filtering in all_synsets
+
+    >>> next(wn.all_synsets(pos="a"))
+    Synset('able.a.01')
+    >>> next(wn.all_synsets(pos="s"))
+    Synset('emergent.s.02')
+    >>> wn.add_omw()
+    >>> next(wn.all_synsets(lang="hrv"))
+    Synset('able.a.01')
+    >>> next(wn.all_synsets(lang="hrv", pos="n"))
+    Synset('entity.n.01')
+    >>> next(wn.all_synsets(lang="hrv", pos="v"))
+    Synset('breathe.v.01')
+    >>> next(wn.all_synsets(lang="hrv", pos="s"))
+    Synset('ideological.s.02')
+    >>> next(wn.all_synsets(lang="hrv", pos="a"))
+    Synset('able.a.01')
+
 
 ------------------------------------------------
 Endlessness vs. intractability in relation trees
@@ -627,9 +664,9 @@ Endlessness vs. intractability in relation trees
 1. Endlessness
 --------------
 
-Until NLTK v. 3.5, the tree() function looped forever on symmetric
+Until NLTK v. 3.5, the ``tree()`` function looped forever on symmetric
 relations (verb_groups, attributes, and most also_sees). But in
-the current version, tree() now detects and discards these cycles:
+the current version, ``tree()`` now detects and discards these cycles:
 
     >>> from pprint import pprint
     >>> pprint(wn.synset('bound.a.01').tree(lambda s:s.also_sees()))
@@ -669,15 +706,15 @@ are mentioned in the output, together with the level where they occur:
 
 However, even after discarding the infinite cycles, some trees can remain
 intractable, due to combinatorial explosion in a relation. This happens in
-WordNet, because the also.sees() relation has a big Strongly Connected
+WordNet, because the ``also_sees()`` relation has a big Strongly Connected
 Component (_SCC_) consisting in 758 synsets, where any member node is
 transitively connected by the same relation, to all other members of the
 same SCC. This produces intractable relation trees for each of these 758
 synsets, i. e. trees that are too big to compute or display on any computer.
 
 For example, the synset 'concrete.a.01' is a member of the largest SCC,
-so its also_sees() tree is intractable, and can normally only be handled
-by limiting the "depth" parameter to display a small number of levels:
+so its ``also_sees()`` tree is intractable, and can normally only be handled
+by limiting the ``depth`` parameter to display a small number of levels:
 
     >>> from pprint import pprint
     >>> pprint(wn.synset('concrete.a.01').tree(lambda s:s.also_sees(),cut_mark='...',depth=2))
@@ -695,20 +732,20 @@ by limiting the "depth" parameter to display a small number of levels:
      [Synset('tangible.a.01'), "Cycle(Synset('concrete.a.01'),0,...)"]]
 
 
-2.1 First solution: acyclic_tree()
-..................................
+2.1 First solution: ``acyclic_tree()``
+......................................
 
-On the other hand, the new acyclic_tree() function is able to also handle
-the intractable cases. The also_sees() acyclic tree of 'concrete.a.01' is
+On the other hand, the new ``acyclic_tree()`` function is able to also handle
+the intractable cases. The ``also_sees()`` acyclic tree of 'concrete.a.01' is
 several hundred lines long, so here is a simpler example, concerning a much
 smaller SCC: counting only five members, the SCC that includes 'bound.a.01'
-is tractable with the normal tree() function, as seen above.
+is tractable with the normal ``tree()`` function, as seen above.
 
-But while tree() only prunes redundancy within local branches, acyclic_tree
+But while ``tree()`` only prunes redundancy within local branches, ``acyclic_tree()``
 prunes the tree globally, thus discarding any additional redundancy, and
-produces a tree that includes all reachable nodes (i. e. a _spanning tree_).
-This tree is _minimal_ because it includes the reachable nodes only once,
-but it is not necessarily a _Minimum Spanning Tree_ (MST), because the
+produces a tree that includes all reachable nodes (i.e., a **spanning tree**).
+This tree is **minimal** because it includes the reachable nodes only once,
+but it is not necessarily a **Minimum Spanning Tree** (MST), because the
 Depth-first search strategy does not guarantee that nodes are reached
 through the lowest number of links (as Breadth-first search would).
 
@@ -719,7 +756,7 @@ through the lowest number of links (as Breadth-first search would).
        [Synset('restricted.a.01'), [Synset('classified.a.02')]]],
       [Synset('dependent.a.01')]]]
 
-Again, specifying the "cut_mark" parameter increases verbosity, so that the
+Again, specifying the ``cut_mark`` parameter increases verbosity, so that the
 cycles are mentioned in the output, together with the level where they occur:
 
     >>> pprint(wn.synset('bound.a.01').acyclic_tree(lambda s:s.also_sees(),cut_mark='...'))
@@ -743,9 +780,9 @@ A Minimum Spanning Tree (MST) spans all the nodes of a relation subgraph once,
 while guaranteeing that each node is reached through the shortest path possible.
 In unweighted relation graphs like WordNet, a MST can be computed very efficiently
 in linear time, using Breadth-First Search (BFS). Like acyclic_tree(), the new
-"unweighted_minimum_spanning_tree()" function (imported in the Wordnet
-module as "mst") handles intractable trees, such as the example discussed above:
-"wn.synset('concrete.a.01').mst(lambda s:s.also_sees())".
+``unweighted_minimum_spanning_tree()`` function (imported in the Wordnet
+module as ``mst``) handles intractable trees, such as the example discussed above:
+``wn.synset('concrete.a.01').mst(lambda s:s.also_sees())``.
 
 But, while the also_sees() acyclic_tree of 'bound.a.01' reaches
 'classified.a.02' through four links, using depth-first search as seen above

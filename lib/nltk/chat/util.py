@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Chatbot Utilities
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Steven Bird <stevenbird1@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -94,7 +94,7 @@ class Chat:
         """
 
         # check each pattern
-        for (pattern, response) in self._pairs:
+        for pattern, response in self._pairs:
             match = pattern.match(str)
 
             # did the pattern match?

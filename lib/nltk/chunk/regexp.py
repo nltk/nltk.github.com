@@ -1,12 +1,14 @@
 # Natural Language Toolkit: Regular Expression Chunkers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Steven Bird <stevenbird1@gmail.com> (minor additions)
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
 
 import re
+
+import regex
 
 from nltk.chunk.api import ChunkParserI
 from nltk.tree import Tree
@@ -163,7 +165,6 @@ class ChunkString:
         index = 0
         piece_in_chunk = 0
         for piece in re.split("[{}]", self._str):
-
             # Find the list of tokens contained in this piece.
             length = piece.count("<")
             subsequence = self._pieces[index : index + length]
@@ -1217,11 +1218,12 @@ class RegexpParser(ChunkParserI):
         """
         rules = []
         lhs = None
+        pattern = regex.compile("(?P<nonterminal>(\\.|[^:])*)(:(?P<rule>.*))")
         for line in grammar.split("\n"):
             line = line.strip()
 
             # New stage begins if there's an unescaped ':'
-            m = re.match("(?P<nonterminal>(\\.|[^:])*)(:(?P<rule>.*))", line)
+            m = pattern.match(line)
             if m:
                 # Record the stage that we just completed.
                 self._add_stage(rules, lhs, root_label, trace)

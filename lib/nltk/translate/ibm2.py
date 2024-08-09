@@ -79,8 +79,8 @@ class IBMModel2(IBMModel):
     >>> print(round(ibm2.translation_table['ja'][None], 3))
     0.0
 
-    >>> print(ibm2.alignment_table[1][1][2][2])
-    0.938...
+    >>> print(round(ibm2.alignment_table[1][1][2][2], 3))
+    0.939
     >>> print(round(ibm2.alignment_table[1][2][2][2], 3))
     0.0
     >>> print(round(ibm2.alignment_table[2][2][4][5], 3))
@@ -209,7 +209,7 @@ class IBMModel2(IBMModel):
         :return: Probability of t for all s in ``src_sentence``
         :rtype: dict(str): float
         """
-        alignment_prob_for_t = defaultdict(lambda: 0.0)
+        alignment_prob_for_t = defaultdict(float)
         for j in range(1, len(trg_sentence)):
             t = trg_sentence[j]
             for i in range(0, len(src_sentence)):
@@ -304,10 +304,10 @@ class Model2Counts(Counts):
     def __init__(self):
         super().__init__()
         self.alignment = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0.0)))
+            lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
         )
         self.alignment_for_any_i = defaultdict(
-            lambda: defaultdict(lambda: defaultdict(lambda: 0.0))
+            lambda: defaultdict(lambda: defaultdict(float))
         )
 
     def update_lexical_translation(self, count, s, t):

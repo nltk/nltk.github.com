@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Interface to Weka Classsifiers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -291,7 +291,7 @@ class ARFF_Formatter:
         # Determine the types of all features.
         features = {}
         for tok, label in tokens:
-            for (fname, fval) in tok.items():
+            for fname, fval in tok.items():
                 if issubclass(type(fval), bool):
                     ftype = "{True, False}"
                 elif issubclass(type(fval), (int, float, bool)):
@@ -350,7 +350,7 @@ class ARFF_Formatter:
 
         # Data section
         s = "\n@DATA\n"
-        for (tok, label) in tokens:
+        for tok, label in tokens:
             for fname, ftype in self._features:
                 s += "%s," % self._fmt_arff_val(tok.get(fname))
             s += "%s\n" % self._fmt_arff_val(label)

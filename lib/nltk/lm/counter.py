@@ -1,6 +1,6 @@
 # Natural Language Toolkit
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Ilia Kurenkov <ilia.kurenkov@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -51,6 +51,7 @@ class NgramCounter:
 
     This is equivalent to specifying explicitly the order of the ngram (in this case
     2 for bigram) and indexing on the context.
+
     >>> ngram_counts[2][('a',)] is ngram_counts[['a']]
     True
 

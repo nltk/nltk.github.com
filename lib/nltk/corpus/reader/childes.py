@@ -1,6 +1,6 @@
 # CHILDES XML Corpus Reader
 
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Tomonori Nagano <tnagano@gc.cuny.edu>
 #         Alexis Dimitriadis <A.Dimitriadis@uu.nl>
 # URL: <https://www.nltk.org/>
@@ -20,7 +20,7 @@ from nltk.corpus.reader.xmldocs import ElementTree, XMLCorpusReader
 from nltk.util import LazyConcatenation, LazyMap, flatten
 
 # to resolve the namespace issue
-NS = "https://www.talkbank.org/ns/talkbank"
+NS = "http://www.talkbank.org/ns/talkbank"
 
 
 class CHILDESCorpusReader(XMLCorpusReader):
@@ -242,7 +242,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         for participant in xmldoc.findall(
             f".//{{{NS}}}Participants/{{{NS}}}participant"
         ):
-            for (key, value) in participant.items():
+            for key, value in participant.items():
                 pat[participant.get("id")][key] = value
         return pat
 
@@ -579,7 +579,7 @@ def demo(corpus_root=None):
         for file in childes.fileids()[:5]:
             corpus = ""
             corpus_id = ""
-            for (key, value) in childes.corpus(file)[0].items():
+            for key, value in childes.corpus(file)[0].items():
                 if key == "Corpus":
                     corpus = value
                 if key == "Id":
@@ -601,8 +601,8 @@ def demo(corpus_root=None):
                 " ...",
             )
             print("sentence:", childes.sents(file)[:2], " ...")
-            for (participant, values) in childes.participants(file)[0].items():
-                for (key, value) in values.items():
+            for participant, values in childes.participants(file)[0].items():
+                for key, value in values.items():
                     print("\tparticipant", participant, key, ":", value)
             print("num of sent:", len(childes.sents(file)))
             print("num of morphemes:", len(childes.words(file, stem=True)))

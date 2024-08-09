@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Verbnet Corpus Reader
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -364,7 +364,11 @@ class VerbnetCorpusReader(XMLCorpusReader):
                 for arg in pred.findall("ARGS/ARG")
             ]
             semantics_within_single_frame.append(
-                {"predicate_value": pred.get("value"), "arguments": arguments}
+                {
+                    "predicate_value": pred.get("value"),
+                    "arguments": arguments,
+                    "negated": pred.get("bool") == "!",
+                }
             )
         return semantics_within_single_frame
 
@@ -620,6 +624,6 @@ class VerbnetCorpusReader(XMLCorpusReader):
         for predicate in vnframe["semantics"]:
             arguments = [argument["value"] for argument in predicate["arguments"]]
             pieces.append(
-                "{}({})".format(predicate["predicate_value"], ", ".join(arguments))
+                f"{'¬' if predicate['negated'] else ''}{predicate['predicate_value']}({', '.join(arguments)})"
             )
         return "\n".join(f"{indent}* {piece}" for piece in pieces)

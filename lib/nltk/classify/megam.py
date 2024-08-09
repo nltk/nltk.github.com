@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Interface to Megam Classifier
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -146,7 +146,7 @@ def _write_megam_features(vector, stream, bernoulli):
         raise ValueError(
             "MEGAM classifier requires the use of an " "always-on feature."
         )
-    for (fid, fval) in vector:
+    for fid, fval in vector:
         if bernoulli:
             if fval == 1:
                 stream.write(" %s" % fid)

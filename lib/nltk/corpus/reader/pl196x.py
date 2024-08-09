@@ -1,6 +1,6 @@
 # Natural Language Toolkit:
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Piotr Kasprzyk <p.j.kasprzyk@gmail.com>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -31,7 +31,6 @@ class TEICorpusView(StreamBackedCorpusView):
         head_len=0,
         textids=None,
     ):
-
         self._tagged = tagged
         self._textids = textids
 
@@ -137,7 +136,6 @@ class Pl196xCorpusReader(CategorizedCorpusReader, XMLCorpusReader):
             )
             != 1
         ):
-
             raise ValueError(
                 "Specify exactly one of: fileids, " "categories or textids"
             )

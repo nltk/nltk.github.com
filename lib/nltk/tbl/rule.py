@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Transformation-based learning
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Marcus Uneson <marcus.uneson@gmail.com>
 #   based on previous (nltk2) version by
 #   Christopher Maloof, Edward Loper, Steven Bird
@@ -30,7 +30,6 @@ class TagRule(metaclass=ABCMeta):
     """
 
     def __init__(self, original_tag, replacement_tag):
-
         self.original_tag = original_tag
         """The tag which this TagRule may cause to be replaced."""
 
@@ -159,8 +158,7 @@ class Rule(TagRule):
             return False
 
         # Check to make sure that every condition holds.
-        for (feature, val) in self._conditions:
-
+        for feature, val in self._conditions:
             # Look for *any* token that satisfies the condition.
             for pos in feature.positions:
                 if not (0 <= index + pos < len(tokens)):
@@ -187,7 +185,6 @@ class Rule(TagRule):
         return not (self == other)
 
     def __hash__(self):
-
         # Cache our hash value (justified by profiling.)
         try:
             return self.__hash

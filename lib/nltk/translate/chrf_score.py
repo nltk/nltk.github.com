@@ -1,6 +1,6 @@
 # Natural Language Toolkit: ChrF score
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Authors: Maja Popovic
 # Contributors: Liling Tan, Aleš Tamchyna (Memsource)
 # URL: <https://www.nltk.org/>
@@ -144,7 +144,7 @@ def chrf_precision_recall_fscore_support(
     try:
         prec = tp / tpfp  # precision
         rec = tp / tpfn  # recall
-        factor = beta ** 2
+        factor = beta**2
         fscore = (1 + factor) * (prec * rec) / (factor * prec + rec)
     except ZeroDivisionError:
         prec = rec = fscore = epsilon
@@ -194,11 +194,10 @@ def corpus_chrf(
     num_sents = len(hypotheses)
 
     # Keep f-scores for each n-gram order separate
-    ngram_fscores = defaultdict(lambda: list())
+    ngram_fscores = defaultdict(list)
 
     # Iterate through each hypothesis and their corresponding references.
     for reference, hypothesis in zip(references, hypotheses):
-
         # preprocess both reference and hypothesis
         reference = _preprocess(reference, ignore_whitespace)
         hypothesis = _preprocess(hypothesis, ignore_whitespace)

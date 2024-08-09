@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Transformation-based learning
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Marcus Uneson <marcus.uneson@gmail.com>
 #   based on previous (nltk2) version by
 #   Christopher Maloof, Edward Loper, Steven Bird
@@ -76,7 +76,6 @@ class Template(BrillTemplateI):
     # _ids = it.count(0)
 
     def __init__(self, *features):
-
         """
         Construct a Template for generating Rules.
 
@@ -202,7 +201,6 @@ class Template(BrillTemplateI):
 
     @classmethod
     def expand(cls, featurelists, combinations=None, skipintersecting=True):
-
         """
         Factory method to mass generate Templates from a list L of lists of  Features.
 
@@ -284,9 +282,11 @@ class Template(BrillTemplateI):
             combrange = (
                 (1, len(xs) + 1)
                 if k is None
-                else (k, k + 1)  # n over 1 .. n over n (all non-empty combinations)
-                if isinstance(k, int)
-                else (k[0], k[1] + 1)  # n over k (only
+                else (
+                    (k, k + 1)  # n over 1 .. n over n (all non-empty combinations)
+                    if isinstance(k, int)
+                    else (k[0], k[1] + 1)
+                )  # n over k (only
             )  # n over k1, n over k1+1... n over k2
             return it.chain.from_iterable(
                 it.combinations(xs, r) for r in range(*combrange)

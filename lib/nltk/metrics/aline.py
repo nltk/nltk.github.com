@@ -1,6 +1,6 @@
 # Natural Language Toolkit: ALINE
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Greg Kondrak <gkondrak@ualberta.ca>
 #         Geoff Bacon <bacon@berkeley.edu> (Python port)
 # URL: <https://www.nltk.org/>
@@ -1079,8 +1079,9 @@ def align(str1, str2, epsilon=0):
     """
     Compute the alignment of two phonetic strings.
 
-    :type str1, str2: str
-    :param str1, str2: Two strings to be aligned
+    :param str str1: First string to be aligned
+    :param str str2: Second string to be aligned
+
     :type epsilon: float (0.0 to 1.0)
     :param epsilon: Adjusts threshold similarity score for near-optimal alignments
 
@@ -1220,6 +1221,10 @@ def delta(p, q):
     """
     features = R(p, q)
     total = 0
+    if np is not None:
+        return np.dot(
+            [diff(p, q, f) for f in features], [salience[f] for f in features]
+        )
     for f in features:
         total += diff(p, q, f) * salience[f]
     return total
@@ -1348,6 +1353,7 @@ okimawa,okemaw
 ahkohkwa,ahkɛh
 pematesiweni,pematesewen
 asenja,aʔsɛn"""
+
 
 if __name__ == "__main__":
     demo()

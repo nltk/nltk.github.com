@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Transformation-based learning
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Marcus Uneson <marcus.uneson@gmail.com>
 #   based on previous (nltk2) version by
 #   Christopher Maloof, Edward Loper, Steven Bird
@@ -26,7 +26,7 @@ def error_list(train_sents, test_sents):
         "right context",
     )
     errors = [hdr]
-    for (train_sent, test_sent) in zip(train_sents, test_sents):
+    for train_sent, test_sent in zip(train_sents, test_sents):
         for wordnum, (word, train_pos) in enumerate(train_sent):
             test_pos = test_sent[wordnum][1]
             if train_pos != test_pos:

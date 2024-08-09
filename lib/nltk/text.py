@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Texts
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Steven Bird <stevenbird1@gmail.com>
 #         Edward Loper <edloper@gmail.com>
 # URL: <https://www.nltk.org/>
@@ -16,6 +16,7 @@ distributional similarity.
 
 import re
 import sys
+import unicodedata
 from collections import Counter, defaultdict, namedtuple
 from functools import reduce
 from math import log
@@ -27,7 +28,7 @@ from nltk.metrics import BigramAssocMeasures, f_measure
 from nltk.probability import ConditionalFreqDist as CFD
 from nltk.probability import FreqDist
 from nltk.tokenize import sent_tokenize
-from nltk.util import LazyConcatenation, tokenwrap
+from nltk.util import LazyConcatenation, cut_string, tokenwrap
 
 ConcordanceLine = namedtuple(
     "ConcordanceLine",
@@ -193,7 +194,9 @@ class ConcordanceIndex:
         else:
             phrase = [word]
 
-        half_width = (width - len(" ".join(phrase)) - 2) // 2
+        phrase_str = " ".join(phrase)
+        phrase_len = sum(1 for char in phrase_str if not unicodedata.combining(char))
+        half_width = (width - phrase_len - 2) // 2
         context = width // 4  # approx number of words of context
 
         # Find the instances of the word to create the ConcordanceLine
@@ -209,8 +212,10 @@ class ConcordanceIndex:
                 left_context = self._tokens[max(0, i - context) : i]
                 right_context = self._tokens[i + len(phrase) : i + context]
                 # Create the pretty lines with the query_word in the middle.
-                left_print = " ".join(left_context)[-half_width:]
-                right_print = " ".join(right_context)[:half_width]
+                left_print = cut_string(" ".join(left_context), -half_width).rjust(
+                    half_width
+                )
+                right_print = cut_string(" ".join(right_context), half_width)
                 # The WYSIWYG line of the concordance.
                 line_print = " ".join([left_print, query_word, right_print])
                 # Create the ConcordanceLine
@@ -270,8 +275,7 @@ class TokenSearcher:
         a single token must be surrounded by angle brackets.  E.g.
 
         >>> from nltk.text import TokenSearcher
-        >>> print('hack'); from nltk.book import text1, text5, text9
-        hack...
+        >>> from nltk.book import text1, text5, text9
         >>> text5.findall("<.*><.*><bro>")
         you rule bro; telling you bro; u twizted bro
         >>> text1.findall("<a>(<.*>)<man>")
@@ -446,8 +450,13 @@ class Text:
         Print collocations derived from the text, ignoring stopwords.
 
             >>> from nltk.book import text4
-            >>> text4.collocations() # doctest: +ELLIPSIS
-            United States; fellow citizens; four years; ...
+            >>> text4.collocations() # doctest: +NORMALIZE_WHITESPACE
+            United States; fellow citizens; years ago; four years; Federal
+            Government; General Government; American people; Vice President; God
+            bless; Chief Justice; one another; fellow Americans; Old World;
+            Almighty God; Fellow citizens; Chief Magistrate; every citizen; Indian
+            tribes; public debt; foreign nations
+
 
         :param num: The maximum number of collocations to print.
         :type num: int
@@ -625,8 +634,7 @@ class Text:
         The text is a list of tokens, and a regexp pattern to match
         a single token must be surrounded by angle brackets.  E.g.
 
-        >>> print('hack'); from nltk.book import text1, text5, text9
-        hack...
+        >>> from nltk.book import text1, text5, text9
         >>> text5.findall("<.*><.*><bro>")
         you rule bro; telling you bro; u twizted bro
         >>> text1.findall("<a>(<.*>)<man>")
@@ -696,8 +704,7 @@ class TextCollection(Text):
 
     >>> import nltk.corpus
     >>> from nltk.text import TextCollection
-    >>> print('hack'); from nltk.book import text1, text2, text3
-    hack...
+    >>> from nltk.book import text1, text2, text3
     >>> gutenberg = TextCollection(nltk.corpus.gutenberg)
     >>> mytexts = TextCollection([text1, text2, text3])
 

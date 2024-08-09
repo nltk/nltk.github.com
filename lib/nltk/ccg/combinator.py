@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Combinatory Categorial Grammar
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Graeme Gange <ggange@csse.unimelb.edu.au>
 # URL: <https://www.nltk.org/>
 # For license information, see LICENSE.TXT
@@ -127,6 +127,7 @@ class UndirectedFunctionApplication(UndirectedBinaryCombinator):
 
 
 # Predicates for function application.
+
 
 # Ensures the left functor takes an argument on the right
 def forwardOnly(left, right):

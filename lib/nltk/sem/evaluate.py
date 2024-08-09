@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Models for first-order languages with lambda
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Ewan Klein <ewan@inf.ed.ac.uk>,
 # URL: <https://www.nltk.org>
 # For license information, see LICENSE.TXT
@@ -32,6 +32,7 @@ from nltk.sem.logic import (
     IffExpression,
     ImpExpression,
     IndividualVariableExpression,
+    IotaExpression,
     LambdaExpression,
     NegatedExpression,
     OrExpression,
@@ -128,7 +129,7 @@ class Valuation(dict):
         :param xs: a list of (symbol, value) pairs.
         """
         super().__init__()
-        for (sym, val) in xs:
+        for sym, val in xs:
             if isinstance(val, str) or isinstance(val, bool):
                 self[sym] = val
             elif isinstance(val, set):
@@ -304,7 +305,7 @@ class Assignment(dict):
         super().__init__()
         self.domain = domain
         if assign:
-            for (var, val) in assign:
+            for var, val in assign:
                 assert val in self.domain, "'{}' is not in the domain: {}".format(
                     val,
                     self.domain,
@@ -348,7 +349,7 @@ class Assignment(dict):
         gstring = "g"
         # Deterministic output for unit testing.
         variant = sorted(self.variant)
-        for (val, var) in variant:
+        for val, var in variant:
             gstring += f"[{val}/{var}]"
         return gstring
 
@@ -486,6 +487,13 @@ class Model:
                 if self.satisfy(parsed.term, new_g):
                     return True
             return False
+        elif isinstance(parsed, IotaExpression):
+            new_g = g.copy()
+            for u in self.domain:
+                new_g.add(parsed.variable.name, u)
+                if self.satisfy(parsed.term, new_g):
+                    return True
+            return False
         elif isinstance(parsed, LambdaExpression):
             cf = {}
             var = parsed.variable.name
@@ -593,6 +601,7 @@ class Model:
 # number of spacer chars
 mult = 30
 
+
 # Demo 1: Propositional Logic
 #################
 def propdemo(trace=None):
@@ -691,7 +700,7 @@ def folmodel(quiet=False, trace=None):
             ("love", ("y", "adam")),
         ]
 
-        for (fun, args) in applications:
+        for fun, args in applications:
             try:
                 funval = m2.i(Expression.fromstring(fun), g2)
                 argsval = tuple(m2.i(Expression.fromstring(arg), g2) for arg in args)

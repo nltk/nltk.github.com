@@ -1,6 +1,6 @@
 # Natural Language Toolkit: Maximum Entropy Classifiers
 #
-# Copyright (C) 2001-2021 NLTK Project
+# Copyright (C) 2001-2023 NLTK Project
 # Author: Edward Loper <edloper@gmail.com>
 #         Dmitry Chichkov <dchichkov@gmail.com> (TypedMaxentFeatureEncoding)
 # URL: <https://www.nltk.org/>
@@ -146,13 +146,13 @@ class MaxentClassifier(ClassifierI):
 
             if self._logarithmic:
                 total = 0.0
-                for (f_id, f_val) in feature_vector:
+                for f_id, f_val in feature_vector:
                     total += self._weights[f_id] * f_val
                 prob_dict[label] = total
 
             else:
                 prod = 1.0
-                for (f_id, f_val) in feature_vector:
+                for f_id, f_val in feature_vector:
                     prod *= self._weights[f_id] ** f_val
                 prob_dict[label] = prod
 
@@ -182,7 +182,7 @@ class MaxentClassifier(ClassifierI):
             feature_vector.sort(
                 key=lambda fid__: abs(self._weights[fid__[0]]), reverse=True
             )
-            for (f_id, f_val) in feature_vector:
+            for f_id, f_val in feature_vector:
                 if self._logarithmic:
                     score = self._weights[f_id] * f_val
                 else:
@@ -598,18 +598,18 @@ class BinaryMaxentFeatureEncoding(MaxentFeatureEncodingI):
             self._inv_mapping
         except AttributeError:
             self._inv_mapping = [-1] * len(self._mapping)
-            for (info, i) in self._mapping.items():
+            for info, i in self._mapping.items():
                 self._inv_mapping[i] = info
 
         if f_id < len(self._mapping):
             (fname, fval, label) = self._inv_mapping[f_id]
             return f"{fname}=={fval!r} and label is {label!r}"
         elif self._alwayson and f_id in self._alwayson.values():
-            for (label, f_id2) in self._alwayson.items():
+            for label, f_id2 in self._alwayson.items():
                 if f_id == f_id2:
                     return "label is %r" % label
         elif self._unseen and f_id in self._unseen.values():
-            for (fname, f_id2) in self._unseen.items():
+            for fname, f_id2 in self._unseen.items():
                 if f_id == f_id2:
                     return "%s is unseen" % fname
         else:
@@ -655,14 +655,13 @@ class BinaryMaxentFeatureEncoding(MaxentFeatureEncodingI):
         seen_labels = set()  # The set of labels we've encountered
         count = defaultdict(int)  # maps (fname, fval) -> count
 
-        for (tok, label) in train_toks:
+        for tok, label in train_toks:
             if labels and label not in labels:
                 raise ValueError("Unexpected label %s" % label)
             seen_labels.add(label)
 
             # Record each of the features.
-            for (fname, fval) in tok.items():
-
+            for fname, fval in tok.items():
                 # If a count cutoff is given, then only add a joint
                 # feature once the corresponding (fname, fval, label)
                 # tuple exceeds that cutoff.
@@ -764,7 +763,7 @@ class TadmEventMaxentFeatureEncoding(BinaryMaxentFeatureEncoding):
         return self._labels
 
     def describe(self, fid):
-        for (feature, label) in self._mapping:
+        for feature, label in self._mapping:
             if self._mapping[(feature, label)] == fid:
                 return (feature, label)
 
@@ -780,11 +779,11 @@ class TadmEventMaxentFeatureEncoding(BinaryMaxentFeatureEncoding):
         # This gets read twice, so compute the values in case it's lazy.
         train_toks = list(train_toks)
 
-        for (featureset, label) in train_toks:
+        for featureset, label in train_toks:
             if label not in labels:
                 labels.append(label)
 
-        for (featureset, label) in train_toks:
+        for featureset, label in train_toks:
             for label in labels:
                 for feature in featureset:
                     if (feature, label) not in mapping:
@@ -939,18 +938,18 @@ class TypedMaxentFeatureEncoding(MaxentFeatureEncodingI):
             self._inv_mapping
         except AttributeError:
             self._inv_mapping = [-1] * len(self._mapping)
-            for (info, i) in self._mapping.items():
+            for info, i in self._mapping.items():
                 self._inv_mapping[i] = info
 
         if f_id < len(self._mapping):
             (fname, fval, label) = self._inv_mapping[f_id]
             return f"{fname}=={fval!r} and label is {label!r}"
         elif self._alwayson and f_id in self._alwayson.values():
-            for (label, f_id2) in self._alwayson.items():
+            for label, f_id2 in self._alwayson.items():
                 if f_id == f_id2:
                     return "label is %r" % label
         elif self._unseen and f_id in self._unseen.values():
-            for (fname, f_id2) in self._unseen.items():
+            for fname, f_id2 in self._unseen.items():
                 if f_id == f_id2:
                     return "%s is unseen" % fname
         else:
@@ -999,13 +998,13 @@ class TypedMaxentFeatureEncoding(MaxentFeatureEncodingI):
         seen_labels = set()  # The set of labels we've encountered
         count = defaultdict(int)  # maps (fname, fval) -> count
 
-        for (tok, label) in train_toks:
+        for tok, label in train_toks:
             if labels and label not in labels:
                 raise ValueError("Unexpected label %s" % label)
             seen_labels.add(label)
 
             # Record each of the features.
-            for (fname, fval) in tok.items():
+            for fname, fval in tok.items():
                 if type(fval) in (int, float):
                     fval = type(fval)
                 # If a count cutoff is given, then only add a joint
@@ -1128,7 +1127,7 @@ def calculate_empirical_fcount(train_toks, encoding):
     fcount = numpy.zeros(encoding.length(), "d")
 
     for tok, label in train_toks:
-        for (index, val) in encoding.encode(tok, label):
+        for index, val in encoding.encode(tok, label):
             fcount[index] += val
 
     return fcount
@@ -1141,7 +1140,7 @@ def calculate_estimated_fcount(classifier, train_toks, encoding):
         pdist = classifier.prob_classify(tok)
         for label in pdist.samples():
             prob = pdist.prob(label)
-            for (fid, fval) in encoding.encode(tok, label):
+            for fid, fval in encoding.encode(tok, label):
                 fcount[fid] += prob * fval
 
     return fcount
@@ -1364,7 +1363,7 @@ def calculate_deltas(
             # Find the number of active features
             nf = sum(val for (id, val) in feature_vector)
             # Update the A matrix
-            for (id, val) in feature_vector:
+            for id, val in feature_vector:
                 A[nfmap[nf], id] += dist.prob(label) * val
     A /= len(train_toks)
 
@@ -1378,7 +1377,7 @@ def calculate_deltas(
     #                       nf exp(delta[i]nf)
     for rangenum in range(MAX_NEWTON):
         nf_delta = numpy.outer(nfarray, deltas)
-        exp_nf_delta = 2 ** nf_delta
+        exp_nf_delta = 2**nf_delta
         nf_exp_nf_delta = nftranspose * exp_nf_delta
         sum1 = numpy.sum(exp_nf_delta * A, axis=0)
         sum2 = numpy.sum(nf_exp_nf_delta * A, axis=0)
@@ -1401,6 +1400,7 @@ def calculate_deltas(
 ######################################################################
 # { Classifier Trainer: megam
 ######################################################################
+
 
 # [xx] possible extension: add support for using implicit file format;
 # this would need to put requirements on what encoding is used.  But
@@ -1460,7 +1460,7 @@ def train_maxent_classifier_with_megam(
         # Lambda is just the precision of the Gaussian prior, i.e. it's the
         # inverse variance, so the parameter conversion is 1.0/sigma**2.
         # See https://users.umiacs.umd.edu/~hal/docs/daume04cg-bfgs.pdf
-        inv_variance = 1.0 / gaussian_prior_sigma ** 2
+        inv_variance = 1.0 / gaussian_prior_sigma**2
     else:
         inv_variance = 0
     options += ["-lambda", "%.2f" % inv_variance, "-tune"]
@@ -1529,7 +1529,7 @@ class TadmMaxentClassifier(MaxentClassifier):
         options.extend(["-monitor"])
         options.extend(["-method", algorithm])
         if sigma:
-            options.extend(["-l2", "%.6f" % sigma ** 2])
+            options.extend(["-l2", "%.6f" % sigma**2])
         if max_iter:
             options.extend(["-max_it", "%d" % max_iter])
         if ll_delta:
@@ -1554,6 +1554,68 @@ class TadmMaxentClassifier(MaxentClassifier):
 
         # Build the classifier
         return cls(encoding, weights)
+
+
+######################################################################
+# Load/Save Classifier Parameters as Tab-files
+######################################################################
+
+
+def load_maxent_params(tab_dir):
+    import numpy
+
+    from nltk.tabdata import MaxentDecoder
+
+    mdec = MaxentDecoder()
+
+    with open(f"{tab_dir}/weights.txt") as f:
+        wgt = numpy.array(list(map(numpy.float64, mdec.txt2list(f))))
+
+    with open(f"{tab_dir}/mapping.tab") as f:
+        mpg = mdec.tupkey2dict(f)
+
+    with open(f"{tab_dir}/labels.txt") as f:
+        lab = mdec.txt2list(f)
+
+    with open(f"{tab_dir}/alwayson.tab") as f:
+        aon = mdec.tab2ivdict(f)
+
+    return wgt, mpg, lab, aon
+
+
+def save_maxent_params(wgt, mpg, lab, aon, tab_dir="/tmp"):
+
+    from os import mkdir
+    from os.path import isdir
+
+    from nltk.tabdata import MaxentEncoder
+
+    menc = MaxentEncoder()
+    if not isdir(tab_dir):
+        mkdir(tab_dir)
+
+    print(f"Saving Maxent parameters in {tab_dir}")
+
+    with open(f"{tab_dir}/weights.txt", "w") as f:
+        f.write(f"{menc.list2txt(map(repr, wgt.tolist()))}")
+    with open(f"{tab_dir}/mapping.tab", "w") as f:
+        f.write(f"{menc.tupdict2tab(mpg)}")
+    with open(f"{tab_dir}/labels.txt", "w") as f:
+        f.write(f"{menc.list2txt(lab)}")
+    with open(f"{tab_dir}/alwayson.tab", "w") as f:
+        f.write(f"{menc.ivdict2tab(aon)}")
+
+
+def maxent_pos_tagger():
+    from nltk.data import find
+    from nltk.tag.sequential import ClassifierBasedPOSTagger
+
+    tab_dir = find("taggers/maxent_treebank_pos_tagger_tab/english")
+    wgt, mpg, lab, aon = load_maxent_params(tab_dir)
+    mc = MaxentClassifier(
+        BinaryMaxentFeatureEncoding(lab, mpg, alwayson_features=aon), wgt
+    )
+    return ClassifierBasedPOSTagger(classifier=mc)
 
 
 ######################################################################
