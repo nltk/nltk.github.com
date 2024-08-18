@@ -772,7 +772,7 @@
 <span class="sd">        (from &#39;animal.n.01&#39; to &#39;entity.n.01&#39;):</span>
 
 <span class="sd">        &gt;&gt;&gt; dog = wn.synset(&#39;dog.n.01&#39;)</span>
-<span class="sd">        &gt;&gt;&gt; hyp = lambda s:s.hypernyms()</span>
+<span class="sd">        &gt;&gt;&gt; hyp = lambda s:sorted(s.hypernyms())</span>
 <span class="sd">        &gt;&gt;&gt; print(list(dog.closure(hyp)))</span>
 <span class="sd">        [Synset(&#39;canine.n.02&#39;), Synset(&#39;domestic_animal.n.01&#39;), Synset(&#39;carnivore.n.01&#39;),\</span>
 <span class="sd"> Synset(&#39;animal.n.01&#39;), Synset(&#39;placental.n.01&#39;), Synset(&#39;organism.n.01&#39;),\</span>
@@ -806,7 +806,7 @@
 <span class="sd">        &gt;&gt;&gt; from nltk.corpus import wordnet as wn</span>
 <span class="sd">        &gt;&gt;&gt; from pprint import pprint</span>
 <span class="sd">        &gt;&gt;&gt; computer = wn.synset(&#39;computer.n.01&#39;)</span>
-<span class="sd">        &gt;&gt;&gt; topic = lambda s:s.topic_domains()</span>
+<span class="sd">        &gt;&gt;&gt; topic = lambda s:sorted(s.topic_domains())</span>
 <span class="sd">        &gt;&gt;&gt; pprint(computer.tree(topic))</span>
 <span class="sd">        [Synset(&#39;computer.n.01&#39;), [Synset(&#39;computer_science.n.01&#39;)]]</span>
 
@@ -816,7 +816,7 @@
 <span class="sd">        But keep duplicate branches (from &#39;animal.n.01&#39; to &#39;entity.n.01&#39;):</span>
 
 <span class="sd">        &gt;&gt;&gt; dog = wn.synset(&#39;dog.n.01&#39;)</span>
-<span class="sd">        &gt;&gt;&gt; hyp = lambda s:s.hypernyms()</span>
+<span class="sd">        &gt;&gt;&gt; hyp = lambda s:sorted(s.hypernyms())</span>
 <span class="sd">        &gt;&gt;&gt; pprint(dog.tree(hyp))</span>
 <span class="sd">        [Synset(&#39;dog.n.01&#39;),</span>
 <span class="sd">         [Synset(&#39;canine.n.02&#39;),</span>
@@ -1684,6 +1684,7 @@
                     <span class="c1"># map lemmas and parts of speech to synsets</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">synset_offsets</span>
                     <span class="k">if</span> <span class="n">pos</span> <span class="o">==</span> <span class="n">ADJ</span><span class="p">:</span>
+                        <span class="c1"># Duplicate all adjectives indiscriminately?:</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">ADJ_SAT</span><span class="p">]</span> <span class="o">=</span> <span class="n">synset_offsets</span>
 
     <span class="k">def</span> <span class="nf">_load_exception_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -2356,8 +2357,9 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find a possible base form for the given form, with the given</span>
 <span class="sd">        part of speech, by checking WordNet&#39;s list of exceptional</span>
-<span class="sd">        forms, and by recursively stripping affixes for this part of</span>
-<span class="sd">        speech until a form in WordNet is found.</span>
+<span class="sd">        forms, or by substituting suffixes for this part of speech.</span>
+<span class="sd">        If pos=None, try every part of speech until finding lemmas.</span>
+<span class="sd">        Return the first form found in WordNet, or eventually None.</span>
 
 <span class="sd">        &gt;&gt;&gt; from nltk.corpus import wordnet as wn</span>
 <span class="sd">        &gt;&gt;&gt; print(wn.morphy(&#39;dogs&#39;))</span>
@@ -2373,19 +2375,11 @@
 <span class="sd">        book</span>
 <span class="sd">        &gt;&gt;&gt; wn.morphy(&#39;book&#39;, wn.ADJ)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-
-        <span class="k">if</span> <span class="n">pos</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">morphy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_morphy</span>
-            <span class="n">analyses</span> <span class="o">=</span> <span class="n">chain</span><span class="p">(</span><span class="n">a</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">POS_LIST</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">morphy</span><span class="p">(</span><span class="n">form</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
-        <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="k">if</span> <span class="n">pos</span> <span class="k">else</span> <span class="n">POS_LIST</span><span class="p">:</span>
             <span class="n">analyses</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_morphy</span><span class="p">(</span><span class="n">form</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="p">)</span>
-
-        <span class="c1"># get the first one we find</span>
-        <span class="n">first</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">islice</span><span class="p">(</span><span class="n">analyses</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">first</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">first</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span></div>
+            <span class="k">if</span> <span class="n">analyses</span><span class="p">:</span>
+                <span class="c1"># Stop (don&#39;t try more parts of speech):</span>
+                <span class="k">return</span> <span class="n">analyses</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
 
 
     <span class="n">MORPHOLOGICAL_SUBSTITUTIONS</span> <span class="o">=</span> <span class="p">{</span>
@@ -2421,8 +2415,7 @@
         <span class="c1"># Given an original string x</span>
         <span class="c1"># 1. Apply rules once to the input to get y1, y2, y3, etc.</span>
         <span class="c1"># 2. Return all that are in the database</span>
-        <span class="c1"># 3. If there are no matches, keep applying rules until you either</span>
-        <span class="c1">#    find a match or you can&#39;t go any further</span>
+        <span class="c1">#    (edited by ekaf) If there are no matches return an empty list.</span>
 
         <span class="n">exceptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
         <span class="n">substitutions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MORPHOLOGICAL_SUBSTITUTIONS</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
@@ -2446,28 +2439,15 @@
                             <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">form</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">result</span>
 
-        <span class="c1"># 0. Check the exception lists</span>
-        <span class="k">if</span> <span class="n">check_exceptions</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">form</span> <span class="ow">in</span> <span class="n">exceptions</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">filter_forms</span><span class="p">([</span><span class="n">form</span><span class="p">]</span> <span class="o">+</span> <span class="n">exceptions</span><span class="p">[</span><span class="n">form</span><span class="p">])</span>
-
-        <span class="c1"># 1. Apply rules once to the input to get y1, y2, y3, etc.</span>
-        <span class="n">forms</span> <span class="o">=</span> <span class="n">apply_rules</span><span class="p">([</span><span class="n">form</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">check_exceptions</span> <span class="ow">and</span> <span class="n">form</span> <span class="ow">in</span> <span class="n">exceptions</span><span class="p">:</span>
+            <span class="c1"># 0. Check the exception lists</span>
+            <span class="n">forms</span> <span class="o">=</span> <span class="n">exceptions</span><span class="p">[</span><span class="n">form</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># 1. Apply rules once to the input to get y1, y2, y3, etc.</span>
+            <span class="n">forms</span> <span class="o">=</span> <span class="n">apply_rules</span><span class="p">([</span><span class="n">form</span><span class="p">])</span>
 
         <span class="c1"># 2. Return all that are in the database (and check the original too)</span>
-        <span class="n">results</span> <span class="o">=</span> <span class="n">filter_forms</span><span class="p">([</span><span class="n">form</span><span class="p">]</span> <span class="o">+</span> <span class="n">forms</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">results</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">results</span>
-
-        <span class="c1"># 3. If there are no matches, keep applying rules until we find a match</span>
-        <span class="k">while</span> <span class="n">forms</span><span class="p">:</span>
-            <span class="n">forms</span> <span class="o">=</span> <span class="n">apply_rules</span><span class="p">(</span><span class="n">forms</span><span class="p">)</span>
-            <span class="n">results</span> <span class="o">=</span> <span class="n">filter_forms</span><span class="p">(</span><span class="n">forms</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">results</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">results</span>
-
-        <span class="c1"># Return an empty list if we can&#39;t find anything</span>
-        <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="n">filter_forms</span><span class="p">([</span><span class="n">form</span><span class="p">]</span> <span class="o">+</span> <span class="n">forms</span><span class="p">)</span>
 
     <span class="c1">#############################################################</span>
     <span class="c1"># Create information content from corpus</span>
@@ -2910,7 +2890,7 @@
 
             
                 <li class="footer-element">
-                    Aug 16, 2024
+                    Aug 18, 2024
                 </li>
             
         </ul>
