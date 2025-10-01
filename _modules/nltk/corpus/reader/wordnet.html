@@ -99,7 +99,7 @@
   <h1>Source code for nltk.corpus.reader.wordnet</h1><div class="highlight"><pre>
 <span></span><span class="c1"># Natural Language Toolkit: WordNet</span>
 <span class="c1">#</span>
-<span class="c1"># Copyright (C) 2001-2024 NLTK Project</span>
+<span class="c1"># Copyright (C) 2001-2025 NLTK Project</span>
 <span class="c1"># Author: Steven Bethard &lt;Steven.Bethard@colorado.edu&gt;</span>
 <span class="c1">#         Steven Bird &lt;stevenbird1@gmail.com&gt;</span>
 <span class="c1">#         Edward Loper &lt;edloper@gmail.com&gt;</span>
@@ -129,19 +129,20 @@
 
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">math</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">re</span>
-<span class="kn">import</span> <span class="nn">warnings</span>
-<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">deque</span>
-<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">total_ordering</span>
-<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span><span class="p">,</span> <span class="n">islice</span>
-<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">itemgetter</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">total_ordering</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span><span class="p">,</span> <span class="n">islice</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">itemgetter</span>
 
-<span class="kn">from</span> <span class="nn">nltk.corpus.reader</span> <span class="kn">import</span> <span class="n">CorpusReader</span>
-<span class="kn">from</span> <span class="nn">nltk.internals</span> <span class="kn">import</span> <span class="n">deprecated</span>
-<span class="kn">from</span> <span class="nn">nltk.probability</span> <span class="kn">import</span> <span class="n">FreqDist</span>
-<span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">binary_search_file</span> <span class="k">as</span> <span class="n">_binary_search_file</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nltk.corpus.reader</span><span class="w"> </span><span class="kn">import</span> <span class="n">CorpusReader</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nltk.internals</span><span class="w"> </span><span class="kn">import</span> <span class="n">deprecated</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nltk.probability</span><span class="w"> </span><span class="kn">import</span> <span class="n">FreqDist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nltk.tag</span><span class="w"> </span><span class="kn">import</span> <span class="n">map_tag</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">binary_search_file</span> <span class="k">as</span> <span class="n">_binary_search_file</span>
 
 <span class="c1">######################################################################</span>
 <span class="c1"># Table of Contents</span>
@@ -168,6 +169,9 @@
 <span class="c1"># }</span>
 
 <span class="n">POS_LIST</span> <span class="o">=</span> <span class="p">[</span><span class="n">NOUN</span><span class="p">,</span> <span class="n">VERB</span><span class="p">,</span> <span class="n">ADJ</span><span class="p">,</span> <span class="n">ADV</span><span class="p">]</span>
+
+<span class="c1"># Convert from Universal Tags (Petrov et al., 2012) to Wordnet Pos</span>
+<span class="n">UNIVERSAL_TAG_TO_WN_POS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;NOUN&quot;</span><span class="p">:</span> <span class="s2">&quot;n&quot;</span><span class="p">,</span> <span class="s2">&quot;VERB&quot;</span><span class="p">:</span> <span class="s2">&quot;v&quot;</span><span class="p">,</span> <span class="s2">&quot;ADJ&quot;</span><span class="p">:</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;ADV&quot;</span><span class="p">:</span> <span class="s2">&quot;r&quot;</span><span class="p">}</span>
 
 <span class="c1"># A table of strings that are used to express verb frames.</span>
 <span class="n">VERB_FRAME_STRINGS</span> <span class="o">=</span> <span class="p">(</span>
@@ -224,103 +228,103 @@
 
 <div class="viewcode-block" id="WordNetError">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetError">[docs]</a>
-<span class="k">class</span> <span class="nc">WordNetError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">WordNetError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;An exception class for wordnet-related errors.&quot;&quot;&quot;</span></div>
 
 
 
 <span class="nd">@total_ordering</span>
-<span class="k">class</span> <span class="nc">_WordNetObject</span><span class="p">:</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_WordNetObject</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;A common base class for lemmas and synsets.&quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="nf">hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">instance_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">instance_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;@i&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">_instance_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_instance_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;@i&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">hyponyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hyponyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">instance_hyponyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">instance_hyponyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;~i&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">member_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">member_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;#m&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">substance_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">substance_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;#s&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">part_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">part_holonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;#p&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">member_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">member_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;%m&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">substance_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">substance_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">part_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">part_meronyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;%p&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">topic_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">topic_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;;c&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">in_topic_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">in_topic_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;-c&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">region_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">region_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;;r&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">in_region_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">in_region_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;-r&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">usage_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">usage_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;;u&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">in_usage_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">in_usage_domains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;-u&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;=&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">entailments</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">entailments</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">causes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">causes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;&gt;&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">also_sees</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">also_sees</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;^&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">verb_groups</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verb_groups</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;$&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">similar_tos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">similar_tos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;&amp;&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_name</span>
 
-    <span class="k">def</span> <span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">!=</span> <span class="n">other</span><span class="o">.</span><span class="n">_name</span>
 
-    <span class="k">def</span> <span class="fm">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">&lt;</span> <span class="n">other</span><span class="o">.</span><span class="n">_name</span>
 
 
 <div class="viewcode-block" id="Lemma">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma">[docs]</a>
-<span class="k">class</span> <span class="nc">Lemma</span><span class="p">(</span><span class="n">_WordNetObject</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Lemma</span><span class="p">(</span><span class="n">_WordNetObject</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The lexical entry for a single morphological form of a</span>
 <span class="sd">    sense-disambiguated word.</span>
@@ -383,7 +387,7 @@
 
 <div class="viewcode-block" id="Lemma.__init__">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.__init__">[docs]</a>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">wordnet_corpus_reader</span><span class="p">,</span>
         <span class="n">synset</span><span class="p">,</span>
@@ -407,51 +411,51 @@
 
 <div class="viewcode-block" id="Lemma.name">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.name">[docs]</a>
-    <span class="k">def</span> <span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span></div>
 
 
 <div class="viewcode-block" id="Lemma.syntactic_marker">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.syntactic_marker">[docs]</a>
-    <span class="k">def</span> <span class="nf">syntactic_marker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">syntactic_marker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_syntactic_marker</span></div>
 
 
 <div class="viewcode-block" id="Lemma.synset">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.synset">[docs]</a>
-    <span class="k">def</span> <span class="nf">synset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_synset</span></div>
 
 
 <div class="viewcode-block" id="Lemma.frame_strings">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.frame_strings">[docs]</a>
-    <span class="k">def</span> <span class="nf">frame_strings</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">frame_strings</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frame_strings</span></div>
 
 
 <div class="viewcode-block" id="Lemma.frame_ids">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.frame_ids">[docs]</a>
-    <span class="k">def</span> <span class="nf">frame_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">frame_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frame_ids</span></div>
 
 
 <div class="viewcode-block" id="Lemma.lang">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.lang">[docs]</a>
-    <span class="k">def</span> <span class="nf">lang</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lang</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lang</span></div>
 
 
 <div class="viewcode-block" id="Lemma.key">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.key">[docs]</a>
-    <span class="k">def</span> <span class="nf">key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_key</span></div>
 
 
-    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">tup</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_synset</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span>
         <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">(&#39;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&#39;)&quot;</span> <span class="o">%</span> <span class="n">tup</span>
 
-    <span class="k">def</span> <span class="nf">_related</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">relation_symbol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_related</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">relation_symbol</span><span class="p">):</span>
         <span class="n">get_synset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span><span class="o">.</span><span class="n">synset_from_pos_and_offset</span>
         <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> <span class="n">relation_symbol</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_synset</span><span class="o">.</span><span class="n">_lemma_pointers</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">[]</span>
@@ -464,26 +468,26 @@
 
 <div class="viewcode-block" id="Lemma.count">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.count">[docs]</a>
-    <span class="k">def</span> <span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the frequency count for this Lemma&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span><span class="o">.</span><span class="n">lemma_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Lemma.antonyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.antonyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">antonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">antonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;!&quot;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Lemma.derivationally_related_forms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.derivationally_related_forms">[docs]</a>
-    <span class="k">def</span> <span class="nf">derivationally_related_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">derivationally_related_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;+&quot;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Lemma.pertainyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Lemma.pertainyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">pertainyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pertainyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_related</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span><span class="p">)</span></div>
 </div>
 
@@ -491,7 +495,7 @@
 
 <div class="viewcode-block" id="Synset">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset">[docs]</a>
-<span class="k">class</span> <span class="nc">Synset</span><span class="p">(</span><span class="n">_WordNetObject</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Synset</span><span class="p">(</span><span class="n">_WordNetObject</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a Synset from a &quot;&lt;lemma&gt;.&lt;pos&gt;.&lt;number&gt;&quot; string where:</span>
 <span class="sd">    &lt;lemma&gt; is the word&#39;s morphological stem</span>
 <span class="sd">    &lt;pos&gt; is one of the module attributes ADJ, ADJ_SAT, ADV, NOUN or VERB</span>
@@ -562,7 +566,7 @@
 
 <div class="viewcode-block" id="Synset.__init__">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.__init__">[docs]</a>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wordnet_corpus_reader</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wordnet_corpus_reader</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span> <span class="o">=</span> <span class="n">wordnet_corpus_reader</span>
         <span class="c1"># All of these attributes get initialized by</span>
         <span class="c1"># WordNetCorpusReader._synset_from_pos_and_line()</span>
@@ -584,29 +588,29 @@
 
 <div class="viewcode-block" id="Synset.pos">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.pos">[docs]</a>
-    <span class="k">def</span> <span class="nf">pos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span></div>
 
 
 <div class="viewcode-block" id="Synset.offset">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.offset">[docs]</a>
-    <span class="k">def</span> <span class="nf">offset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">offset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_offset</span></div>
 
 
 <div class="viewcode-block" id="Synset.name">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.name">[docs]</a>
-    <span class="k">def</span> <span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span></div>
 
 
 <div class="viewcode-block" id="Synset.frame_ids">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.frame_ids">[docs]</a>
-    <span class="k">def</span> <span class="nf">frame_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">frame_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frame_ids</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_doc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">doc_type</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_doc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">doc_type</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper method for Synset.definition and Synset.examples&quot;&quot;&quot;</span>
         <span class="n">corpus</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span>
         <span class="k">if</span> <span class="n">lang</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">corpus</span><span class="o">.</span><span class="n">langs</span><span class="p">():</span>
@@ -624,25 +628,25 @@
 
 <div class="viewcode-block" id="Synset.definition">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.definition">[docs]</a>
-    <span class="k">def</span> <span class="nf">definition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">definition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return definition in specified language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_doc</span><span class="p">(</span><span class="s2">&quot;def&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_definition</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Synset.examples">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.examples">[docs]</a>
-    <span class="k">def</span> <span class="nf">examples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">examples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return examples in specified language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_doc</span><span class="p">(</span><span class="s2">&quot;exe&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_examples</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Synset.lexname">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lexname">[docs]</a>
-    <span class="k">def</span> <span class="nf">lexname</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lexname</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lexname</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_needs_root</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_needs_root</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span> <span class="o">==</span> <span class="n">NOUN</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span><span class="o">.</span><span class="n">get_version</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;1.6&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">False</span>
         <span class="k">else</span><span class="p">:</span>
@@ -650,7 +654,7 @@
 
 <div class="viewcode-block" id="Synset.lemma_names">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lemma_names">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemma_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemma_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all the lemma_names associated with the synset&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">lang</span> <span class="o">==</span> <span class="s2">&quot;eng&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_names</span>
@@ -666,7 +670,7 @@
 
 <div class="viewcode-block" id="Synset.lemmas">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lemmas">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all the lemma objects associated with the synset&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">lang</span> <span class="o">==</span> <span class="s2">&quot;eng&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lemmas</span>
@@ -690,7 +694,7 @@
 
 <div class="viewcode-block" id="Synset.root_hypernyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.root_hypernyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">root_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">root_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the topmost hypernyms of this synset in WordNet.&quot;&quot;&quot;</span>
 
         <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
@@ -720,7 +724,7 @@
     <span class="c1">#                            for root in h.root_hypernyms()))</span>
 <div class="viewcode-block" id="Synset.max_depth">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.max_depth">[docs]</a>
-    <span class="k">def</span> <span class="nf">max_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :return: The length of the longest hypernym path from this</span>
 <span class="sd">            synset to the root.</span>
@@ -737,7 +741,7 @@
 
 <div class="viewcode-block" id="Synset.min_depth">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.min_depth">[docs]</a>
-    <span class="k">def</span> <span class="nf">min_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">min_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :return: The length of the shortest hypernym path from this</span>
 <span class="sd">            synset to the root.</span>
@@ -754,7 +758,7 @@
 
 <div class="viewcode-block" id="Synset.closure">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.closure">[docs]</a>
-    <span class="k">def</span> <span class="nf">closure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">closure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return the transitive closure of source under the rel</span>
 <span class="sd">        relationship, breadth-first, discarding cycles:</span>
@@ -783,22 +787,22 @@
 <span class="sd">        UserWarning: Discarded redundant search for Synset(&#39;animal.n.01&#39;) at depth 7</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">acyclic_breadth_first</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">acyclic_breadth_first</span>
 
         <span class="k">for</span> <span class="n">synset</span> <span class="ow">in</span> <span class="n">acyclic_breadth_first</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">synset</span> <span class="o">!=</span> <span class="bp">self</span><span class="p">:</span>
                 <span class="k">yield</span> <span class="n">synset</span></div>
 
 
-    <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">acyclic_depth_first</span> <span class="k">as</span> <span class="n">acyclic_tree</span>
-    <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">unweighted_minimum_spanning_tree</span> <span class="k">as</span> <span class="n">mst</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">acyclic_depth_first</span> <span class="k">as</span> <span class="n">acyclic_tree</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">unweighted_minimum_spanning_tree</span> <span class="k">as</span> <span class="n">mst</span>
 
     <span class="c1"># Also add this shortcut?</span>
     <span class="c1">#    from nltk.util import unweighted_minimum_spanning_digraph as umsd</span>
 
 <div class="viewcode-block" id="Synset.tree">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.tree">[docs]</a>
-    <span class="k">def</span> <span class="nf">tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">cut_mark</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">cut_mark</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return the full relation tree, including self,</span>
 <span class="sd">        discarding cycles:</span>
@@ -841,14 +845,14 @@
 <span class="sd">               [Synset(&#39;physical_entity.n.01&#39;), [Synset(&#39;entity.n.01&#39;)]]]]]]]]]</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">acyclic_branches_depth_first</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">acyclic_branches_depth_first</span>
 
         <span class="k">return</span> <span class="n">acyclic_branches_depth_first</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rel</span><span class="p">,</span> <span class="n">depth</span><span class="p">,</span> <span class="n">cut_mark</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Synset.hypernym_paths">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.hypernym_paths">[docs]</a>
-    <span class="k">def</span> <span class="nf">hypernym_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hypernym_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the path(s) from this synset to the root, where each path is a</span>
 <span class="sd">        list of the synset nodes traversed on the way to the root.</span>
@@ -871,7 +875,7 @@
 
 <div class="viewcode-block" id="Synset.common_hypernyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.common_hypernyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">common_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">common_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find all synsets that are hypernyms of this synset and the</span>
 <span class="sd">        other synset.</span>
@@ -897,7 +901,7 @@
 
 <div class="viewcode-block" id="Synset.lowest_common_hypernyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lowest_common_hypernyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">lowest_common_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">use_min_depth</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lowest_common_hypernyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">use_min_depth</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get a list of lowest synset(s) that both synsets have as a hypernym.</span>
 <span class="sd">        When `use_min_depth == False` this means that the synset which appears</span>
@@ -959,7 +963,7 @@
 
 <div class="viewcode-block" id="Synset.hypernym_distances">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.hypernym_distances">[docs]</a>
-    <span class="k">def</span> <span class="nf">hypernym_distances</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hypernym_distances</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Get the path(s) from this synset to the root, counting the distance</span>
 <span class="sd">        of each node from the initial node on the way. A set of</span>
@@ -982,7 +986,7 @@
         <span class="k">return</span> <span class="n">distances</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_shortest_hypernym_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_shortest_hypernym_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="s2">&quot;*ROOT*&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">{</span><span class="bp">self</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
 
@@ -1008,7 +1012,7 @@
 
 <div class="viewcode-block" id="Synset.shortest_path_distance">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.shortest_path_distance">[docs]</a>
-    <span class="k">def</span> <span class="nf">shortest_path_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Returns the distance of the shortest path linking the two synsets (if</span>
 <span class="sd">        one exists). For each synset, all the ancestor nodes and their</span>
@@ -1044,7 +1048,7 @@
     <span class="c1"># interface to similarity methods</span>
 <div class="viewcode-block" id="Synset.path_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.path_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">path_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">path_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Path Distance Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1082,7 +1086,7 @@
 
 <div class="viewcode-block" id="Synset.lch_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lch_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">lch_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lch_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Leacock Chodorow Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1133,7 +1137,7 @@
 
 <div class="viewcode-block" id="Synset.wup_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.wup_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">wup_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wup_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Wu-Palmer Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1213,7 +1217,7 @@
 
 <div class="viewcode-block" id="Synset.res_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.res_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">res_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">res_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Resnik Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1236,7 +1240,7 @@
 
 <div class="viewcode-block" id="Synset.jcn_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.jcn_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">jcn_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">jcn_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Jiang-Conrath Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1273,7 +1277,7 @@
 
 <div class="viewcode-block" id="Synset.lin_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.Synset.lin_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">lin_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lin_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Lin Similarity:</span>
 <span class="sd">        Return a score denoting how similar two word senses are, based on the</span>
@@ -1294,7 +1298,7 @@
         <span class="k">return</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">lcs_ic</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">ic1</span> <span class="o">+</span> <span class="n">ic2</span><span class="p">)</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_iter_hypernym_lists</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_iter_hypernym_lists</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :return: An iterator over ``Synset`` objects that are either proper</span>
 <span class="sd">        hypernyms or instance of hypernyms of the synset.</span>
@@ -1312,10 +1316,10 @@
                 <span class="k">if</span> <span class="n">hypernym</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span>
             <span class="p">]</span>
 
-    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">(&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="si">}</span><span class="s2">&#39;)&quot;</span>
 
-    <span class="k">def</span> <span class="nf">_related</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">relation_symbol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_related</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">relation_symbol</span><span class="p">):</span>
         <span class="n">get_synset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wordnet_corpus_reader</span><span class="o">.</span><span class="n">synset_from_pos_and_offset</span>
         <span class="k">if</span> <span class="n">relation_symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pointers</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">[]</span>
@@ -1332,7 +1336,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader">[docs]</a>
-<span class="k">class</span> <span class="nc">WordNetCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">WordNetCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A corpus reader used to access wordnet or its variants.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1374,7 +1378,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.__init__">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.__init__">[docs]</a>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">omw_reader</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">omw_reader</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Construct a new wordnet corpus reader, with the given root</span>
 <span class="sd">        directory.</span>
@@ -1426,6 +1430,9 @@
                 <span class="k">assert</span> <span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">)</span> <span class="o">==</span> <span class="n">i</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_lexnames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lexname</span><span class="p">)</span>
 
+        <span class="c1"># Build a set of adjective satellite offsets</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_scan_satellites</span><span class="p">()</span>
+
         <span class="c1"># Load the indices for lemmas and synset offsets</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_load_lemma_pos_offset_map</span><span class="p">()</span>
 
@@ -1445,11 +1452,11 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.index_sense">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.index_sense">[docs]</a>
-    <span class="k">def</span> <span class="nf">index_sense</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">index_sense</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Read sense key to synset id mapping from index.sense file in corpus directory&quot;&quot;&quot;</span>
         <span class="n">fn</span> <span class="o">=</span> <span class="s2">&quot;index.sense&quot;</span>
         <span class="k">if</span> <span class="n">version</span><span class="p">:</span>
-            <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">CorpusReader</span><span class="p">,</span> <span class="n">LazyCorpusLoader</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.corpus</span><span class="w"> </span><span class="kn">import</span> <span class="n">CorpusReader</span><span class="p">,</span> <span class="n">LazyCorpusLoader</span>
 
             <span class="n">ixreader</span> <span class="o">=</span> <span class="n">LazyCorpusLoader</span><span class="p">(</span><span class="n">version</span><span class="p">,</span> <span class="n">CorpusReader</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;.*/&quot;</span> <span class="o">+</span> <span class="n">fn</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
@@ -1466,7 +1473,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.map_to_many">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.map_to_many">[docs]</a>
-    <span class="k">def</span> <span class="nf">map_to_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">map_to_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
         <span class="n">sensekey_map1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_sense</span><span class="p">(</span><span class="n">version</span><span class="p">)</span>
         <span class="n">sensekey_map2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_sense</span><span class="p">()</span>
         <span class="n">synset_to_many</span> <span class="o">=</span> <span class="p">{}</span>
@@ -1483,7 +1490,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.map_to_one">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.map_to_one">[docs]</a>
-    <span class="k">def</span> <span class="nf">map_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">map_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nomap</span><span class="p">[</span><span class="n">version</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">version</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="n">synset_to_many</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_to_many</span><span class="p">(</span><span class="n">version</span><span class="p">)</span>
@@ -1512,7 +1519,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.map_wn">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.map_wn">[docs]</a>
-    <span class="k">def</span> <span class="nf">map_wn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">map_wn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Mapping from Wordnet &#39;version&#39; to currently loaded Wordnet version&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_version</span><span class="p">()</span> <span class="o">==</span> <span class="n">version</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
@@ -1522,7 +1529,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.split_synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.split_synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">split_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">split_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">version</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">splits</span><span class="p">:</span>
             <span class="n">_mymap</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_to_one</span><span class="p">(</span><span class="n">version</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">version</span><span class="p">]</span></div>
@@ -1530,7 +1537,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.merged_synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.merged_synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">merged_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">merged_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s2">&quot;wordnet&quot;</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">version</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">merges</span><span class="p">:</span>
             <span class="n">merge</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">map_to_many</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -1547,20 +1554,20 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.of2ss">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.of2ss">[docs]</a>
-    <span class="k">def</span> <span class="nf">of2ss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">of</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">of2ss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">of</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;take an id and return the synsets&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_from_pos_and_offset</span><span class="p">(</span><span class="n">of</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="nb">int</span><span class="p">(</span><span class="n">of</span><span class="p">[:</span><span class="mi">8</span><span class="p">]))</span></div>
 
 
 <div class="viewcode-block" id="WordNetCorpusReader.ss2of">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.ss2of">[docs]</a>
-    <span class="k">def</span> <span class="nf">ss2of</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ss</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ss2of</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ss</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;return the ID of the synset&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">ss</span><span class="p">:</span>
             <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ss</span><span class="o">.</span><span class="n">offset</span><span class="p">()</span><span class="si">:</span><span class="s2">08d</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">ss</span><span class="o">.</span><span class="n">pos</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_load_lang_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_lang_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;load the wordnet data of the requested language from the file to</span>
 <span class="sd">        the cache, _lang_data&quot;&quot;&quot;</span>
 
@@ -1571,7 +1578,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">add_omw</span><span class="p">()</span>
 
         <span class="k">if</span> <span class="n">lang</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">langs</span><span class="p">():</span>
-            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="s2">&quot;Language is not supported.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Language </span><span class="si">{</span><span class="n">lang</span><span class="si">}</span><span class="s2"> is not supported.&quot;</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exomw_reader</span> <span class="ow">and</span> <span class="n">lang</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">omw_langs</span><span class="p">:</span>
             <span class="n">reader</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exomw_reader</span>
@@ -1590,7 +1597,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.add_provs">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.add_provs">[docs]</a>
-    <span class="k">def</span> <span class="nf">add_provs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reader</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_provs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reader</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Add languages from Multilingual Wordnet to the provenance dictionary&quot;&quot;&quot;</span>
         <span class="n">fileids</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">fileids</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">fileid</span> <span class="ow">in</span> <span class="n">fileids</span><span class="p">:</span>
@@ -1607,14 +1614,14 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.add_omw">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.add_omw">[docs]</a>
-    <span class="k">def</span> <span class="nf">add_omw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_omw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">add_provs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_omw_reader</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">omw_langs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">provenances</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span></div>
 
 
 <div class="viewcode-block" id="WordNetCorpusReader.add_exomw">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.add_exomw">[docs]</a>
-    <span class="k">def</span> <span class="nf">add_exomw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_exomw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Add languages from Extended OMW</span>
 
@@ -1624,7 +1631,7 @@
 <span class="sd">        &gt;&gt;&gt; print(wn.synset(&#39;intrinsically.r.01&#39;).lemmas(lang=&quot;eng_wikt&quot;))</span>
 <span class="sd">        [Lemma(&#39;intrinsically.r.01.per_se&#39;), Lemma(&#39;intrinsically.r.01.as_such&#39;)]</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="kn">from</span> <span class="nn">nltk.corpus</span> <span class="kn">import</span> <span class="n">extended_omw</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.corpus</span><span class="w"> </span><span class="kn">import</span> <span class="n">extended_omw</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">add_omw</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_exomw_reader</span> <span class="o">=</span> <span class="n">extended_omw</span>
@@ -1633,12 +1640,36 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.langs">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.langs">[docs]</a>
-    <span class="k">def</span> <span class="nf">langs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">langs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;return a list of languages supported by Multilingual Wordnet&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">provenances</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_load_lemma_pos_offset_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_scan_satellites</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Scans the adjective data file and populates self.satellite_offsets with all adjective satellite synset offsets.</span>
+
+<span class="sd">        This method reads the adjective data file associated with the corpus reader,</span>
+<span class="sd">        identifies synsets of type &#39;s&#39; (adjective satellites), and adds their offsets</span>
+<span class="sd">        to the self.satellite_offsets set. The method does not return a value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">adj_data_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data_file</span><span class="p">(</span><span class="n">ADJ</span><span class="p">)</span>
+        <span class="n">satellite_offsets</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">adj_data_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">adj_data_file</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">fields</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">synset_offset</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">synset_type</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">synset_type</span> <span class="o">==</span> <span class="s2">&quot;s&quot;</span><span class="p">:</span>
+                <span class="n">satellite_offsets</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">synset_offset</span><span class="p">))</span>
+        <span class="n">adj_data_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Reset if needed elsewhere</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">satellite_offsets</span> <span class="o">=</span> <span class="n">satellite_offsets</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_lemma_pos_offset_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">for</span> <span class="n">suffix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_FILEMAP</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
             <span class="c1"># parse each line of the file (ignoring comment lines)</span>
             <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;index.</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">suffix</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
@@ -1648,7 +1679,7 @@
 
                     <span class="n">_iter</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
 
-                    <span class="k">def</span> <span class="nf">_next_token</span><span class="p">():</span>
+                    <span class="k">def</span><span class="w"> </span><span class="nf">_next_token</span><span class="p">():</span>
                         <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">_iter</span><span class="p">)</span>
 
                     <span class="k">try</span><span class="p">:</span>
@@ -1679,15 +1710,22 @@
                     <span class="c1"># raise more informative error with file name and line number</span>
                     <span class="k">except</span> <span class="p">(</span><span class="ne">AssertionError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                         <span class="n">tup</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;index.</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">suffix</span><span class="p">),</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="n">e</span>
-                        <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="s2">&quot;file </span><span class="si">%s</span><span class="s2">, line </span><span class="si">%i</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">tup</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+                        <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="s2">&quot;file </span><span class="si">%s</span><span class="s2">, line </span><span class="si">%i</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">tup</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
                     <span class="c1"># map lemmas and parts of speech to synsets</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">synset_offsets</span>
                     <span class="k">if</span> <span class="n">pos</span> <span class="o">==</span> <span class="n">ADJ</span><span class="p">:</span>
-                        <span class="c1"># Duplicate all adjectives indiscriminately?:</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">ADJ_SAT</span><span class="p">]</span> <span class="o">=</span> <span class="n">synset_offsets</span>
+                        <span class="c1"># index.adj uses only the ADJ pos, so identify ADJ_SAT using satellites set</span>
+                        <span class="n">satellite_offsets</span> <span class="o">=</span> <span class="p">[</span>
+                            <span class="c1"># Keep the ordering from index.adj</span>
+                            <span class="n">offset</span>
+                            <span class="k">for</span> <span class="n">offset</span> <span class="ow">in</span> <span class="n">synset_offsets</span>
+                            <span class="k">if</span> <span class="n">offset</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">satellite_offsets</span>
+                        <span class="p">]</span>
+                        <span class="c1"># Duplicate only a (possibly empty) list of real satellites</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">ADJ_SAT</span><span class="p">]</span> <span class="o">=</span> <span class="n">satellite_offsets</span>
 
-    <span class="k">def</span> <span class="nf">_load_exception_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_exception_map</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="c1"># load the exception file data into memory</span>
         <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">suffix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_FILEMAP</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
@@ -1697,7 +1735,7 @@
                     <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">pos</span><span class="p">][</span><span class="n">terms</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">terms</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">ADJ_SAT</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">ADJ</span><span class="p">]</span>
 
-    <span class="k">def</span> <span class="nf">_compute_max_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_max_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Compute the max depth for the given part of speech.  This is</span>
 <span class="sd">        used by the lch similarity metric.</span>
@@ -1714,7 +1752,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.get_version">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.get_version">[docs]</a>
-    <span class="k">def</span> <span class="nf">get_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">fh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data_file</span><span class="p">(</span><span class="n">ADJ</span><span class="p">)</span>
         <span class="n">fh</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">fh</span><span class="p">:</span>
@@ -1731,7 +1769,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.lemma">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lemma">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return lemma object that matches the name&quot;&quot;&quot;</span>
         <span class="c1"># cannot simply split on first &#39;.&#39;,</span>
         <span class="c1"># e.g.: &#39;.45_caliber.a.01..45_caliber&#39;</span>
@@ -1748,7 +1786,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.lemma_from_key">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lemma_from_key">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemma_from_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemma_from_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
         <span class="c1"># Keys are case sensitive and always lower-case</span>
         <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
 
@@ -1778,7 +1816,7 @@
     <span class="c1">#############################################################</span>
 <div class="viewcode-block" id="WordNetCorpusReader.synset">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.synset">[docs]</a>
-    <span class="k">def</span> <span class="nf">synset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
         <span class="c1"># split name into lemma, part of speech and synset number</span>
         <span class="n">lemma</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">synset_index_str</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
         <span class="n">synset_index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">synset_index_str</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
@@ -1787,13 +1825,13 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="n">offset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">pos</span><span class="p">][</span><span class="n">synset_index</span><span class="p">]</span>
         <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No lemma </span><span class="si">{</span><span class="n">lemma</span><span class="si">!r}</span><span class="s2"> with part of speech </span><span class="si">{</span><span class="n">pos</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No lemma </span><span class="si">{</span><span class="n">lemma</span><span class="si">!r}</span><span class="s2"> with part of speech </span><span class="si">{</span><span class="n">pos</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
         <span class="k">except</span> <span class="ne">IndexError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
             <span class="n">n_senses</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_lemma_pos_offset_map</span><span class="p">[</span><span class="n">lemma</span><span class="p">][</span><span class="n">pos</span><span class="p">])</span>
             <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s2">&quot;Lemma </span><span class="si">{</span><span class="n">lemma</span><span class="si">!r}</span><span class="s2"> with part of speech </span><span class="si">{</span><span class="n">pos</span><span class="si">!r}</span><span class="s2"> only &quot;</span>
                 <span class="sa">f</span><span class="s2">&quot;has </span><span class="si">{</span><span class="n">n_senses</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">&#39;sense&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">n_senses</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;senses&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
-            <span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
         <span class="c1"># load synset information from the appropriate file</span>
         <span class="n">synset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_from_pos_and_offset</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
@@ -1811,7 +1849,7 @@
         <span class="k">return</span> <span class="n">synset</span></div>
 
 
-    <span class="k">def</span> <span class="nf">_data_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_data_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return an open file pointer for the data file for the given</span>
 <span class="sd">        part of speech.</span>
@@ -1825,7 +1863,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.synset_from_pos_and_offset">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.synset_from_pos_and_offset">[docs]</a>
-    <span class="k">def</span> <span class="nf">synset_from_pos_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synset_from_pos_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        - pos: The synset&#39;s part of speech, matching one of the module level</span>
 <span class="sd">          attributes ADJ, ADJ_SAT, ADV, NOUN or VERB (&#39;a&#39;, &#39;s&#39;, &#39;r&#39;, &#39;n&#39;, or &#39;v&#39;).</span>
@@ -1860,7 +1898,7 @@
 
 
     <span class="nd">@deprecated</span><span class="p">(</span><span class="s2">&quot;Use public method synset_from_pos_and_offset() instead&quot;</span><span class="p">)</span>
-    <span class="k">def</span> <span class="nf">_synset_from_pos_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_synset_from_pos_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Hack to help people like the readers of</span>
 <span class="sd">        https://stackoverflow.com/a/27145655/1709587</span>
@@ -1868,7 +1906,7 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">synset_from_pos_and_offset</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">_synset_from_pos_and_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">data_file_line</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_synset_from_pos_and_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">data_file_line</span><span class="p">):</span>
         <span class="c1"># Construct a new (empty) synset.</span>
         <span class="n">synset</span> <span class="o">=</span> <span class="n">Synset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 
@@ -1886,7 +1924,7 @@
             <span class="c1"># split the other info into fields</span>
             <span class="n">_iter</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">columns_str</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
 
-            <span class="k">def</span> <span class="nf">_next_token</span><span class="p">():</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">_next_token</span><span class="p">():</span>
                 <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">_iter</span><span class="p">)</span>
 
             <span class="c1"># get the offset</span>
@@ -1959,7 +1997,7 @@
 
         <span class="c1"># raise a more informative error with line text</span>
         <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;line </span><span class="si">{</span><span class="n">data_file_line</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+            <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;line </span><span class="si">{</span><span class="n">data_file_line</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
         <span class="c1"># set sense keys for Lemma objects - note that this has to be</span>
         <span class="c1"># done afterwards so that the relations are available</span>
@@ -1991,7 +2029,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.synset_from_sense_key">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.synset_from_sense_key">[docs]</a>
-    <span class="k">def</span> <span class="nf">synset_from_sense_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sense_key</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synset_from_sense_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sense_key</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Retrieves synset based on a given sense_key. Sense keys can be</span>
 <span class="sd">        obtained from lemma.key()</span>
@@ -2038,7 +2076,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Load all synsets with a given lemma and part of speech tag.</span>
 <span class="sd">        If no pos is specified, all synsets for all parts of speech</span>
 <span class="sd">        will be loaded.</span>
@@ -2072,7 +2110,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.lemmas">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lemmas">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all Lemma objects with a name matching the specified lemma</span>
 <span class="sd">        name and part of speech tag. Matches any part of speech tag if none is</span>
 <span class="sd">        specified.&quot;&quot;&quot;</span>
@@ -2101,7 +2139,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.all_lemma_names">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.all_lemma_names">[docs]</a>
-    <span class="k">def</span> <span class="nf">all_lemma_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_lemma_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all lemma names for all synsets for the given</span>
 <span class="sd">        part of speech tag and language or languages. If pos is</span>
 <span class="sd">        not specified, all synsets for all parts of speech will</span>
@@ -2130,7 +2168,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.all_omw_synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.all_omw_synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">all_omw_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_omw_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">lang</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">langs</span><span class="p">():</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_load_lang_data</span><span class="p">(</span><span class="n">lang</span><span class="p">)</span>
@@ -2147,7 +2185,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.all_synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.all_synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">all_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Iterate over all synsets with a given part of speech tag.</span>
 <span class="sd">        If no pos is specified, all synsets for all parts of speech</span>
 <span class="sd">        will be loaded.</span>
@@ -2160,7 +2198,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.all_eng_synsets">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.all_eng_synsets">[docs]</a>
-    <span class="k">def</span> <span class="nf">all_eng_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_eng_synsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">pos</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">pos_tags</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_FILEMAP</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
         <span class="k">else</span><span class="p">:</span>
@@ -2218,14 +2256,14 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.words">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.words">[docs]</a>
-    <span class="k">def</span> <span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">words</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;return lemmas of the given language as list of words&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_lemma_names</span><span class="p">(</span><span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="WordNetCorpusReader.synonyms">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.synonyms">[docs]</a>
-    <span class="k">def</span> <span class="nf">synonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">synonyms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;return nested list with the synonyms of the different senses of word in the given language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">[</span>
             <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">ss</span><span class="o">.</span><span class="n">lemma_names</span><span class="p">(</span><span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">))</span> <span class="o">-</span> <span class="p">{</span><span class="n">word</span><span class="p">}))</span>
@@ -2235,7 +2273,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.doc">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.doc">[docs]</a>
-    <span class="k">def</span> <span class="nf">doc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="s2">&quot;README&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">doc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="s2">&quot;README&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the contents of readme, license or citation file</span>
 <span class="sd">        use lang=lang to get the file for an individual language&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">lang</span> <span class="o">==</span> <span class="s2">&quot;eng&quot;</span><span class="p">:</span>
@@ -2256,7 +2294,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.license">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.license">[docs]</a>
-    <span class="k">def</span> <span class="nf">license</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">license</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the contents of LICENSE (for omw)</span>
 <span class="sd">        use lang=lang to get the license for an individual language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;LICENSE&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
@@ -2264,7 +2302,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.readme">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.readme">[docs]</a>
-    <span class="k">def</span> <span class="nf">readme</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">readme</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the contents of README (for omw)</span>
 <span class="sd">        use lang=lang to get the readme for an individual language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;README&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
@@ -2272,7 +2310,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.citation">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.citation">[docs]</a>
-    <span class="k">def</span> <span class="nf">citation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">citation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;eng&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the contents of citation.bib file (for omw)</span>
 <span class="sd">        use lang=lang to get the citation for an individual language&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="s2">&quot;citation.bib&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">)</span></div>
@@ -2283,7 +2321,7 @@
     <span class="c1">#############################################################</span>
 <div class="viewcode-block" id="WordNetCorpusReader.lemma_count">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lemma_count">[docs]</a>
-    <span class="k">def</span> <span class="nf">lemma_count</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lemma_count</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lemma</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the frequency count for this Lemma&quot;&quot;&quot;</span>
         <span class="c1"># Currently, count is only work for English</span>
         <span class="k">if</span> <span class="n">lemma</span><span class="o">.</span><span class="n">_lang</span> <span class="o">!=</span> <span class="s2">&quot;eng&quot;</span><span class="p">:</span>
@@ -2301,7 +2339,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.path_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.path_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">path_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">path_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">path_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">)</span></div>
 
 
@@ -2309,7 +2347,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.lch_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lch_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">lch_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lch_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">lch_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">)</span></div>
 
 
@@ -2317,7 +2355,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.wup_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.wup_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">wup_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wup_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">wup_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="p">)</span></div>
 
 
@@ -2325,7 +2363,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.res_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.res_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">res_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">res_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">res_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span></div>
 
 
@@ -2333,7 +2371,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.jcn_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.jcn_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">jcn_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">jcn_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">jcn_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span></div>
 
 
@@ -2341,7 +2379,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.lin_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.lin_similarity">[docs]</a>
-    <span class="k">def</span> <span class="nf">lin_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lin_similarity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">lin_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span></div>
 
 
@@ -2353,7 +2391,7 @@
     <span class="c1"># Morphy, adapted from Oliver Steele&#39;s pywordnet</span>
 <div class="viewcode-block" id="WordNetCorpusReader.morphy">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.morphy">[docs]</a>
-    <span class="k">def</span> <span class="nf">morphy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">morphy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find a possible base form for the given form, with the given</span>
 <span class="sd">        part of speech, by checking WordNet&#39;s list of exceptional</span>
@@ -2410,7 +2448,7 @@
 
     <span class="n">MORPHOLOGICAL_SUBSTITUTIONS</span><span class="p">[</span><span class="n">ADJ_SAT</span><span class="p">]</span> <span class="o">=</span> <span class="n">MORPHOLOGICAL_SUBSTITUTIONS</span><span class="p">[</span><span class="n">ADJ</span><span class="p">]</span>
 
-    <span class="k">def</span> <span class="nf">_morphy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_morphy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">check_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="c1"># from jordanbg:</span>
         <span class="c1"># Given an original string x</span>
         <span class="c1"># 1. Apply rules once to the input to get y1, y2, y3, etc.</span>
@@ -2420,7 +2458,7 @@
         <span class="n">exceptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exception_map</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
         <span class="n">substitutions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MORPHOLOGICAL_SUBSTITUTIONS</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
 
-        <span class="k">def</span> <span class="nf">apply_rules</span><span class="p">(</span><span class="n">forms</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">apply_rules</span><span class="p">(</span><span class="n">forms</span><span class="p">):</span>
             <span class="k">return</span> <span class="p">[</span>
                 <span class="n">form</span><span class="p">[:</span> <span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">old</span><span class="p">)]</span> <span class="o">+</span> <span class="n">new</span>
                 <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="n">forms</span>
@@ -2428,7 +2466,7 @@
                 <span class="k">if</span> <span class="n">form</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
             <span class="p">]</span>
 
-        <span class="k">def</span> <span class="nf">filter_forms</span><span class="p">(</span><span class="n">forms</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">filter_forms</span><span class="p">(</span><span class="n">forms</span><span class="p">):</span>
             <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="n">seen</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
             <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="n">forms</span><span class="p">:</span>
@@ -2449,12 +2487,47 @@
         <span class="c1"># 2. Return all that are in the database (and check the original too)</span>
         <span class="k">return</span> <span class="n">filter_forms</span><span class="p">([</span><span class="n">form</span><span class="p">]</span> <span class="o">+</span> <span class="n">forms</span><span class="p">)</span>
 
+<div class="viewcode-block" id="WordNetCorpusReader.tag2pos">
+<a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.tag2pos">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tag2pos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tag</span><span class="p">,</span> <span class="n">tagset</span><span class="o">=</span><span class="s2">&quot;en-ptb&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert a tag from one of the tagsets in nltk_data/taggers/universal_tagset to a</span>
+<span class="sd">        WordNet Part-of-Speech, using Universal Tags (Petrov et al., 2012) as intermediary.</span>
+<span class="sd">        Return None when WordNet does not cover that POS.</span>
+
+<span class="sd">        :param tag: The part-of-speech tag to convert.</span>
+<span class="sd">        :type tag: str</span>
+<span class="sd">        :param tagset: The tagset of the input tag. Defaults to &quot;en-ptb&quot;.</span>
+<span class="sd">            Supported tagsets are those recognized by the `map_tag` function</span>
+<span class="sd">            from `nltk.tag`. Common examples include:</span>
+<span class="sd">                - &quot;en-ptb&quot; (Penn Treebank tagset for English)</span>
+<span class="sd">                - &quot;en-brown&quot; (Brown tagset)</span>
+<span class="sd">            For a complete list of supported tagsets, refer to the `map_tag`</span>
+<span class="sd">            documentation or its source code in the NLTK library.</span>
+<span class="sd">        :type tagset: str</span>
+
+<span class="sd">        :returns: The corresponding WordNet POS tag (&#39;n&#39;, &#39;v&#39;, &#39;a&#39;, &#39;r&#39;) or None</span>
+<span class="sd">            if the tag cannot be mapped to a WordNet POS.</span>
+<span class="sd">        :rtype: str or None</span>
+
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; import nltk</span>
+<span class="sd">            &gt;&gt;&gt; tagged = nltk.tag.pos_tag(nltk.tokenize.word_tokenize(&quot;Banks check books.&quot;))</span>
+<span class="sd">            &gt;&gt;&gt; print([(word, tag, nltk.corpus.wordnet.tag2pos(tag)) for word, tag in tagged])</span>
+<span class="sd">            [(&#39;Banks&#39;, &#39;NNS&#39;, &#39;n&#39;), (&#39;check&#39;, &#39;VBP&#39;, &#39;v&#39;), (&#39;books&#39;, &#39;NNS&#39;, &#39;n&#39;), (&#39;.&#39;, &#39;.&#39;, None)]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">tagset</span> <span class="o">!=</span> <span class="s2">&quot;universal&quot;</span><span class="p">:</span>
+            <span class="n">tag</span> <span class="o">=</span> <span class="n">map_tag</span><span class="p">(</span><span class="n">tagset</span><span class="p">,</span> <span class="s2">&quot;universal&quot;</span><span class="p">,</span> <span class="n">tag</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">UNIVERSAL_TAG_TO_WN_POS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+
     <span class="c1">#############################################################</span>
     <span class="c1"># Create information content from corpus</span>
     <span class="c1">#############################################################</span>
 <div class="viewcode-block" id="WordNetCorpusReader.ic">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.ic">[docs]</a>
-    <span class="k">def</span> <span class="nf">ic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corpus</span><span class="p">,</span> <span class="n">weight_senses_equally</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corpus</span><span class="p">,</span> <span class="n">weight_senses_equally</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Creates an information content lookup dictionary from a corpus.</span>
 
@@ -2513,7 +2586,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.custom_lemmas">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.custom_lemmas">[docs]</a>
-    <span class="k">def</span> <span class="nf">custom_lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tab_file</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">custom_lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tab_file</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Reads a custom tab file containing mappings of lemmas in the given</span>
 <span class="sd">        language to Princeton WordNet 3.0 synset offsets, allowing NLTK&#39;s</span>
@@ -2584,7 +2657,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.disable_custom_lemmas">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.disable_custom_lemmas">[docs]</a>
-    <span class="k">def</span> <span class="nf">disable_custom_lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">disable_custom_lemmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lang</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;prevent synsets from being mistakenly added&quot;&quot;&quot;</span>
         <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lg_attrs</span><span class="p">)):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_lang_data</span><span class="p">[</span><span class="n">lang</span><span class="p">][</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">default_factory</span> <span class="o">=</span> <span class="kc">None</span></div>
@@ -2596,7 +2669,7 @@
 
 <div class="viewcode-block" id="WordNetCorpusReader.digraph">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetCorpusReader.digraph">[docs]</a>
-    <span class="k">def</span> <span class="nf">digraph</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">digraph</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">inputs</span><span class="p">,</span>
         <span class="n">rel</span><span class="o">=</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">hypernyms</span><span class="p">(),</span>
@@ -2644,7 +2717,7 @@
 <span class="sd">        }</span>
 <span class="sd">        &lt;BLANKLINE&gt;</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="kn">from</span> <span class="nn">nltk.util</span> <span class="kn">import</span> <span class="n">edge_closure</span><span class="p">,</span> <span class="n">edges2dot</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">nltk.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">edge_closure</span><span class="p">,</span> <span class="n">edges2dot</span>
 
         <span class="n">synsets</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="n">edges</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
@@ -2653,7 +2726,7 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">attr</span><span class="p">:</span>
             <span class="n">attr</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
 
-        <span class="k">def</span> <span class="nf">add_lemma</span><span class="p">(</span><span class="n">lem</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">add_lemma</span><span class="p">(</span><span class="n">lem</span><span class="p">):</span>
             <span class="n">ss</span> <span class="o">=</span> <span class="n">lem</span><span class="o">.</span><span class="n">synset</span><span class="p">()</span>
             <span class="n">synsets</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ss</span><span class="p">)</span>
             <span class="n">edges</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">lem</span><span class="p">,</span> <span class="n">ss</span><span class="p">))</span>
@@ -2683,14 +2756,14 @@
 
 <div class="viewcode-block" id="WordNetICCorpusReader">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetICCorpusReader">[docs]</a>
-<span class="k">class</span> <span class="nc">WordNetICCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">WordNetICCorpusReader</span><span class="p">(</span><span class="n">CorpusReader</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A corpus reader for the WordNet information content corpus.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
 <div class="viewcode-block" id="WordNetICCorpusReader.__init__">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetICCorpusReader.__init__">[docs]</a>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">):</span>
         <span class="n">CorpusReader</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">fileids</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf8&quot;</span><span class="p">)</span></div>
 
 
@@ -2700,7 +2773,7 @@
     <span class="c1"># as an instance of its hypernyms)</span>
 <div class="viewcode-block" id="WordNetICCorpusReader.ic">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.WordNetICCorpusReader.ic">[docs]</a>
-    <span class="k">def</span> <span class="nf">ic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">icfile</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">icfile</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Load an information content file from the wordnet_ic corpus</span>
 <span class="sd">        and return a dictionary.  This dictionary has just two keys,</span>
@@ -2745,7 +2818,7 @@
 
 <div class="viewcode-block" id="path_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.path_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">path_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">path_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">path_similarity</span><span class="p">(</span>
         <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="n">simulate_root</span>
     <span class="p">)</span></div>
@@ -2754,35 +2827,35 @@
 
 <div class="viewcode-block" id="lch_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.lch_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">lch_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">lch_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">lch_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="n">simulate_root</span><span class="p">)</span></div>
 
 
 
 <div class="viewcode-block" id="wup_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.wup_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">wup_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">wup_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">wup_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">simulate_root</span><span class="o">=</span><span class="n">simulate_root</span><span class="p">)</span></div>
 
 
 
 <div class="viewcode-block" id="res_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.res_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">res_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">res_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">res_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span></div>
 
 
 
 <div class="viewcode-block" id="jcn_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.jcn_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">jcn_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">jcn_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">jcn_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span></div>
 
 
 
 <div class="viewcode-block" id="lin_similarity">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.lin_similarity">[docs]</a>
-<span class="k">def</span> <span class="nf">lin_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">lin_similarity</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">synset1</span><span class="o">.</span><span class="n">lin_similarity</span><span class="p">(</span><span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span></div>
 
 
@@ -2795,7 +2868,7 @@
 <span class="n">lin_similarity</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">Synset</span><span class="o">.</span><span class="n">lin_similarity</span><span class="o">.</span><span class="vm">__doc__</span>
 
 
-<span class="k">def</span> <span class="nf">_lcs_ic</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_lcs_ic</span><span class="p">(</span><span class="n">synset1</span><span class="p">,</span> <span class="n">synset2</span><span class="p">,</span> <span class="n">ic</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the information content of the least common subsumer that has</span>
 <span class="sd">    the highest information content value.  If two nodes have no</span>
@@ -2837,7 +2910,7 @@
 
 <div class="viewcode-block" id="information_content">
 <a class="viewcode-back" href="../../../../api/nltk.corpus.reader.wordnet.html#nltk.corpus.reader.information_content">[docs]</a>
-<span class="k">def</span> <span class="nf">information_content</span><span class="p">(</span><span class="n">synset</span><span class="p">,</span> <span class="n">ic</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">information_content</span><span class="p">(</span><span class="n">synset</span><span class="p">,</span> <span class="n">ic</span><span class="p">):</span>
     <span class="n">pos</span> <span class="o">=</span> <span class="n">synset</span><span class="o">.</span><span class="n">_pos</span>
     <span class="k">if</span> <span class="n">pos</span> <span class="o">==</span> <span class="n">ADJ_SAT</span><span class="p">:</span>
         <span class="n">pos</span> <span class="o">=</span> <span class="n">ADJ</span>
@@ -2845,7 +2918,7 @@
         <span class="n">icpos</span> <span class="o">=</span> <span class="n">ic</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
     <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
         <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Information content file has no entries for part-of-speech: </span><span class="si">%s</span><span class="s2">&quot;</span>
-        <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="n">msg</span> <span class="o">%</span> <span class="n">pos</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+        <span class="k">raise</span> <span class="n">WordNetError</span><span class="p">(</span><span class="n">msg</span> <span class="o">%</span> <span class="n">pos</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
 
     <span class="n">counts</span> <span class="o">=</span> <span class="n">icpos</span><span class="p">[</span><span class="n">synset</span><span class="o">.</span><span class="n">_offset</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">counts</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
@@ -2859,7 +2932,7 @@
 <span class="c1"># (each identifier has a &#39;n&#39; or &#39;v&#39; suffix)</span>
 
 
-<span class="k">def</span> <span class="nf">_get_pos</span><span class="p">(</span><span class="n">field</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_pos</span><span class="p">(</span><span class="n">field</span><span class="p">):</span>
     <span class="k">if</span> <span class="n">field</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;n&quot;</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">NOUN</span>
     <span class="k">elif</span> <span class="n">field</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;v&quot;</span><span class="p">:</span>
@@ -2884,20 +2957,20 @@
 
             
                 <li class="footer-element">
-                    <a href="https://github.com/nltk/nltk/tree/3.9.1">3.9.1</a>
+                    <a href="https://github.com/nltk/nltk/tree/3.9.2">3.9.2</a>
                 </li>
             
 
             
                 <li class="footer-element">
-                    Aug 19, 2024
+                    Oct 01, 2025
                 </li>
             
         </ul>
 
         
             <div id="copyright">
-                &copy; 2024, NLTK Project
+                &copy; 2025, NLTK Project
             </div>
         
 

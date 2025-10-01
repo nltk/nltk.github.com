@@ -1,10 +1,25 @@
 Release Notes
 =============
 
+2025
+----
+
+NLTK 3.9.2 release: October 2025:
+
+- Update download checksums to use SHA256 in built index
+- Make Wordnet interoperable with various taggers and tagged corpora
+- Fix saving PerceptronTagger
+- Document how to reproduce old Wordnet studies
+- Only import tkinter if a GUI is needed
+- new environment variable NLTK_DOWNLOADER_FORCE_INTERACTIVE_SHELL
+- add Python 3.13 support, drop Python 3.8 support
+- other minor fixes
+
 2024
 ----
 
 NLTK 3.9.1 release: August 2024:
+
 - Fixed bug that prevented wordnet from loading
 
 NLTK 3.9 release: August 2024:
