@@ -33,7 +33,7 @@ Related papers:
     Proceedings of Nineteeth National Conference on Artificial Intelligence
     (AAAI-2004), 2004.
 
-- Xiaowen Ding, Bing Liu and Philip S. Yu. "A Holistic Lexicon-Based Appraoch to
+- Xiaowen Ding, Bing Liu and Philip S. Yu. "A Holistic Lexicon-Based Approach to
     Opinion Mining." Proceedings of First ACM International Conference on Web
     Search and Data Mining (WSDM-2008), Feb 11-12, 2008, Stanford University,
     Stanford, California, USA.

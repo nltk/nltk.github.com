@@ -102,7 +102,7 @@ class SentimentAnalyzer:
         :param top_n: number of best words/tokens to use, sorted by association
             measure.
         :param assoc_measure: bigram association measure to use as score function.
-        :param min_freq: the minimum number of occurrencies of bigrams to take
+        :param min_freq: the minimum number of occurrences of bigrams to take
             into consideration.
 
         :return: `top_n` ngrams scored by the given association measure.

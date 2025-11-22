@@ -42,7 +42,7 @@ from nltk.tokenize import *
 class CategorizedSentencesCorpusReader(CategorizedCorpusReader, CorpusReader):
     """
     A reader for corpora in which each row represents a single instance, mainly
-    a sentence. Istances are divided into categories based on their file identifiers
+    a sentence. Instances are divided into categories based on their file identifiers
     (see CategorizedCorpusReader).
     Since many corpora allow rows that contain more than one sentence, it is
     possible to specify a sentence tokenizer to retrieve all sentences instead

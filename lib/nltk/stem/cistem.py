@@ -118,7 +118,7 @@ class Cistem(StemmerI):
         This method works very similarly to stem (:func:'cistem.stem'). The difference is that in
         addition to returning the stem, it also returns the rest that was removed at
         the end. To be able to return the stem unchanged so the stem and the rest
-        can be concatenated to form the original word, all subsitutions that altered
+        can be concatenated to form the original word, all substitutions that altered
         the stem in any other way than by removing letters at the end were left out.
 
         :param word: The word that is to be stemmed.
