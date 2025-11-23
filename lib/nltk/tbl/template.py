@@ -256,7 +256,7 @@ class Template(BrillTemplateI):
 
         #Templates where one feature is a subset of another, such as
         #Template(Word([0,1]), Word([1]), will not appear in the output.
-        #By default, this non-subset constraint is tightened to disjointness:
+        #By default, this non-subset constraint is tightened to disjointedness:
         #Templates of type Template(Word([0,1]), Word([1,2]) will also be filtered out.
         #With skipintersecting=False, then such Templates are allowed
 

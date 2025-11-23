@@ -33,7 +33,7 @@ class StanfordSegmenter(TokenizerI):
     """Interface to the Stanford Segmenter
 
     If stanford-segmenter version is older than 2016-10-31, then path_to_slf4j
-    should be provieded, for example::
+    should be provided, for example::
 
         seg = StanfordSegmenter(path_to_slf4j='/YOUR_PATH/slf4j-api.jar')
 
@@ -233,7 +233,7 @@ class StanfordSegmenter(TokenizerI):
         # Create a temporary input file
         _input_fh, self._input_file_path = tempfile.mkstemp(text=True)
 
-        # Write the actural sentences to the temporary input file
+        # Write the actual sentences to the temporary input file
         _input_fh = os.fdopen(_input_fh, "wb")
         _input = "\n".join(" ".join(x) for x in sentences)
         if isinstance(_input, str) and encoding:

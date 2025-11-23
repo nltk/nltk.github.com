@@ -7,7 +7,7 @@
 # For license information, see LICENSE.TXT
 
 """
-Implementation of 'TnT - A Statisical Part of Speech Tagger'
+Implementation of 'TnT - A Statistical Part of Speech Tagger'
 by Thorsten Brants
 
 https://aclanthology.org/A00-1031.pdf

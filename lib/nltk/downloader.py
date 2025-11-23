@@ -27,7 +27,7 @@ package that should be downloaded:
 
 NLTK also provides a number of \"package collections\", consisting of
 a group of related packages.  To download all packages in a
-colleciton, simply call ``download()`` with the collection's
+collection, simply call ``download()`` with the collection's
 identifier:
 
     >>> download('all-corpora') # doctest: +SKIP
@@ -1767,7 +1767,7 @@ class DownloaderGUI:
         # position right -- I'm not sure what the underlying cause is
         # though.  (This is on OS X w/ python 2.5)  The length of
         # delay that's necessary seems to depend on how fast the
-        # comptuer is. :-/
+        # computer is. :-/
         self.top.after(150, self._table._scrollbar.set, *self._table._mlb.yview())
         self.top.after(300, self._table._scrollbar.set, *self._table._mlb.yview())
 

@@ -351,7 +351,7 @@ class FreqDist(Counter):
         """
         return self.__class__(self)
 
-    # Mathematical operatiors
+    # Mathematical operators
 
     def __add__(self, other):
         """
@@ -1353,7 +1353,7 @@ class WittenBellProbDist(ProbDistI):
 #
 
 ##//////////////////////////////////////////////////////
-##  Simple Good-Turing Probablity Distributions
+##  Simple Good-Turing Probability Distributions
 ##//////////////////////////////////////////////////////
 
 

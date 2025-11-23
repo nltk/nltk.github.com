@@ -174,7 +174,7 @@ class Query(Twython):
     def _search_tweets(self, keywords, limit=100, lang="en"):
         """
         Assumes that the handler has been informed. Fetches Tweets from
-        search_tweets generator output and passses them to handler
+        search_tweets generator output and passes them to handler
 
         :param str keywords: A list of query terms to search for, written as\
         a comma-separated string.
